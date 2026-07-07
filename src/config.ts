@@ -8,6 +8,8 @@
  * lazily, so configure-at-import is always early enough.
  */
 
+import { manifestUrl, setManifestCache, type ManifestCache } from './images';
+
 export interface BrowseConfig {
   /**
    * Base URL for catalog.json / prices-summary.json / alternates.json.
@@ -25,9 +27,15 @@ export interface BrowseConfig {
   apiUrl?: string;
   /** Publishable (anon) key for PostgREST reads. */
   apiKey?: string;
+  /**
+   * Optional persistent cache (AsyncStorage / localStorage adapter) for the
+   * content-hashed image manifest — enables instant first paint across launches.
+   * See hydrateImageManifest / cardThumbUrl.
+   */
+  cache?: ManifestCache;
 }
 
-const config: Required<BrowseConfig> = {
+const config: Required<Omit<BrowseConfig, 'cache'>> = {
   browseUrl: '/browse',
   imgBase: '',
   apiUrl: '',
@@ -40,6 +48,7 @@ export function configureBrowse(next: BrowseConfig): void {
   config.imgBase = next.imgBase;
   config.apiUrl = next.apiUrl ?? deriveApiUrl(next.browseUrl);
   config.apiKey = next.apiKey ?? '';
+  setManifestCache(next.cache ?? null);
 }
 
 /** `https://<ref>.supabase.co/storage/...` -> `https://<ref>.supabase.co/rest/v1`. */
@@ -75,16 +84,28 @@ export function resolveImageUrl(path: string): string {
   return `${config.imgBase}${path}`;
 }
 
+/** cardThumbUrl tier → the image manifest field it resolves against. */
+const TIER_FIELD: Record<string, string> = {
+  '245': 'image_small',
+  '640': 'image_medium',
+  full: 'image',
+};
+
 /**
- * Image tiers, keyed by a card's stable id — deterministic bucket paths, so a
- * card's image can be shown WITHOUT loading the ~25MB catalog.json first:
- *   - 245 → `card-thumbs/245/<id>.webp` (grids / covers; complete for every card)
- *   - 640 → `card-thumbs/640/<id>.webp` (binder-page view)
- *   - 'full' → `card-imgs/<id>.jpg` (full size; the safe fallback if a webp 404s)
- * Requires imgBase to point at the bucket's public root.
+ * Image tiers, keyed by a card's stable id — so a card's image can be shown
+ * WITHOUT loading the ~25MB catalog.json first:
+ *   - 245 → 245px webp (grids / covers; complete for every card)
+ *   - 640 → 640px webp (binder-page view)
+ *   - 'full' → full-size jpg (the safe fallback if a webp 404s)
+ * Hosted buckets key images by content hash, so the URL is resolved through the
+ * image manifest (hydrateImageManifest) when it's loaded; otherwise it falls
+ * back to the flat `<id>` convention path — correct for local static assets and
+ * for cards not yet in the manifest. Requires imgBase at the bucket's public root.
  */
 export function cardThumbUrl(id: string, tier: 245 | 640 | 'full'): string {
   if (!id) return '';
+  const hashed = manifestUrl(id, TIER_FIELD[String(tier)]);
+  if (hashed) return hashed;
   if (tier === 'full') return `${config.imgBase}/card-imgs/${id}.jpg`;
   return `${config.imgBase}/card-thumbs/${tier}/${id}.webp`;
 }

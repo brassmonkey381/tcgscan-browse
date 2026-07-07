@@ -19,6 +19,14 @@ export {
 } from './config';
 
 export {
+  hydrateImageManifest,
+  imageManifestReady,
+  subscribeImageManifest,
+  useImageManifest,
+  type ManifestCache,
+} from './images';
+
+export {
   formatSetDate,
   getCatalog,
   getLoadedCatalog,

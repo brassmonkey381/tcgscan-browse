@@ -7,6 +7,7 @@
  * apps' src/lib/catalogConfig.ts). Every fetch in this package reads the config
  * lazily, so configure-at-import is always early enough.
  */
+import { type ManifestCache } from './images';
 export interface BrowseConfig {
     /**
      * Base URL for catalog.json / prices-summary.json / alternates.json.
@@ -24,6 +25,12 @@ export interface BrowseConfig {
     apiUrl?: string;
     /** Publishable (anon) key for PostgREST reads. */
     apiKey?: string;
+    /**
+     * Optional persistent cache (AsyncStorage / localStorage adapter) for the
+     * content-hashed image manifest — enables instant first paint across launches.
+     * See hydrateImageManifest / cardThumbUrl.
+     */
+    cache?: ManifestCache;
 }
 /** Set the data-server origins. Call once from the app before any browse use. */
 export declare function configureBrowse(next: BrowseConfig): void;
@@ -38,11 +45,14 @@ export declare function getApiKey(): string;
  */
 export declare function resolveImageUrl(path: string): string;
 /**
- * Image tiers, keyed by a card's stable id — deterministic bucket paths, so a
- * card's image can be shown WITHOUT loading the ~25MB catalog.json first:
- *   - 245 → `card-thumbs/245/<id>.webp` (grids / covers; complete for every card)
- *   - 640 → `card-thumbs/640/<id>.webp` (binder-page view)
- *   - 'full' → `card-imgs/<id>.jpg` (full size; the safe fallback if a webp 404s)
- * Requires imgBase to point at the bucket's public root.
+ * Image tiers, keyed by a card's stable id — so a card's image can be shown
+ * WITHOUT loading the ~25MB catalog.json first:
+ *   - 245 → 245px webp (grids / covers; complete for every card)
+ *   - 640 → 640px webp (binder-page view)
+ *   - 'full' → full-size jpg (the safe fallback if a webp 404s)
+ * Hosted buckets key images by content hash, so the URL is resolved through the
+ * image manifest (hydrateImageManifest) when it's loaded; otherwise it falls
+ * back to the flat `<id>` convention path — correct for local static assets and
+ * for cards not yet in the manifest. Requires imgBase at the bucket's public root.
  */
 export declare function cardThumbUrl(id: string, tier: 245 | 640 | 'full'): string;

@@ -8,6 +8,7 @@
  * inject app-specific actions (place/portfolio-add/find-similar) via props.
  */
 export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, type BrowseConfig, } from './config';
+export { hydrateImageManifest, imageManifestReady, subscribeImageManifest, useImageManifest, type ManifestCache, } from './images';
 export { formatSetDate, getCatalog, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, type Catalog, type CatalogCard, type CatalogSeries, type CatalogSet, type CardKind, type RawCard, type RawCatalog, type RawSeries, type RawSet, type RawVUnionGroup, type VUnionGroup, } from './catalog';
 export { formatUsd, getPriceSummary, priceSnapshot, usePriceSummary, type PriceSummary, type PriceSummaryEntry, } from './prices';
 export { findSimilar, similarAvailable, type SimilarHit } from './similar';
