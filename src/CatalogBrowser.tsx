@@ -53,8 +53,10 @@ const CARD_ASPECT = 88 / 63; // height / width of a standard portrait card
 /** Fixed extra height under each card thumb: name line + its margin + inter-row gap. */
 const CARD_LABEL_H = 14;
 const ROW_GAP = 6;
-/** Fixed height of a compact series/set text row (must match `textRow` styles for getItemLayout). */
-const TEXT_ROW_H = 60;
+/** Series/set tiles: target width (packs into 3–5 columns by page width) + a fixed tile height
+ *  (must match the `taxTile` style so getItemLayout can skip offscreen rows). */
+const TARGET_TAX_TILE_W = 210;
+const TAX_TILE_H = 136;
 /** How many of the first cards to warm through the image cache when a view changes. */
 const PREFETCH_COUNT = 12;
 
@@ -276,16 +278,21 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }: 
   );
 
   // Dense grid geometry from the measured width. Falls back to a sane default pre-layout.
-  const { numColumns, tileW } = useMemo(() => {
-    if (containerWidth <= 0) return { numColumns: 4, tileW: TARGET_TILE_W };
-    const cols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (TARGET_TILE_W + GRID_GAP)));
-    const w = Math.floor((containerWidth - GRID_GAP * (cols - 1)) / cols);
-    return { numColumns: cols, tileW: w };
+  const { numColumns, tileW, taxCols, taxTileW } = useMemo(() => {
+    if (containerWidth <= 0) {
+      return { numColumns: 4, tileW: TARGET_TILE_W, taxCols: 3, taxTileW: TARGET_TAX_TILE_W };
+    }
+    const cCols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (TARGET_TILE_W + GRID_GAP)));
+    const cW = Math.floor((containerWidth - GRID_GAP * (cCols - 1)) / cCols);
+    // Series/set tiles: 3–5 columns depending on page width (a bigger target than card tiles).
+    const tCols = Math.max(3, Math.min(5, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
+    const tW = Math.floor((containerWidth - GRID_GAP * (tCols - 1)) / tCols);
+    return { numColumns: cCols, tileW: cW, taxCols: tCols, taxTileW: tW };
   }, [containerWidth]);
 
-  const cols = isCardLevel ? numColumns : 1;
+  const cols = isCardLevel ? numColumns : taxCols;
   const cardRowHeight = Math.round(tileW * CARD_ASPECT + CARD_LABEL_H + ROW_GAP);
-  const rowHeight = isCardLevel ? cardRowHeight : TEXT_ROW_H;
+  const rowHeight = isCardLevel ? cardRowHeight : TAX_TILE_H + ROW_GAP;
 
   const data = useMemo<BrowseItem[]>(() => {
     if (level === 'series') return series.map((s) => ({ kind: 'series' as const, series: s }));
@@ -393,14 +400,18 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }: 
       const meta = [seriesDateRange(s), `${s.cardCount.toLocaleString()} cards`, `${s.setIds.length} sets`]
         .filter(Boolean)
         .join(' · ');
-      return <TextRow title={s.name} meta={meta} coverUri={s.coverUri} onPress={() => openSeries(s.id)} />;
+      return (
+        <TaxonomyTile title={s.name} meta={meta} coverUri={s.coverUri} width={taxTileW} onPress={() => openSeries(s.id)} />
+      );
     }
     if (item.kind === 'set') {
       const s = item.set;
       const meta = [s.code, `${s.cardCount.toLocaleString()} cards`, formatSetDate(s.releaseDate)]
         .filter(Boolean)
         .join(' · ');
-      return <TextRow title={s.name} meta={meta} coverUri={s.coverUri} onPress={() => openSet(s.id)} />;
+      return (
+        <TaxonomyTile title={s.name} meta={meta} coverUri={s.coverUri} width={taxTileW} onPress={() => openSet(s.id)} />
+      );
     }
     const c = item.card;
     const value = priceOf(c.id);
@@ -571,36 +582,40 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }: 
 // ---- compact taxonomy rows + card tile + breadcrumb ----------------------------
 
 /**
- * A compact text row for a series or set: title + meta line, an optional tiny logo only
- * when one exists (michi has none for most), and a chevron. No big blank cover squares.
+ * A series/set tile for the multi-column taxonomy grid: a logo (or the initial when michi
+ * has no cover, which is most), the name, and a meta line. Fixed height so getItemLayout can
+ * skip offscreen rows.
  */
-function TextRow({
+function TaxonomyTile({
   title,
   meta,
   coverUri,
+  width,
   onPress,
 }: {
   title: string;
   meta: string;
   coverUri?: string;
+  width: number;
   onPress: () => void;
 }) {
   return (
-    <Pressable style={styles.textRow} onPress={onPress}>
-      {coverUri ? (
-        <Image source={{ uri: coverUri }} style={styles.textRowLogo} contentFit="contain" transition={100} />
-      ) : null}
-      <View style={styles.textRowBody}>
-        <Text style={styles.rowTitle} numberOfLines={1}>
-          {title}
-        </Text>
-        {meta ? (
-          <Text style={styles.rowMeta} numberOfLines={1}>
-            {meta}
-          </Text>
-        ) : null}
+    <Pressable style={[styles.taxTile, { width }]} onPress={onPress}>
+      <View style={styles.taxLogoWrap}>
+        {coverUri ? (
+          <Image source={{ uri: coverUri }} style={styles.taxLogo} contentFit="contain" transition={100} />
+        ) : (
+          <Text style={styles.taxInitial}>{title.trim().charAt(0).toUpperCase()}</Text>
+        )}
       </View>
-      <Text style={styles.rowChevron}>›</Text>
+      <Text style={styles.taxTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      {meta ? (
+        <Text style={styles.taxMeta} numberOfLines={2}>
+          {meta}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -884,21 +899,29 @@ const styles = StyleSheet.create({
   listContent: { paddingBottom: 16 },
   empty: { textAlign: 'center', color: '#999', marginTop: 24, fontSize: 13 },
   footer: { paddingTop: 4 },
-  // compact series/set text rows
-  textRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    height: TEXT_ROW_H,
-    paddingHorizontal: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ececed',
+  // series/set grid tiles
+  taxTile: {
+    height: TAX_TILE_H,
+    marginBottom: ROW_GAP,
+    borderWidth: 1,
+    borderColor: '#ececed',
+    borderRadius: 10,
+    padding: 8,
+    gap: 4,
+    backgroundColor: '#fafafc',
   },
-  textRowLogo: { width: 40, height: 40, borderRadius: 6, backgroundColor: '#f4f4f6' },
-  textRowBody: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 14, fontWeight: '600', color: '#2a2a30' },
-  rowMeta: { fontSize: 11, color: '#8a8a93' },
-  rowChevron: { fontSize: 20, color: '#c4c4c8', paddingHorizontal: 2 },
+  taxLogoWrap: {
+    height: 52,
+    borderRadius: 6,
+    backgroundColor: '#f0f0f3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  taxLogo: { width: '100%', height: '100%' },
+  taxInitial: { fontSize: 22, fontWeight: '800', color: '#c4c4c8' },
+  taxTitle: { fontSize: 12, fontWeight: '700', color: '#2a2a30', lineHeight: 15 },
+  taxMeta: { fontSize: 10, color: '#8a8a93', lineHeight: 13 },
   // dense card tiles
   cardTile: { marginBottom: ROW_GAP },
   cardTileSelected: { backgroundColor: '#e8f0fe', borderRadius: 6 },
