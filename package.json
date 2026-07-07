@@ -1,0 +1,32 @@
+{
+  "name": "tcgscan-browse",
+  "version": "0.1.0",
+  "description": "Shared Pokemon TCG card-browse kit for the TCGScan apps: catalog + prices + similarity clients for the tcgscan-data server, the search query grammar, and the CatalogBrowser React Native component.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brassmonkey381/tcgscan-browse.git"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "expo-image": "*",
+    "react": ">=18",
+    "react-native": ">=0.73"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "expo-image": "~56.0.11",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
+    "typescript": "~6.0.3"
+  }
+}

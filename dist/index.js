@@ -1,0 +1,17 @@
+/**
+ * tcgscan-browse — the shared Pokemon TCG card-browse kit for the TCGScan apps.
+ *
+ * One import surface for: the tcgscan-data server clients (catalog, prices,
+ * similarity), the search query grammar (+ its "?" manual content), and the
+ * CatalogBrowser React Native component. Consumers call `configureBrowse(...)`
+ * once at startup (from app code, where EXPO_PUBLIC_* env inlining works) and
+ * inject app-specific actions (place/portfolio-add/find-similar) via props.
+ */
+export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, } from './config';
+export { formatSetDate, getCatalog, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, } from './catalog';
+export { formatUsd, getPriceSummary, priceSnapshot, usePriceSummary, } from './prices';
+export { findSimilar, similarAvailable } from './similar';
+export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, } from './query';
+export { browseState } from './state';
+export { CatalogBrowser } from './CatalogBrowser';
+export { CardActionModal } from './CardActionModal';

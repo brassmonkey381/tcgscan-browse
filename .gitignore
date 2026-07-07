@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.idea/
+.vscode/
+# NOTE: dist/ IS committed — consumers install via github: and get the built
+# output without a build step. Run `npm run build` before every commit.
