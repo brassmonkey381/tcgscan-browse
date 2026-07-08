@@ -192,14 +192,29 @@ function Tile({ styles, label, value }: { styles: Styles; label: string; value: 
 
 // --- aggregate value over time (lazy) ----------------------------------------
 
-/** Sum the priciest variant of every priced card by date → one value-over-time series. */
+/**
+ * Cap the value-over-time aggregate to the top-N priciest cards. Summing EVERY
+ * priced card fans out one price-history request per card — hundreds for a big set,
+ * thousands for a series (e.g. ~7.8k for "Promos & Miscellaneous") — which queues
+ * behind the ~6-connection limit and hammers the price API. The line is dominated
+ * by the top cards, so the top-N sum is visually near-identical for a fraction of
+ * the requests. When capped, the chart title says so rather than posing as the full
+ * total (which the "Total value" tile still reports over all priced cards).
+ */
+const AGG_TOP_N = 100;
+
+/** Sum the priciest variant of the top-N priced cards by date → one value-over-time series. */
 function AggregateValueOverTime({ priced, theme }: { priced: Priced[]; theme: BrowseTheme }) {
   const [series, setSeries] = useState<ValuePoint[] | null>(null);
+  const capped = priced.length > AGG_TOP_N;
+  const shown = Math.min(priced.length, AGG_TOP_N);
 
   useEffect(() => {
     let on = true;
     setSeries(null);
-    Promise.all(priced.map((p) => getCardPrices(p.card.id))).then((all) => {
+    // priced is sorted priciest-first, so the first AGG_TOP_N are the top by value.
+    const source = capped ? priced.slice(0, AGG_TOP_N) : priced;
+    Promise.all(source.map((p) => getCardPrices(p.card.id))).then((all) => {
       if (!on) return;
       const byDate = new Map<string, number>();
       for (const p of all) {
@@ -214,13 +229,13 @@ function AggregateValueOverTime({ priced, theme }: { priced: Priced[]; theme: Br
     return () => {
       on = false;
     };
-  }, [priced]);
+  }, [priced, capped]);
 
   return (
     <ValueOverTimeChart
-      title="Value over time"
+      title={capped ? `Value over time · top ${AGG_TOP_N}` : 'Value over time'}
       series={series}
-      loadingLabel={`aggregating ${priced.length} cards…`}
+      loadingLabel={`aggregating ${shown} cards…`}
       theme={theme}
     />
   );
