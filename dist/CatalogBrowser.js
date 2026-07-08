@@ -124,9 +124,9 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
-    const styles = useMemo(() => makeStyles(theme), [theme]);
+    const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
     // Hydrate the content-hashed image manifest and repaint tiles when it lands —
     // card images resolve by id (cardThumbUrl), not from URLs in the catalog.
     useImageManifest();
@@ -216,18 +216,18 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
     // Dense grid geometry from the measured width. Falls back to a sane default pre-layout.
     const { numColumns, tileW, taxCols, taxTileW } = useMemo(() => {
         if (containerWidth <= 0) {
-            return { numColumns: 4, tileW: TARGET_TILE_W, taxCols: 3, taxTileW: TARGET_TAX_TILE_W };
+            return { numColumns: 4, tileW: cardTileWidth, taxCols: 3, taxTileW: TARGET_TAX_TILE_W };
         }
-        const cCols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (TARGET_TILE_W + GRID_GAP)));
+        const cCols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (cardTileWidth + GRID_GAP)));
         const cW = Math.floor((containerWidth - GRID_GAP * (cCols - 1)) / cCols);
         // Series/set tiles: 3–5 columns depending on page width (a bigger target than card tiles).
         const tCols = Math.max(3, Math.min(5, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
         const tW = Math.floor((containerWidth - GRID_GAP * (tCols - 1)) / tCols);
         return { numColumns: cCols, tileW: cW, taxCols: tCols, taxTileW: tW };
-    }, [containerWidth]);
+    }, [containerWidth, cardTileWidth]);
     const cols = isCardLevel ? numColumns : taxCols;
     const cardRowHeight = Math.round(tileW * CARD_ASPECT + CARD_LABEL_H + ROW_GAP);
-    const rowHeight = isCardLevel ? cardRowHeight : TAX_TILE_H + ROW_GAP;
+    const rowHeight = isCardLevel ? cardRowHeight : taxTileHeight + ROW_GAP;
     const data = useMemo(() => {
         if (level === 'series')
             return series.map((s) => ({ kind: 'series', series: s }));
@@ -479,7 +479,7 @@ function FacetBar({ styles, options, selection, activeCount, open, onToggleOpen,
                                 return (_jsx(Pressable, { onPress: () => onToggleValue(facet.key, v), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: v }) }, v));
                             }) })] }, facet.key))) })) : null] }));
 }
-function makeStyles(t) {
+function makeStyles(t, taxTileHeight) {
     return StyleSheet.create({
         browser: { flex: 1 },
         // The list must claim the remaining sheet height (sibling of the fixed-height controls)
@@ -597,7 +597,7 @@ function makeStyles(t) {
         footer: { paddingTop: 4 },
         // series/set grid tiles
         taxTile: {
-            height: TAX_TILE_H,
+            height: taxTileHeight,
             marginBottom: ROW_GAP,
             borderWidth: 1,
             borderColor: t.border,

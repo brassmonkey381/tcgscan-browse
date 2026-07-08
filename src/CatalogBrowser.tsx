@@ -216,6 +216,15 @@ interface CatalogBrowserProps {
   analytics?: boolean;
   /** Injected color contract (partial override merged over the light default). */
   theme?: Partial<BrowseTheme>;
+  /**
+   * Target width (px) for each card thumbnail — the grid packs as many columns as fit, then
+   * divides the measured width evenly, so a larger value yields fewer, bigger cards. Defaults
+   * to the dense browse default; consumers wanting binder-sized cards pass e.g. ~140.
+   */
+  cardTileWidth?: number;
+  /** Height (px) of each series/set art tile. Larger = taller cover art. Defaults to the
+   *  standard tile height. */
+  taxTileHeight?: number;
 }
 
 /**
@@ -232,9 +241,11 @@ export function CatalogBrowser({
   footer,
   analytics,
   theme: themeProp,
+  cardTileWidth = TARGET_TILE_W,
+  taxTileHeight = TAX_TILE_H,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
-  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
   // Hydrate the content-hashed image manifest and repaint tiles when it lands —
   // card images resolve by id (cardThumbUrl), not from URLs in the catalog.
   useImageManifest();
@@ -344,19 +355,19 @@ export function CatalogBrowser({
   // Dense grid geometry from the measured width. Falls back to a sane default pre-layout.
   const { numColumns, tileW, taxCols, taxTileW } = useMemo(() => {
     if (containerWidth <= 0) {
-      return { numColumns: 4, tileW: TARGET_TILE_W, taxCols: 3, taxTileW: TARGET_TAX_TILE_W };
+      return { numColumns: 4, tileW: cardTileWidth, taxCols: 3, taxTileW: TARGET_TAX_TILE_W };
     }
-    const cCols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (TARGET_TILE_W + GRID_GAP)));
+    const cCols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (cardTileWidth + GRID_GAP)));
     const cW = Math.floor((containerWidth - GRID_GAP * (cCols - 1)) / cCols);
     // Series/set tiles: 3–5 columns depending on page width (a bigger target than card tiles).
     const tCols = Math.max(3, Math.min(5, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
     const tW = Math.floor((containerWidth - GRID_GAP * (tCols - 1)) / tCols);
     return { numColumns: cCols, tileW: cW, taxCols: tCols, taxTileW: tW };
-  }, [containerWidth]);
+  }, [containerWidth, cardTileWidth]);
 
   const cols = isCardLevel ? numColumns : taxCols;
   const cardRowHeight = Math.round(tileW * CARD_ASPECT + CARD_LABEL_H + ROW_GAP);
-  const rowHeight = isCardLevel ? cardRowHeight : TAX_TILE_H + ROW_GAP;
+  const rowHeight = isCardLevel ? cardRowHeight : taxTileHeight + ROW_GAP;
 
   const data = useMemo<BrowseItem[]>(() => {
     if (level === 'series') return series.map((s) => ({ kind: 'series' as const, series: s }));
@@ -956,7 +967,7 @@ function FacetBar({
   );
 }
 
-function makeStyles(t: BrowseTheme) {
+function makeStyles(t: BrowseTheme, taxTileHeight: number) {
   return StyleSheet.create({
     browser: { flex: 1 },
     // The list must claim the remaining sheet height (sibling of the fixed-height controls)
@@ -1074,7 +1085,7 @@ function makeStyles(t: BrowseTheme) {
     footer: { paddingTop: 4 },
     // series/set grid tiles
     taxTile: {
-      height: TAX_TILE_H,
+      height: taxTileHeight,
       marginBottom: ROW_GAP,
       borderWidth: 1,
       borderColor: t.border,

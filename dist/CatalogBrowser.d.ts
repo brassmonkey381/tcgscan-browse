@@ -37,10 +37,19 @@ interface CatalogBrowserProps {
     analytics?: boolean;
     /** Injected color contract (partial override merged over the light default). */
     theme?: Partial<BrowseTheme>;
+    /**
+     * Target width (px) for each card thumbnail — the grid packs as many columns as fit, then
+     * divides the measured width evenly, so a larger value yields fewer, bigger cards. Defaults
+     * to the dense browse default; consumers wanting binder-sized cards pass e.g. ~140.
+     */
+    cardTileWidth?: number;
+    /** Height (px) of each series/set art tile. Larger = taller cover art. Defaults to the
+     *  standard tile height. */
+    taxTileHeight?: number;
 }
 /**
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth, taxTileHeight, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};
