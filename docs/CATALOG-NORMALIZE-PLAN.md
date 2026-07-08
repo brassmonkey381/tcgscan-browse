@@ -1,7 +1,13 @@
 # Plan: normalize the browse catalog (derive URLs, dedup set/series fields)
 
-Status: **in progress** · Owner repos: `tcgscan-data` (producer) + `tcgscan-browse`
-(consumer) · Apps: `poke-michi`, `tcgscan-app/tcgscan-expo`
+Status: **DONE (2026-07-08)** — catalog.json **26.8 MB → 10.1 MB raw (2.16 → 0.5 MB
+brotli)** · kit v0.3.5 · both apps bumped · Owner repos: `tcgscan-data` (producer) +
+`tcgscan-browse` (consumer) · Apps: `poke-michi`, `tcgscan-app/tcgscan-expo`
+
+Shipped in order: kit v0.3.5 (image-by-id + set-join) → both apps (image read-sites →
+`cardThumbUrl`, bumped) → pipeline `publish_browse` drops the 9 fields + republish.
+Verified live: dropped fields absent, `set_id` + `sets` join source intact, manifest
+resolves. Apps need a Metro `-c` restart to render against the slim catalog.
 
 ## Why
 
