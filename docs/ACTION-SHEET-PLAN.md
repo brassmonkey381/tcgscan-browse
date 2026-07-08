@@ -1,6 +1,35 @@
 # Plan: make the card action sheet app-agnostic
 
-Status: **intended, not started** · Owner repo: `tcgscan-browse` · Consumers: `tcgscan-app`, `poke-michi`
+Status: **package side DONE (v0.3.0)** · consumer wiring pending · Owner repo:
+`tcgscan-browse` · Consumers: `tcgscan-app`, `poke-michi`
+
+## Status update — 2026-07-07 (v0.3.0)
+
+Landed in the package:
+
+- `CardAction` / `BrowserBuiltins` / `CardActionsFactory` model in `src/actions.ts`
+  (exported), plus `resolveActions` / `resolveLabel` helpers.
+- `CardActionModal` is now a **dumb renderer** over resolved actions (primary first,
+  then the rest, then Cancel) — it no longer knows about pockets.
+- `CatalogBrowser` gained `cardActions?: (card, builtins) => CardAction[]`. The
+  built-ins (`findSimilar`, `viewSet`) are constructed by the browser and handed to the
+  factory (each `undefined` when N/A), so an app composes
+  `[...appActions, builtins.findSimilar, builtins.viewSet]`.
+- **Back-compat**: with no `cardActions`, the sheet falls back to a default primary that
+  calls `onPickCard` (`Place in pocket` / `Replace "<occupant>"`) — so poke-michi keeps
+  working unchanged. `onPickCard` is now optional.
+- **Image 400 fixed**: the sheet loads `imageMedium ?? image` (640px webp).
+- Colors come from an injected `BrowseTheme` (default light), so the sheet themes with
+  the rest of the kit — see the theming note in BROWSE-FEATURES-PLAN.
+
+**Remaining (consumer repos, not here):** bump both apps to v0.3.0 and pass explicit
+`cardActions` — poke-michi's place/replace, tcgscan-app's `Add to collection` /
+`View details` — then restart Metro `-c`. Until then both apps ride the back-compat
+default (michi correct; tcgscan-app still lacks its own verbs).
+
+---
+
+### Original plan
 
 ## Why
 

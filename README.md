@@ -51,7 +51,8 @@ import { CatalogBrowser, loadCatalog, usePriceSummary, findSimilar } from 'tcgsc
 | Price summary client + `formatUsd` | Aggregations (michi's binder/page totals) |
 | `find_similar` RPC client | — |
 | Query grammar + `QUERY_MANUAL` + `describeQuery` | — |
-| `CatalogBrowser` + `CardActionModal` + session browse state | The actions passed in (`onPickCard`, pocket semantics, portfolio-add) |
+| `CatalogBrowser` + `CardActionModal` + session browse state + `BrowseTheme` | The `cardActions`/`quickAction` passed in (place, add-to-collection, quick-place…) + the app's `theme` override |
+| Value analytics (`SetAnalytics`/`SeriesAnalytics`/`PriceChart`) | Where they navigate (`onOpenCard`) |
 
 **Keep the grammar and `QUERY_MANUAL` in sync** when new enrichment fields land
 in the catalog (see the tcgscan-data pipeline): `QueryableCard`, `fieldValues()`,
@@ -62,3 +63,9 @@ in the catalog (see the tcgscan-data pipeline): `QueryableCard`, `fieldValues()`
 - Consumed by **poke-michi** (michi-maker) since 2026-07-07.
 - **tcgscan-app** adoption pending — its browse tab still has the older parallel
   implementation (`src/lib/cards.ts`); swap it for this kit in a dedicated pass.
+- **v0.3.0** — the card action sheet is now app-agnostic (`cardActions` +
+  `CardAction` model; `onPickCard` is a back-compat default), value analytics
+  (`SetAnalytics`/`SeriesAnalytics`/`PriceChart`) and inline `quickAction` ship from the
+  package, and all surfaces theme via an injected `BrowseTheme` (default light). See
+  `docs/ACTION-SHEET-PLAN.md` and `docs/BROWSE-FEATURES-PLAN.md` for the consumer wiring
+  that remains in each app.

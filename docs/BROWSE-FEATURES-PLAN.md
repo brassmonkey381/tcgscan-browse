@@ -1,6 +1,42 @@
 # Plan: move all catalog-browsing features into tcgscan-browse
 
-Status: **intended, not started** · Owner repo: `tcgscan-browse` · Consumers: `tcgscan-app`, `poke-michi`
+Status: **package side DONE (v0.3.0)** · consumer cleanup pending · Owner repo:
+`tcgscan-browse` · Consumers: `tcgscan-app`, `poke-michi`
+
+## Status update — 2026-07-07 (v0.3.0)
+
+All four target items now ship from the package:
+
+1. **`<SetAnalytics>` (v0.2.0) + `<SeriesAnalytics>` (v0.3.0)** — both exported, both
+   take an injected `theme` + `onOpenCard(cardId)`; they share one internal
+   `ValueAnalytics` core (tiles / top-K-by-value bars / value-over-time).
+2. **Analytics inside `CatalogBrowser`** — the `analytics` prop adds the set-level
+   `Cards | Analytics` toggle (v0.2.0).
+3. **Per-card price + inline actions** — the `analytics` prop renders each card's
+   headline value on its tile; the new `quickAction?: (card) => CardAction` prop renders
+   an app-injected corner pill (＋add / quick-place) that fires without opening the sheet
+   (reuses the action model from ACTION-SHEET-PLAN).
+4. **Charts** — `ValueOverTimeChart` (v0.2.0) and the per-card **`PriceChart`**
+   (variant toggle + range, v0.3.0) are exported. `react-native-svg` is a peer dep.
+
+**Theming** — resolved the open question: `BrowseTheme` (a small color contract) +
+`lightTheme` default + `resolveTheme(partial)` in `src/theme.ts`. `CatalogBrowser`,
+`CardActionModal`, and the analytics views all read colors from it via a
+`makeStyles(theme)` factory. Apps pass `theme={...}`; tcgscan-app supplies a dark override.
+
+**Remaining (consumer repos, not here):**
+- `poke-michi`: opt into analytics where it mounts the browser (`analytics`); optionally
+  a `quickAction` for quick-place.
+- `tcgscan-app`: adopt the kit, pass a dark `theme`, wire `cardActions` + a `＋`
+  `quickAction`, then delete the orphaned `components/set-analytics.tsx`,
+  `series-analytics.tsx`, `value-over-time-chart.tsx`, `price-chart.tsx` and the routed
+  `browse/[seriesId].tsx` / `browse/set/[setId].tsx` screens (per "Consumer cleanup").
+- Not yet surfaced: a **series-level** Analytics toggle inside `CatalogBrowser` (the
+  `SeriesAnalytics` component exists; the in-browser toggle is still set-level only).
+
+---
+
+### Original plan
 
 ## Why
 

@@ -15,6 +15,10 @@
  * across facets and OR within a single facet's selected values. Adding a new attribute
  * facet later (illustrator, Pokémon type, evolution stage, …) is a one-line change — see
  * the EXTENSION SEAM comment on `FACETS`.
+ *
+ * App-agnostic by construction: colors come from an injected `BrowseTheme` (default
+ * light), navigation is via callbacks (`onOpenCard`/`onPickCard`, no router import), and
+ * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
  */
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -34,6 +38,12 @@ import { browseState } from './state';
 import { CardActionModal } from './CardActionModal';
 import { SetAnalytics } from './analytics';
 import {
+  resolveActions,
+  type BrowserBuiltins,
+  type CardAction,
+  type CardActionsFactory,
+} from './actions';
+import {
   formatSetDate,
   seriesDateRange,
   type Catalog,
@@ -44,6 +54,7 @@ import {
 import { resolveImageUrl } from './config';
 import { formatUsd, usePriceSummary } from './prices';
 import { findSimilar, similarAvailable } from './similar';
+import { resolveTheme, type BrowseTheme } from './theme';
 
 /** Cap flat search results so a broad query can't build an unbounded grid. */
 const SEARCH_LIMIT = 200;
@@ -167,11 +178,34 @@ type BrowseItem =
   | { kind: 'set'; set: CatalogSet }
   | { kind: 'card'; card: CatalogCard };
 
+type Styles = ReturnType<typeof makeStyles>;
+
 interface CatalogBrowserProps {
   catalog: Catalog;
   /** The card currently placed in the pocket (for the selected highlight), if any. */
   selectedCardId?: string;
-  onPickCard: (cardId: string) => void;
+  /**
+   * Legacy/default primary action. When supplied and `cardActions` is omitted, the sheet
+   * shows a "Place in pocket" / Replace "<occupant>" primary that calls this — preserving
+   * poke-michi's binder behavior. Apps with a richer action set pass `cardActions` instead.
+   */
+  onPickCard?: (cardId: string) => void;
+  /**
+   * App-supplied per-card action list for the tap sheet. Receives the browser's
+   * `BrowserBuiltins` (findSimilar / viewSet, each present only when applicable) so the app
+   * composes `[...appActions, builtins.findSimilar, builtins.viewSet]`. When omitted, the
+   * sheet falls back to the `onPickCard` default above.
+   */
+  cardActions?: CardActionsFactory;
+  /**
+   * Optional inline quick action rendered as a compact corner pill on each card tile
+   * (e.g. tcgscan-app's "＋" add, michi's quick-place). Return `undefined` to omit it for a
+   * card. Its `label` should be short (a glyph or 1–2 chars) — it's tiny. Tapping it fires
+   * the action WITHOUT opening the sheet. Reuses the shared `CardAction` model.
+   */
+  quickAction?: (card: CatalogCard) => CardAction | undefined;
+  /** Where analytics tiles/bars navigate on tap. Defaults to `onPickCard`. */
+  onOpenCard?: (cardId: string) => void;
   /** Artwork-panel + tonal-insert sections, rendered as the list footer so they stay
    *  reachable below the browse without a second scroller. */
   footer: ReactNode;
@@ -179,13 +213,28 @@ interface CatalogBrowserProps {
    *  plus a headline value under each card tile. Off by default — apps that don't
    *  want pricing (e.g. michi's binder picker) simply omit it. */
   analytics?: boolean;
+  /** Injected color contract (partial override merged over the light default). */
+  theme?: Partial<BrowseTheme>;
 }
 
 /**
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, analytics }: CatalogBrowserProps) {
+export function CatalogBrowser({
+  catalog,
+  selectedCardId,
+  onPickCard,
+  cardActions,
+  quickAction,
+  onOpenCard,
+  footer,
+  analytics,
+  theme: themeProp,
+}: CatalogBrowserProps) {
+  const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   // Hydrate from the session browse state so reopening the picker restores the
   // last search/drill-down/similar view (one search often feeds several pockets).
   const [cardQuery, setCardQuery] = useState(browseState.cardQuery);
@@ -218,7 +267,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
       similarCards,
     });
   }, [cardQuery, seriesId, setId, selection, similarTo, similarCards]);
-  // Tapping a card opens the action sheet (place/replace, find similar, view set)
+  // Tapping a card opens the action sheet (app-supplied actions + built-ins)
   // instead of silently replacing the pocket's occupant.
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
   // Cards | Analytics toggle within a set (only when `analytics` is enabled).
@@ -377,6 +426,16 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
     });
   };
 
+  /** Jump the drill-down to a card's set (clearing search/similar/filters first). */
+  const jumpToSet = (card: CatalogCard) => {
+    setCardQuery('');
+    setCardQueryDebounced('');
+    clearSimilar();
+    clearFilters();
+    setSeriesId(card.seriesId || null);
+    setSetId(card.setId ?? null);
+  };
+
   const toggleFacetValue = (key: string, value: string) =>
     setSelection((prev) => {
       const current = prev[key] ?? [];
@@ -391,6 +450,56 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
   // The card already in the pocket that opened this picker (if any) — offered as
   // a one-tap "find similar to what's here" jump.
   const occupant = selectedCardId ? catalog.getCard(selectedCardId) : undefined;
+  const openCard = onOpenCard ?? onPickCard ?? (() => {});
+
+  /** The package-intrinsic actions for a card, bound to this browser's state. */
+  const builtinsFor = (card: CatalogCard): BrowserBuiltins => ({
+    findSimilar: similarAvailable()
+      ? {
+          key: 'find-similar',
+          label: '≈ Find similar',
+          onPress: (c) => {
+            setActionCard(null);
+            openSimilar(c);
+          },
+        }
+      : undefined,
+    viewSet: card.setId
+      ? {
+          key: 'view-set',
+          label: 'View set',
+          onPress: (c) => {
+            setActionCard(null);
+            jumpToSet(c);
+          },
+        }
+      : undefined,
+  });
+
+  /** Resolve the sheet's actions for the tapped card: app-supplied, or the michi default. */
+  const actionsFor = (card: CatalogCard): CardAction[] => {
+    const builtins = builtinsFor(card);
+    if (cardActions) return resolveActions(cardActions(card, builtins), card);
+    // Back-compat default: poke-michi's place/replace primary + the built-ins.
+    const placeDefault: CardAction[] = onPickCard
+      ? [
+          {
+            key: 'place',
+            kind: 'primary',
+            label: (c) =>
+              occupant && occupant.id !== c.id ? `Replace “${occupant.name}”` : 'Place in pocket',
+            onPress: (c) => {
+              setActionCard(null);
+              onPickCard(c.id);
+            },
+          },
+        ]
+      : [];
+    const list = [...placeDefault, builtins.findSimilar, builtins.viewSet].filter(
+      (a): a is CardAction => Boolean(a),
+    );
+    return resolveActions(list, card);
+  };
 
   const crumbs: Crumb[] = [{ label: 'Series', onPress: seriesId ? goSeriesRoot : undefined }];
   if (currentSeries) {
@@ -412,7 +521,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
         .filter(Boolean)
         .join(' · ');
       return (
-        <TaxonomyTile title={s.name} meta={meta} coverUri={s.coverUri} width={taxTileW} onPress={() => openSeries(s.id)} />
+        <TaxonomyTile styles={styles} title={s.name} meta={meta} coverUri={s.coverUri} width={taxTileW} onPress={() => openSeries(s.id)} />
       );
     }
     if (item.kind === 'set') {
@@ -421,13 +530,14 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
         .filter(Boolean)
         .join(' · ');
       return (
-        <TaxonomyTile title={s.name} meta={meta} coverUri={s.coverUri} width={taxTileW} onPress={() => openSet(s.id)} />
+        <TaxonomyTile styles={styles} title={s.name} meta={meta} coverUri={s.coverUri} width={taxTileW} onPress={() => openSet(s.id)} />
       );
     }
     const c = item.card;
     const value = priceOf(c.id);
     return (
       <CardTile
+        styles={styles}
         card={c}
         width={tileW}
         selected={c.id === selectedCardId}
@@ -436,6 +546,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
         label={parsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name}
         // headline value under the name, only when pricing is surfaced
         value={analytics ? value : undefined}
+        // app-injected inline quick action (＋add / quick-place), if any
+        quickAction={quickAction?.(c)}
       />
     );
   };
@@ -460,7 +572,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
             value={cardQuery}
             onChangeText={onChangeQuery}
             placeholder={`Search ${catalog.cardCount.toLocaleString()} cards — ${QUERY_HINT}`}
-            placeholderTextColor="#aaa"
+            placeholderTextColor={theme.faint}
             autoCorrect={false}
             clearButtonMode="while-editing"
             style={[styles.search, styles.searchFlex]}
@@ -473,7 +585,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
             <Text style={[styles.helpBtnText, helpOpen && styles.helpBtnTextOn]}>?</Text>
           </Pressable>
         </View>
-        {helpOpen ? <SearchManual onClose={() => setHelpOpen(false)} /> : null}
+        {helpOpen ? <SearchManual styles={styles} onClose={() => setHelpOpen(false)} /> : null}
         {occupant && similarAvailable() && similarTo?.id !== occupant.id ? (
           <Pressable style={styles.pocketSimilar} onPress={() => openSimilar(occupant)}>
             <Text style={styles.pocketSimilarText} numberOfLines={1}>
@@ -507,7 +619,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
             </Pressable>
           </View>
         ) : seriesId ? (
-          <Breadcrumb crumbs={crumbs} />
+          <Breadcrumb styles={styles} crumbs={crumbs} />
         ) : (
           <Text style={styles.meta}>{series.length} series</Text>
         )}
@@ -525,6 +637,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
         ) : null}
         {isCardLevel && facetOptions.length > 0 && !analyticsView ? (
           <FacetBar
+            styles={styles}
             options={facetOptions}
             selection={selection}
             activeCount={activeFilterCount}
@@ -538,7 +651,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
 
       {analyticsView && setId ? (
         <ScrollView style={styles.list} contentContainerStyle={styles.analyticsContent}>
-          <SetAnalytics catalog={catalog} setId={setId} onOpenCard={onPickCard} />
+          <SetAnalytics catalog={catalog} setId={setId} onOpenCard={openCard} theme={theme} />
         </ScrollView>
       ) : (
       <FlatList
@@ -579,34 +692,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
       {actionCard ? (
         <CardActionModal
           card={actionCard}
-          occupant={occupant}
+          actions={actionsFor(actionCard)}
           value={priceOf(actionCard.id)}
-          onPlace={() => {
-            setActionCard(null);
-            onPickCard(actionCard.id);
-          }}
-          onSimilar={
-            similarAvailable()
-              ? () => {
-                  setActionCard(null);
-                  openSimilar(actionCard);
-                }
-              : undefined
-          }
-          onViewSet={
-            actionCard.setId
-              ? () => {
-                  setActionCard(null);
-                  setCardQuery('');
-                  setCardQueryDebounced('');
-                  clearSimilar();
-                  clearFilters();
-                  setSeriesId(actionCard.seriesId || null);
-                  setSetId(actionCard.setId);
-                }
-              : undefined
-          }
           onClose={() => setActionCard(null)}
+          theme={theme}
         />
       ) : null}
     </View>
@@ -621,12 +710,14 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
  * skip offscreen rows.
  */
 function TaxonomyTile({
+  styles,
   title,
   meta,
   coverUri,
   width,
   onPress,
 }: {
+  styles: Styles;
   title: string;
   meta: string;
   coverUri?: string;
@@ -660,13 +751,16 @@ function TaxonomyTile({
  * same memory-disk cache + recyclingKey pattern as BinderGrid.
  */
 function CardTile({
+  styles,
   card,
   width,
   selected,
   onPress,
   label,
   value,
+  quickAction,
 }: {
+  styles: Styles;
   card: CatalogCard;
   width: number;
   selected: boolean;
@@ -675,6 +769,8 @@ function CardTile({
   label?: string;
   /** Headline value shown under the name (when pricing is surfaced); hidden if 0/absent. */
   value?: number;
+  /** Inline quick action pill (app-injected); its onPress fires without opening the sheet. */
+  quickAction?: CardAction;
 }) {
   // Grid tier: the 245px webp (~20KB) when the card has one; full-size fallback.
   const uri = resolveImageUrl(card.imageSmall ?? card.image);
@@ -695,6 +791,18 @@ function CardTile({
             <Text style={styles.cardImageFallbackText}>no image</Text>
           </View>
         )}
+        {quickAction ? (
+          // Nested Pressable captures its own tap, so the tile's sheet doesn't open.
+          <Pressable
+            style={styles.cardQuick}
+            hitSlop={6}
+            onPress={() => quickAction.onPress(card)}
+            accessibilityLabel={typeof quickAction.label === 'string' ? quickAction.label : 'Quick action'}>
+            <Text style={styles.cardQuickText} numberOfLines={1}>
+              {typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
       <Text style={styles.cardName} numberOfLines={1}>
         {label ?? card.name}
@@ -710,7 +818,7 @@ function CardTile({
 
 /** The "?" panel: the search grammar manual (content lives in browse/query.ts,
  *  shared with the sibling app; this just renders it compactly). */
-function SearchManual({ onClose }: { onClose: () => void }) {
+function SearchManual({ styles, onClose }: { styles: Styles; onClose: () => void }) {
   return (
     <View style={styles.manual}>
       <View style={styles.manualHeader}>
@@ -740,7 +848,7 @@ interface Crumb {
 }
 
 /** Series › Set path; tap an ancestor to drill up. */
-function Breadcrumb({ crumbs }: { crumbs: Crumb[] }) {
+function Breadcrumb({ styles, crumbs }: { styles: Styles; crumbs: Crumb[] }) {
   return (
     <View style={styles.bcBar}>
       {crumbs.map((c, i) => (
@@ -769,6 +877,7 @@ interface FacetOption {
  * facet — so it never eats the card viewport.
  */
 function FacetBar({
+  styles,
   options,
   selection,
   activeCount,
@@ -777,6 +886,7 @@ function FacetBar({
   onToggleValue,
   onClear,
 }: {
+  styles: Styles;
   options: FacetOption[];
   selection: FacetSelection;
   activeCount: number;
@@ -832,164 +942,180 @@ function FacetBar({
   );
 }
 
-const styles = StyleSheet.create({
-  browser: { flex: 1 },
-  // The list must claim the remaining sheet height (sibling of the fixed-height controls)
-  // so it gets a bounded, scrollable viewport instead of growing to full content height.
-  list: { flex: 1 },
-  analyticsContent: { padding: 12 },
-  tabRow: { flexDirection: 'row', gap: 6 },
-  tab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
-  tabOn: { backgroundColor: '#eaf0fd' },
-  tabText: { fontSize: 13, fontWeight: '700', color: '#888' },
-  tabTextOn: { color: '#222' },
-  controls: { gap: 6, paddingBottom: 8 },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 4,
-  },
-  search: {
-    borderWidth: 1,
-    borderColor: '#e0e0e3',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    fontSize: 14,
-    color: '#222',
-  },
-  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  searchFlex: { flex: 1 },
-  pocketSimilar: {
-    borderWidth: 1,
-    borderColor: '#3B82F655',
-    backgroundColor: '#3B82F60F',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  pocketSimilarText: { fontSize: 12, fontWeight: '600', color: '#2a5db0' },
-  helpBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: '#e0e0e3',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  helpBtnOn: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
-  helpBtnText: { fontSize: 14, fontWeight: '700', color: '#888' },
-  helpBtnTextOn: { color: '#fff' },
-  // search manual panel
-  manual: {
-    borderWidth: 1,
-    borderColor: '#e8e8ec',
-    borderRadius: 10,
-    padding: 10,
-    gap: 8,
-    backgroundColor: '#fafafc',
-  },
-  manualHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  manualTitle: { fontSize: 13, fontWeight: '700', color: '#444' },
-  manualSection: { gap: 3 },
-  manualSectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#999',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  manualRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
-  manualCode: {
-    fontFamily: 'monospace',
-    fontSize: 12,
-    color: '#2a5db0',
-    minWidth: 118,
-  },
-  manualDesc: { flex: 1, fontSize: 12, color: '#666', lineHeight: 16 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  meta: { fontSize: 12, color: '#999', flexShrink: 1 },
-  clear: { fontSize: 13, fontWeight: '600', color: '#3B82F6' },
-  // facet bar
-  facetBar: { gap: 6 },
-  facetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  facetToggle: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.35)',
-  },
-  facetToggleOn: { borderColor: '#3B82F6' },
-  facetToggleText: { fontSize: 12, fontWeight: '600', color: '#666' },
-  facetToggleTextOn: { color: '#3B82F6' },
-  facetRows: { gap: 4 },
-  facetGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  facetLabel: { fontSize: 11, fontWeight: '600', color: '#999', width: 58 },
-  chipRow: { gap: 6, paddingRight: 8 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.35)',
-    maxWidth: 180,
-  },
-  chipOn: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
-  chipText: { fontSize: 12, fontWeight: '600', color: '#666' },
-  chipTextOn: { color: '#fff' },
-  // list
-  column: { gap: GRID_GAP, justifyContent: 'flex-start' },
-  listContent: { paddingBottom: 16 },
-  empty: { textAlign: 'center', color: '#999', marginTop: 24, fontSize: 13 },
-  footer: { paddingTop: 4 },
-  // series/set grid tiles
-  taxTile: {
-    height: TAX_TILE_H,
-    marginBottom: ROW_GAP,
-    borderWidth: 1,
-    borderColor: '#ececed',
-    borderRadius: 10,
-    padding: 8,
-    gap: 4,
-    backgroundColor: '#fafafc',
-  },
-  taxLogoWrap: {
-    height: 52,
-    borderRadius: 6,
-    backgroundColor: '#f0f0f3',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  taxLogo: { width: '100%', height: '100%' },
-  taxInitial: { fontSize: 22, fontWeight: '800', color: '#c4c4c8' },
-  taxTitle: { fontSize: 12, fontWeight: '700', color: '#2a2a30', lineHeight: 15 },
-  taxMeta: { fontSize: 10, color: '#8a8a93', lineHeight: 13 },
-  // dense card tiles
-  cardTile: { marginBottom: ROW_GAP },
-  cardTileSelected: { backgroundColor: '#e8f0fe', borderRadius: 6 },
-  cardImageWrap: {
-    width: '100%',
-    aspectRatio: 63 / 88,
-    borderRadius: 5,
-    overflow: 'hidden',
-    backgroundColor: '#f0f0f3',
-  },
-  cardImage: { width: '100%', height: '100%' },
-  cardImageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  cardImageFallbackText: { color: '#b0b0b8', fontSize: 8 },
-  cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: '#555', textAlign: 'center' },
-  cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: '#3B82F6', textAlign: 'center' },
-  // breadcrumb
-  bcBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
-  bcItem: { flexDirection: 'row', alignItems: 'center' },
-  bcSep: { fontSize: 13, color: '#bbb', marginHorizontal: 6 },
-  bcCrumb: { fontSize: 13 },
-  bcLink: { color: '#3B82F6', fontWeight: '600' },
-  bcCurrent: { color: '#666' },
-});
+function makeStyles(t: BrowseTheme) {
+  return StyleSheet.create({
+    browser: { flex: 1 },
+    // The list must claim the remaining sheet height (sibling of the fixed-height controls)
+    // so it gets a bounded, scrollable viewport instead of growing to full content height.
+    list: { flex: 1 },
+    analyticsContent: { padding: 12 },
+    tabRow: { flexDirection: 'row', gap: 6 },
+    tab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
+    tabOn: { backgroundColor: t.selected },
+    tabText: { fontSize: 13, fontWeight: '700', color: t.subtext },
+    tabTextOn: { color: t.text },
+    controls: { gap: 6, paddingBottom: 8 },
+    sectionLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: t.subtext,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginTop: 4,
+    },
+    search: {
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      fontSize: 14,
+      color: t.text,
+    },
+    searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    searchFlex: { flex: 1 },
+    pocketSimilar: {
+      borderWidth: 1,
+      borderColor: t.accent,
+      backgroundColor: t.selected,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    pocketSimilarText: { fontSize: 12, fontWeight: '600', color: t.link },
+    helpBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      borderWidth: 1,
+      borderColor: t.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    helpBtnOn: { backgroundColor: t.accent, borderColor: t.accent },
+    helpBtnText: { fontSize: 14, fontWeight: '700', color: t.subtext },
+    helpBtnTextOn: { color: t.accentText },
+    // search manual panel
+    manual: {
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 10,
+      padding: 10,
+      gap: 8,
+      backgroundColor: t.panel,
+    },
+    manualHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    manualTitle: { fontSize: 13, fontWeight: '700', color: t.text },
+    manualSection: { gap: 3 },
+    manualSectionTitle: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: t.subtext,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    manualRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+    manualCode: {
+      fontFamily: 'monospace',
+      fontSize: 12,
+      color: t.link,
+      minWidth: 118,
+    },
+    manualDesc: { flex: 1, fontSize: 12, color: t.subtext, lineHeight: 16 },
+    metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    meta: { fontSize: 12, color: t.subtext, flexShrink: 1 },
+    clear: { fontSize: 13, fontWeight: '600', color: t.accent },
+    // facet bar
+    facetBar: { gap: 6 },
+    facetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    facetToggle: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    facetToggleOn: { borderColor: t.accent },
+    facetToggleText: { fontSize: 12, fontWeight: '600', color: t.subtext },
+    facetToggleTextOn: { color: t.accent },
+    facetRows: { gap: 4 },
+    facetGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    facetLabel: { fontSize: 11, fontWeight: '600', color: t.subtext, width: 58 },
+    chipRow: { gap: 6, paddingRight: 8 },
+    chip: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: t.border,
+      maxWidth: 180,
+    },
+    chipOn: { backgroundColor: t.accent, borderColor: t.accent },
+    chipText: { fontSize: 12, fontWeight: '600', color: t.subtext },
+    chipTextOn: { color: t.accentText },
+    // list
+    column: { gap: GRID_GAP, justifyContent: 'flex-start' },
+    listContent: { paddingBottom: 16 },
+    empty: { textAlign: 'center', color: t.subtext, marginTop: 24, fontSize: 13 },
+    footer: { paddingTop: 4 },
+    // series/set grid tiles
+    taxTile: {
+      height: TAX_TILE_H,
+      marginBottom: ROW_GAP,
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 10,
+      padding: 8,
+      gap: 4,
+      backgroundColor: t.panel,
+    },
+    taxLogoWrap: {
+      height: 52,
+      borderRadius: 6,
+      backgroundColor: t.imagePlaceholder,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    taxLogo: { width: '100%', height: '100%' },
+    taxInitial: { fontSize: 22, fontWeight: '800', color: t.faint },
+    taxTitle: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15 },
+    taxMeta: { fontSize: 10, color: t.subtext, lineHeight: 13 },
+    // dense card tiles
+    cardTile: { marginBottom: ROW_GAP },
+    cardTileSelected: { backgroundColor: t.selected, borderRadius: 6 },
+    cardImageWrap: {
+      width: '100%',
+      aspectRatio: 63 / 88,
+      borderRadius: 5,
+      overflow: 'hidden',
+      backgroundColor: t.imagePlaceholder,
+    },
+    cardImage: { width: '100%', height: '100%' },
+    cardImageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    cardImageFallbackText: { color: t.faint, fontSize: 8 },
+    // inline quick-action pill: top-right of the thumb, accent-filled
+    cardQuick: {
+      position: 'absolute',
+      top: 3,
+      right: 3,
+      minWidth: 18,
+      height: 18,
+      paddingHorizontal: 4,
+      borderRadius: 9,
+      backgroundColor: t.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cardQuickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+    cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
+    cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.accent, textAlign: 'center' },
+    // breadcrumb
+    bcBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
+    bcItem: { flexDirection: 'row', alignItems: 'center' },
+    bcSep: { fontSize: 13, color: t.faint, marginHorizontal: 6 },
+    bcCrumb: { fontSize: 13 },
+    bcLink: { color: t.accent, fontWeight: '600' },
+    bcCurrent: { color: t.subtext },
+  });
+}

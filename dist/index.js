@@ -11,7 +11,9 @@ export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolv
 export { hydrateImageManifest, imageManifestReady, subscribeImageManifest, useImageManifest, } from './images';
 export { formatSetDate, getCatalog, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, } from './catalog';
 export { formatUsd, getCardPrices, getPriceSummary, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, TIME_RANGES, usePriceSummary, windowByRange, } from './prices';
-export { SetAnalytics, ValueOverTimeChart } from './analytics';
+export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, } from './analytics';
+export { resolveActions, resolveLabel, } from './actions';
+export { lightTheme, resolveTheme, RARITY_PALETTE } from './theme';
 export { findSimilar, similarAvailable } from './similar';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, } from './query';
 export { browseState } from './state';

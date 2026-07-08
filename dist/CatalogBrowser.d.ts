@@ -1,10 +1,33 @@
 import { type ReactNode } from 'react';
-import { type Catalog } from './catalog';
+import { type CardAction, type CardActionsFactory } from './actions';
+import { type Catalog, type CatalogCard } from './catalog';
+import { type BrowseTheme } from './theme';
 interface CatalogBrowserProps {
     catalog: Catalog;
     /** The card currently placed in the pocket (for the selected highlight), if any. */
     selectedCardId?: string;
-    onPickCard: (cardId: string) => void;
+    /**
+     * Legacy/default primary action. When supplied and `cardActions` is omitted, the sheet
+     * shows a "Place in pocket" / Replace "<occupant>" primary that calls this — preserving
+     * poke-michi's binder behavior. Apps with a richer action set pass `cardActions` instead.
+     */
+    onPickCard?: (cardId: string) => void;
+    /**
+     * App-supplied per-card action list for the tap sheet. Receives the browser's
+     * `BrowserBuiltins` (findSimilar / viewSet, each present only when applicable) so the app
+     * composes `[...appActions, builtins.findSimilar, builtins.viewSet]`. When omitted, the
+     * sheet falls back to the `onPickCard` default above.
+     */
+    cardActions?: CardActionsFactory;
+    /**
+     * Optional inline quick action rendered as a compact corner pill on each card tile
+     * (e.g. tcgscan-app's "＋" add, michi's quick-place). Return `undefined` to omit it for a
+     * card. Its `label` should be short (a glyph or 1–2 chars) — it's tiny. Tapping it fires
+     * the action WITHOUT opening the sheet. Reuses the shared `CardAction` model.
+     */
+    quickAction?: (card: CatalogCard) => CardAction | undefined;
+    /** Where analytics tiles/bars navigate on tap. Defaults to `onPickCard`. */
+    onOpenCard?: (cardId: string) => void;
     /** Artwork-panel + tonal-insert sections, rendered as the list footer so they stay
      *  reachable below the browse without a second scroller. */
     footer: ReactNode;
@@ -12,10 +35,12 @@ interface CatalogBrowserProps {
      *  plus a headline value under each card tile. Off by default — apps that don't
      *  want pricing (e.g. michi's binder picker) simply omit it. */
     analytics?: boolean;
+    /** Injected color contract (partial override merged over the light default). */
+    theme?: Partial<BrowseTheme>;
 }
 /**
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, analytics }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

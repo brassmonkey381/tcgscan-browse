@@ -66,7 +66,23 @@ export {
   type TimeRange,
 } from './prices';
 
-export { SetAnalytics, ValueOverTimeChart, type ValuePoint } from './analytics';
+export {
+  PriceChart,
+  SeriesAnalytics,
+  SetAnalytics,
+  ValueOverTimeChart,
+  type ValuePoint,
+} from './analytics';
+
+export {
+  resolveActions,
+  resolveLabel,
+  type BrowserBuiltins,
+  type CardAction,
+  type CardActionsFactory,
+} from './actions';
+
+export { lightTheme, resolveTheme, RARITY_PALETTE, type BrowseTheme } from './theme';
 
 export { findSimilar, similarAvailable, type SimilarHit } from './similar';
 

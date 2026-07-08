@@ -2,32 +2,33 @@
  * Catalog analytics — value insight over the tcgscan-data corpus, shared by both
  * apps (toggled on where wanted; see CatalogBrowser's `analytics` prop).
  *
- * `SetAnalytics` ports tcgscan-app's set view: value tiles (total / priced count
- * / avg), a top-K cards-by-value bar chart colored by rarity, and set
- * value-over-time. `ValueOverTimeChart` is the shared presentational line chart.
+ * `SetAnalytics` / `SeriesAnalytics` render the same value view (tiles: total /
+ * priced count / avg; a top-K cards-by-value bar chart colored by rarity; and
+ * value-over-time) over a set's or a whole series' cards. `PriceChart` is the
+ * per-card price-history chart (variant toggle + range). `ValueOverTimeChart` is
+ * the shared presentational line chart.
  *
  * These live in the package alongside the browser, so navigation and theming are
- * INJECTED, not imported: the package never pulls a router or an app theme.
- * Colors are hardcoded light to match the rest of CatalogBrowser (which is
- * light-only). Cards are opened via the `onOpenCard(cardId)` callback.
+ * INJECTED, not imported: the package never pulls a router or an app theme. Colors
+ * come from a `BrowseTheme` (default light); cards open via `onOpenCard(cardId)`.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 
 import type { Catalog, CatalogCard } from './catalog';
-import { getCardPrices, orderedVariants, rangeCutoff, TIME_RANGES, TimeRange, usePriceSummary } from './prices';
+import {
+  getCardPrices,
+  orderedVariants,
+  rangeCutoff,
+  TIME_RANGES,
+  TimeRange,
+  usePriceSummary,
+} from './prices';
+import { lightTheme, RARITY_PALETTE, type BrowseTheme } from './theme';
 
-// Light palette matching CatalogBrowser / CardActionModal (the browser is light-only).
-const C = {
-  text: '#222',
-  sub: '#888',
-  accent: '#3B82F6',
-  panel: '#fafafc',
-  panelBorder: '#e8e8ec',
-  selected: '#eaf0fd',
-};
-const RARITY_PALETTE = ['#3B82F6', '#e8833a', '#1a9c5b', '#c0448f', '#7a5cc0', '#3aa0a0', '#d1495b', '#b08900', '#5a6b7b'];
+type Styles = ReturnType<typeof makeStyles>;
+
 const TOP_K = [10, 20, 30, 50, 0] as const; // 0 = All
 
 function money(n: number): string {
@@ -40,26 +41,66 @@ interface Priced {
   value: number;
 }
 
+/** All priced cards in a set of cards, sorted priciest-first, using the summary map. */
+function pricedCards(cards: CatalogCard[], summary: Record<string, { cur: number }> | null): Priced[] {
+  if (!summary) return [];
+  return cards
+    .map((card) => ({ card, value: summary[card.id]?.cur }))
+    .filter((p): p is Priced => p.value != null)
+    .sort((a, b) => b.value - a.value);
+}
+
 /** Set-level value analytics. `onOpenCard` navigates (app-supplied). */
 export function SetAnalytics({
   catalog,
   setId,
   onOpenCard,
+  theme = lightTheme,
 }: {
   catalog: Catalog;
   setId: string;
   onOpenCard: (cardId: string) => void;
+  theme?: BrowseTheme;
 }) {
   const summary = usePriceSummary();
+  const priced = useMemo(() => pricedCards(catalog.listCards(setId), summary), [catalog, summary, setId]);
+  return <ValueAnalytics priced={priced} ready={!!summary} onOpenCard={onOpenCard} theme={theme} />;
+}
 
-  const priced = useMemo<Priced[]>(() => {
-    if (!summary) return [];
-    return catalog
-      .listCards(setId)
-      .map((card) => ({ card, value: summary[card.id]?.cur }))
-      .filter((p): p is Priced => p.value != null)
-      .sort((a, b) => b.value - a.value);
-  }, [catalog, summary, setId]);
+/** Series-level value analytics — the same view over every card in the series. */
+export function SeriesAnalytics({
+  catalog,
+  seriesId,
+  onOpenCard,
+  theme = lightTheme,
+}: {
+  catalog: Catalog;
+  seriesId: string;
+  onOpenCard: (cardId: string) => void;
+  theme?: BrowseTheme;
+}) {
+  const summary = usePriceSummary();
+  const cards = useMemo(
+    () => catalog.listSets(seriesId).flatMap((s) => catalog.listCards(s.id)),
+    [catalog, seriesId],
+  );
+  const priced = useMemo(() => pricedCards(cards, summary), [cards, summary]);
+  return <ValueAnalytics priced={priced} ready={!!summary} onOpenCard={onOpenCard} theme={theme} />;
+}
+
+/** The shared value view (tiles, top-K bars, legend, value-over-time). */
+function ValueAnalytics({
+  priced,
+  ready,
+  onOpenCard,
+  theme,
+}: {
+  priced: Priced[];
+  ready: boolean;
+  onOpenCard: (cardId: string) => void;
+  theme: BrowseTheme;
+}) {
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const rarityColor = useMemo(() => {
     const map = new Map<string, string>();
@@ -72,8 +113,8 @@ export function SetAnalytics({
 
   const [k, setK] = useState<number>(20);
 
-  if (!summary) return <ActivityIndicator style={{ marginTop: 24 }} />;
-  if (!priced.length) return <Text style={styles.empty}>No price data for this set yet.</Text>;
+  if (!ready) return <ActivityIndicator style={{ marginTop: 24 }} />;
+  if (!priced.length) return <Text style={styles.empty}>No price data here yet.</Text>;
 
   const total = priced.reduce((s, p) => s + p.value, 0);
   const top = priced[0];
@@ -84,9 +125,9 @@ export function SetAnalytics({
   return (
     <View style={styles.wrap}>
       <View style={styles.tiles}>
-        <Tile label="Set value" value={money(total)} />
-        <Tile label="Priced cards" value={`${priced.length}`} />
-        <Tile label="Avg card" value={money(avg)} />
+        <Tile styles={styles} label="Total value" value={money(total)} />
+        <Tile styles={styles} label="Priced cards" value={`${priced.length}`} />
+        <Tile styles={styles} label="Avg card" value={money(avg)} />
       </View>
 
       <Pressable style={styles.topCard} onPress={() => onOpenCard(top.card.id)}>
@@ -135,12 +176,12 @@ export function SetAnalytics({
         ))}
       </View>
 
-      <SetValueOverTime priced={priced} />
+      <AggregateValueOverTime priced={priced} theme={theme} />
     </View>
   );
 }
 
-function Tile({ label, value }: { label: string; value: string }) {
+function Tile({ styles, label, value }: { styles: Styles; label: string; value: string }) {
   return (
     <View style={styles.tile}>
       <Text style={styles.tileValue}>{value}</Text>
@@ -149,9 +190,10 @@ function Tile({ label, value }: { label: string; value: string }) {
   );
 }
 
-// --- set value over time (lazy aggregate) ------------------------------------
+// --- aggregate value over time (lazy) ----------------------------------------
 
-function SetValueOverTime({ priced }: { priced: Priced[] }) {
+/** Sum the priciest variant of every priced card by date → one value-over-time series. */
+function AggregateValueOverTime({ priced, theme }: { priced: Priced[]; theme: BrowseTheme }) {
   const [series, setSeries] = useState<ValuePoint[] | null>(null);
 
   useEffect(() => {
@@ -174,7 +216,67 @@ function SetValueOverTime({ priced }: { priced: Priced[] }) {
     };
   }, [priced]);
 
-  return <ValueOverTimeChart title="Set value over time" series={series} loadingLabel={`aggregating ${priced.length} cards…`} />;
+  return (
+    <ValueOverTimeChart
+      title="Value over time"
+      series={series}
+      loadingLabel={`aggregating ${priced.length} cards…`}
+      theme={theme}
+    />
+  );
+}
+
+// --- per-card price history ---------------------------------------------------
+
+/**
+ * One card's price history: a variant toggle (priciest variant first) over the shared
+ * value-over-time chart. Cards open here in the action sheet; this is the detail chart.
+ */
+export function PriceChart({ cardId, theme = lightTheme }: { cardId: string; theme?: BrowseTheme }) {
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const [prices, setPrices] = useState<Awaited<ReturnType<typeof getCardPrices>> | null | undefined>(undefined);
+  const [variant, setVariant] = useState<string | null>(null);
+
+  useEffect(() => {
+    let on = true;
+    setPrices(undefined);
+    setVariant(null);
+    getCardPrices(cardId).then((p) => {
+      if (!on) return;
+      setPrices(p);
+      setVariant(p ? orderedVariants(p)[0] ?? null : null);
+    });
+    return () => {
+      on = false;
+    };
+  }, [cardId]);
+
+  const variants = prices ? orderedVariants(prices) : [];
+  const points = prices && variant ? prices.variants[variant] ?? [] : [];
+  const series = useMemo<ValuePoint[] | null>(() => {
+    if (prices === undefined) return null; // loading
+    return points.filter((p) => p.m != null).map((p) => ({ d: p.d, v: p.m as number }));
+  }, [prices, points]);
+
+  if (prices === null) return <Text style={styles.empty}>No price history for this card.</Text>;
+
+  return (
+    <View style={styles.wrap}>
+      {variants.length > 1 ? (
+        <View style={styles.kRow}>
+          {variants.map((v) => {
+            const on = v === variant;
+            return (
+              <Pressable key={v} onPress={() => setVariant(v)} style={[styles.kChip, on && styles.kChipOn]}>
+                <Text style={[styles.kChipText, on && styles.kChipTextOn]}>{v}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      <ValueOverTimeChart title={variant ?? 'Price'} series={series} theme={theme} />
+    </View>
+  );
 }
 
 // --- shared value-over-time line chart ---------------------------------------
@@ -192,11 +294,14 @@ export function ValueOverTimeChart({
   title,
   series,
   loadingLabel,
+  theme = lightTheme,
 }: {
   title: string;
   series: ValuePoint[] | null;
   loadingLabel?: string;
+  theme?: BrowseTheme;
 }) {
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [range, setRange] = useState<TimeRange>('1Y');
   const [width, setWidth] = useState(0);
 
@@ -246,17 +351,17 @@ export function ValueOverTimeChart({
           <Svg width={width} height={H}>
             <Defs>
               <LinearGradient id="votfill" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={C.accent} stopOpacity={0.22} />
-                <Stop offset="1" stopColor={C.accent} stopOpacity={0} />
+                <Stop offset="0" stopColor={theme.accent} stopOpacity={0.22} />
+                <Stop offset="1" stopColor={theme.accent} stopOpacity={0} />
               </LinearGradient>
             </Defs>
             {chart.ticks.map((t, i) => (
-              <SvgText key={i} x={PAD.left - 6} y={chart.y(t) + 3} fontSize={9} fill={C.sub} textAnchor="end">
+              <SvgText key={i} x={PAD.left - 6} y={chart.y(t) + 3} fontSize={9} fill={theme.subtext} textAnchor="end">
                 {money(t)}
               </SvgText>
             ))}
             <Path d={chart.area} fill="url(#votfill)" />
-            <Path d={chart.d} stroke={C.accent} strokeWidth={2} fill="none" strokeLinejoin="round" />
+            <Path d={chart.d} stroke={theme.accent} strokeWidth={2} fill="none" strokeLinejoin="round" />
           </Svg>
         ) : (
           <View style={[styles.chartState, { height: H }]}>
@@ -279,44 +384,46 @@ export function ValueOverTimeChart({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { gap: 14, paddingBottom: 24 },
-  empty: { textAlign: 'center', marginTop: 24, fontSize: 14, color: C.sub },
-  tiles: { flexDirection: 'row', gap: 8 },
-  tile: { flex: 1, borderRadius: 12, padding: 12, gap: 2, backgroundColor: C.panel, borderWidth: 1, borderColor: C.panelBorder },
-  tileValue: { fontSize: 18, fontWeight: '800', color: C.text },
-  tileLabel: { fontSize: 11, color: C.sub },
-  topCard: { borderRadius: 12, padding: 12, gap: 1, backgroundColor: C.panel, borderWidth: 1, borderColor: C.panelBorder },
-  topLabel: { fontSize: 11, fontWeight: '600', color: C.sub },
-  topName: { fontSize: 15, fontWeight: '700', color: C.text },
-  topVal: { fontSize: 16, fontWeight: '800', color: C.accent },
-  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: C.text },
-  kRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
-  kChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7 },
-  kChipOn: { backgroundColor: C.selected },
-  kChipText: { fontSize: 12, fontWeight: '700', color: C.sub },
-  kChipTextOn: { color: C.text },
-  bars: { gap: 6 },
-  barRow: { gap: 2 },
-  barName: { fontSize: 12, fontWeight: '500', color: C.text },
-  barTrack: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  barFill: { height: 14, borderRadius: 3, minWidth: 3 },
-  barVal: { fontSize: 11, fontWeight: '600', color: C.sub },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  swatch: { width: 10, height: 10, borderRadius: 2 },
-  legendText: { fontSize: 11, color: C.sub },
+function makeStyles(t: BrowseTheme) {
+  return StyleSheet.create({
+    wrap: { gap: 14, paddingBottom: 24 },
+    empty: { textAlign: 'center', marginTop: 24, fontSize: 14, color: t.subtext },
+    tiles: { flexDirection: 'row', gap: 8 },
+    tile: { flex: 1, borderRadius: 12, padding: 12, gap: 2, backgroundColor: t.panel, borderWidth: 1, borderColor: t.border },
+    tileValue: { fontSize: 18, fontWeight: '800', color: t.text },
+    tileLabel: { fontSize: 11, color: t.subtext },
+    topCard: { borderRadius: 12, padding: 12, gap: 1, backgroundColor: t.panel, borderWidth: 1, borderColor: t.border },
+    topLabel: { fontSize: 11, fontWeight: '600', color: t.subtext },
+    topName: { fontSize: 15, fontWeight: '700', color: t.text },
+    topVal: { fontSize: 16, fontWeight: '800', color: t.accent },
+    sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+    sectionTitle: { fontSize: 15, fontWeight: '700', color: t.text },
+    kRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
+    kChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7 },
+    kChipOn: { backgroundColor: t.selected },
+    kChipText: { fontSize: 12, fontWeight: '700', color: t.subtext },
+    kChipTextOn: { color: t.text },
+    bars: { gap: 6 },
+    barRow: { gap: 2 },
+    barName: { fontSize: 12, fontWeight: '500', color: t.text },
+    barTrack: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    barFill: { height: 14, borderRadius: 3, minWidth: 3 },
+    barVal: { fontSize: 11, fontWeight: '600', color: t.subtext },
+    legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    swatch: { width: 10, height: 10, borderRadius: 2 },
+    legendText: { fontSize: 11, color: t.subtext },
 
-  chartWrap: { gap: 8 },
-  chartHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  chartTitle: { fontSize: 15, fontWeight: '700', color: C.text },
-  chartCur: { fontSize: 16, fontWeight: '800', color: C.text },
-  chartState: { alignItems: 'center', justifyContent: 'center', gap: 8 },
-  chartHint: { fontSize: 12, color: C.sub },
-  ranges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  rangeChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8 },
-  rangeChipOn: { backgroundColor: C.selected },
-  rangeChipText: { fontSize: 12, fontWeight: '700', color: C.sub },
-  rangeChipTextOn: { color: C.text },
-});
+    chartWrap: { gap: 8 },
+    chartHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+    chartTitle: { fontSize: 15, fontWeight: '700', color: t.text },
+    chartCur: { fontSize: 16, fontWeight: '800', color: t.text },
+    chartState: { alignItems: 'center', justifyContent: 'center', gap: 8 },
+    chartHint: { fontSize: 12, color: t.subtext },
+    ranges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+    rangeChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8 },
+    rangeChipOn: { backgroundColor: t.selected },
+    rangeChipText: { fontSize: 12, fontWeight: '700', color: t.subtext },
+    rangeChipTextOn: { color: t.text },
+  });
+}

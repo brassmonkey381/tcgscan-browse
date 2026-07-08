@@ -16,6 +16,10 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  * across facets and OR within a single facet's selected values. Adding a new attribute
  * facet later (illustrator, Pokémon type, evolution stage, …) is a one-line change — see
  * the EXTENSION SEAM comment on `FACETS`.
+ *
+ * App-agnostic by construction: colors come from an injected `BrowseTheme` (default
+ * light), navigation is via callbacks (`onOpenCard`/`onPickCard`, no router import), and
+ * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
  */
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -24,10 +28,12 @@ import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery } from '.
 import { browseState } from './state';
 import { CardActionModal } from './CardActionModal';
 import { SetAnalytics } from './analytics';
+import { resolveActions, } from './actions';
 import { formatSetDate, seriesDateRange, } from './catalog';
 import { resolveImageUrl } from './config';
 import { formatUsd, usePriceSummary } from './prices';
 import { findSimilar, similarAvailable } from './similar';
+import { resolveTheme } from './theme';
 /** Cap flat search results so a broad query can't build an unbounded grid. */
 const SEARCH_LIMIT = 200;
 /** Dense grid tuning: aim each card tile at ~this width, then pack as many columns as fit. */
@@ -117,7 +123,9 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, analytics }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, }) {
+    const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
+    const styles = useMemo(() => makeStyles(theme), [theme]);
     // Hydrate from the session browse state so reopening the picker restores the
     // last search/drill-down/similar view (one search often feeds several pockets).
     const [cardQuery, setCardQuery] = useState(browseState.cardQuery);
@@ -146,7 +154,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
             similarCards,
         });
     }, [cardQuery, seriesId, setId, selection, similarTo, similarCards]);
-    // Tapping a card opens the action sheet (place/replace, find similar, view set)
+    // Tapping a card opens the action sheet (app-supplied actions + built-ins)
     // instead of silently replacing the pocket's occupant.
     const [actionCard, setActionCard] = useState(null);
     // Cards | Analytics toggle within a set (only when `analytics` is enabled).
@@ -291,6 +299,15 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
             setSimilarCards(cards);
         });
     };
+    /** Jump the drill-down to a card's set (clearing search/similar/filters first). */
+    const jumpToSet = (card) => {
+        setCardQuery('');
+        setCardQueryDebounced('');
+        clearSimilar();
+        clearFilters();
+        setSeriesId(card.seriesId || null);
+        setSetId(card.setId ?? null);
+    };
     const toggleFacetValue = (key, value) => setSelection((prev) => {
         const current = prev[key] ?? [];
         const next = current.includes(value)
@@ -303,6 +320,52 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
     // The card already in the pocket that opened this picker (if any) — offered as
     // a one-tap "find similar to what's here" jump.
     const occupant = selectedCardId ? catalog.getCard(selectedCardId) : undefined;
+    const openCard = onOpenCard ?? onPickCard ?? (() => { });
+    /** The package-intrinsic actions for a card, bound to this browser's state. */
+    const builtinsFor = (card) => ({
+        findSimilar: similarAvailable()
+            ? {
+                key: 'find-similar',
+                label: '≈ Find similar',
+                onPress: (c) => {
+                    setActionCard(null);
+                    openSimilar(c);
+                },
+            }
+            : undefined,
+        viewSet: card.setId
+            ? {
+                key: 'view-set',
+                label: 'View set',
+                onPress: (c) => {
+                    setActionCard(null);
+                    jumpToSet(c);
+                },
+            }
+            : undefined,
+    });
+    /** Resolve the sheet's actions for the tapped card: app-supplied, or the michi default. */
+    const actionsFor = (card) => {
+        const builtins = builtinsFor(card);
+        if (cardActions)
+            return resolveActions(cardActions(card, builtins), card);
+        // Back-compat default: poke-michi's place/replace primary + the built-ins.
+        const placeDefault = onPickCard
+            ? [
+                {
+                    key: 'place',
+                    kind: 'primary',
+                    label: (c) => occupant && occupant.id !== c.id ? `Replace “${occupant.name}”` : 'Place in pocket',
+                    onPress: (c) => {
+                        setActionCard(null);
+                        onPickCard(c.id);
+                    },
+                },
+            ]
+            : [];
+        const list = [...placeDefault, builtins.findSimilar, builtins.viewSet].filter((a) => Boolean(a));
+        return resolveActions(list, card);
+    };
     const crumbs = [{ label: 'Series', onPress: seriesId ? goSeriesRoot : undefined }];
     if (currentSeries) {
         crumbs.push({ label: currentSeries.name, onPress: setId ? goSets : undefined });
@@ -320,22 +383,24 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
             const meta = [seriesDateRange(s), `${s.cardCount.toLocaleString()} cards`, `${s.setIds.length} sets`]
                 .filter(Boolean)
                 .join(' · ');
-            return (_jsx(TaxonomyTile, { title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSeries(s.id) }));
+            return (_jsx(TaxonomyTile, { styles: styles, title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSeries(s.id) }));
         }
         if (item.kind === 'set') {
             const s = item.set;
             const meta = [s.code, `${s.cardCount.toLocaleString()} cards`, formatSetDate(s.releaseDate)]
                 .filter(Boolean)
                 .join(' · ');
-            return (_jsx(TaxonomyTile, { title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSet(s.id) }));
+            return (_jsx(TaxonomyTile, { styles: styles, title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSet(s.id) }));
         }
         const c = item.card;
         const value = priceOf(c.id);
-        return (_jsx(CardTile, { card: c, width: tileW, selected: c.id === selectedCardId, onPress: () => setActionCard(c), 
+        return (_jsx(CardTile, { styles: styles, card: c, width: tileW, selected: c.id === selectedCardId, onPress: () => setActionCard(c), 
             // value replaces the name line when sorting by value (keeps row geometry fixed)
             label: parsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name, 
             // headline value under the name, only when pricing is surfaced
-            value: analytics ? value : undefined }));
+            value: analytics ? value : undefined, 
+            // app-injected inline quick action (＋add / quick-place), if any
+            quickAction: quickAction?.(c) }));
     };
     // Analytics replaces the card grid within a set when the toggle is on.
     const analyticsView = !!analytics && level === 'cards' && !!setId && analyticsTab === 'analytics';
@@ -346,14 +411,14 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
         const row = Math.floor(index / cols);
         return { length: rowHeight, offset: rowHeight * row, index };
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${catalog.cardCount.toLocaleString()} cards — ${QUERY_HINT}`, placeholderTextColor: "#aaa", autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), helpOpen ? _jsx(SearchManual, { onClose: () => setHelpOpen(false) }) : null, occupant && similarAvailable() && similarTo?.id !== occupant.id ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [filteredCards.length === viewCards.length
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${catalog.cardCount.toLocaleString()} cards — ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant && similarAvailable() && similarTo?.id !== occupant.id ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [filteredCards.length === viewCards.length
                                         ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
                                         : `${filteredCards.length} of ${viewCards.length}`, viewCards.length >= SEARCH_LIMIT ? '+' : '', " \u00B7 ", describeQuery(parsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarCards.length > 0
                                     ? `${filteredCards.length} cards similar to “${similarTo.name}”`
-                                    : `Finding cards similar to “${similarTo.name}”…` }), _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : seriesId ? (_jsx(Breadcrumb, { crumbs: crumbs })) : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), analytics && level === 'cards' && setId ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
+                                    : `Finding cards similar to “${similarTo.name}”…` }), _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : seriesId ? (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs })) : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), analytics && level === 'cards' && setId ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
                             const on = t === analyticsTab;
                             return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn], children: t === 'cards' ? 'Cards' : 'Analytics' }) }, t));
-                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null] }), analyticsView && setId ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: _jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: onPickCard }) })) : (_jsx(FlatList
+                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null] }), analyticsView && setId ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: _jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme }) })) : (_jsx(FlatList
             // Remount when the level or column count changes so numColumns/getItemLayout stay
             // consistent (FlatList can't change numColumns in place).
             , { style: styles.list, data: data, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching
@@ -364,25 +429,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
                                 : 'No similar cards found.'
                             : level === 'cards'
                                 ? 'No cards in this set.'
-                                : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, occupant: occupant, value: priceOf(actionCard.id), onPlace: () => {
-                    setActionCard(null);
-                    onPickCard(actionCard.id);
-                }, onSimilar: similarAvailable()
-                    ? () => {
-                        setActionCard(null);
-                        openSimilar(actionCard);
-                    }
-                    : undefined, onViewSet: actionCard.setId
-                    ? () => {
-                        setActionCard(null);
-                        setCardQuery('');
-                        setCardQueryDebounced('');
-                        clearSimilar();
-                        clearFilters();
-                        setSeriesId(actionCard.seriesId || null);
-                        setSetId(actionCard.setId);
-                    }
-                    : undefined, onClose: () => setActionCard(null) })) : null] }));
+                                : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
 }
 // ---- compact taxonomy rows + card tile + breadcrumb ----------------------------
 /**
@@ -390,7 +437,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, an
  * has no cover, which is most), the name, and a meta line. Fixed height so getItemLayout can
  * skip offscreen rows.
  */
-function TaxonomyTile({ title, meta, coverUri, width, onPress, }) {
+function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, }) {
     return (_jsxs(Pressable, { style: [styles.taxTile, { width }], onPress: onPress, children: [_jsx(View, { style: styles.taxLogoWrap, children: coverUri ? (_jsx(Image, { source: { uri: coverUri }, style: styles.taxLogo, contentFit: "contain", transition: 100 })) : (_jsx(Text, { style: styles.taxInitial, children: title.trim().charAt(0).toUpperCase() })) }), _jsx(Text, { style: styles.taxTitle, numberOfLines: 2, children: title }), meta ? (_jsx(Text, { style: styles.taxMeta, numberOfLines: 2, children: meta })) : null] }));
 }
 /**
@@ -398,18 +445,18 @@ function TaxonomyTile({ title, meta, coverUri, width, onPress, }) {
  * small. Cards with no local image show a neutral fallback, never a crash. Images use the
  * same memory-disk cache + recyclingKey pattern as BinderGrid.
  */
-function CardTile({ card, width, selected, onPress, label, value, }) {
+function CardTile({ styles, card, width, selected, onPress, label, value, quickAction, }) {
     // Grid tier: the 245px webp (~20KB) when the card has one; full-size fallback.
     const uri = resolveImageUrl(card.imageSmall ?? card.image);
-    return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected], onPress: onPress, children: [_jsx(View, { style: styles.cardImageWrap, children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })) }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
+    return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
 }
 /** The "?" panel: the search grammar manual (content lives in browse/query.ts,
  *  shared with the sibling app; this just renders it compactly). */
-function SearchManual({ onClose }) {
+function SearchManual({ styles, onClose }) {
     return (_jsxs(View, { style: styles.manual, children: [_jsxs(View, { style: styles.manualHeader, children: [_jsx(Text, { style: styles.manualTitle, children: "Search syntax" }), _jsx(Pressable, { onPress: onClose, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Close" }) })] }), QUERY_MANUAL.map((section) => (_jsxs(View, { style: styles.manualSection, children: [_jsx(Text, { style: styles.manualSectionTitle, children: section.title }), section.rows.map(([code, description]) => (_jsxs(View, { style: styles.manualRow, children: [_jsx(Text, { style: styles.manualCode, children: code }), _jsx(Text, { style: styles.manualDesc, children: description })] }, code)))] }, section.title)))] }));
 }
 /** Series › Set path; tap an ancestor to drill up. */
-function Breadcrumb({ crumbs }) {
+function Breadcrumb({ styles, crumbs }) {
     return (_jsx(View, { style: styles.bcBar, children: crumbs.map((c, i) => (_jsxs(View, { style: styles.bcItem, children: [i > 0 ? _jsx(Text, { style: styles.bcSep, children: "\u203A" }) : null, _jsx(Text, { onPress: c.onPress, style: [styles.bcCrumb, c.onPress ? styles.bcLink : styles.bcCurrent], numberOfLines: 1, children: c.label })] }, `${c.label}-${i}`))) }));
 }
 /**
@@ -417,170 +464,186 @@ function Breadcrumb({ crumbs }) {
  * count + Clear); expanded it reveals one horizontal multi-select chip row per populated
  * facet — so it never eats the card viewport.
  */
-function FacetBar({ options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, }) {
+function FacetBar({ styles, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, }) {
     return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.facetHeader, children: [_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, activeCount > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', activeCount > 0 ? ` · ${activeCount}` : ''] }) }), activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] }), open ? (_jsx(View, { style: styles.facetRows, children: options.map(({ facet, values }) => (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: facet.label }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: values.map((v) => {
                                 const on = (selection[facet.key] ?? []).includes(v);
                                 return (_jsx(Pressable, { onPress: () => onToggleValue(facet.key, v), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: v }) }, v));
                             }) })] }, facet.key))) })) : null] }));
 }
-const styles = StyleSheet.create({
-    browser: { flex: 1 },
-    // The list must claim the remaining sheet height (sibling of the fixed-height controls)
-    // so it gets a bounded, scrollable viewport instead of growing to full content height.
-    list: { flex: 1 },
-    analyticsContent: { padding: 12 },
-    tabRow: { flexDirection: 'row', gap: 6 },
-    tab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
-    tabOn: { backgroundColor: '#eaf0fd' },
-    tabText: { fontSize: 13, fontWeight: '700', color: '#888' },
-    tabTextOn: { color: '#222' },
-    controls: { gap: 6, paddingBottom: 8 },
-    sectionLabel: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: '#888',
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-        marginTop: 4,
-    },
-    search: {
-        borderWidth: 1,
-        borderColor: '#e0e0e3',
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 7,
-        fontSize: 14,
-        color: '#222',
-    },
-    searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    searchFlex: { flex: 1 },
-    pocketSimilar: {
-        borderWidth: 1,
-        borderColor: '#3B82F655',
-        backgroundColor: '#3B82F60F',
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-    },
-    pocketSimilarText: { fontSize: 12, fontWeight: '600', color: '#2a5db0' },
-    helpBtn: {
-        width: 30,
-        height: 30,
-        borderRadius: 15,
-        borderWidth: 1,
-        borderColor: '#e0e0e3',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    helpBtnOn: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
-    helpBtnText: { fontSize: 14, fontWeight: '700', color: '#888' },
-    helpBtnTextOn: { color: '#fff' },
-    // search manual panel
-    manual: {
-        borderWidth: 1,
-        borderColor: '#e8e8ec',
-        borderRadius: 10,
-        padding: 10,
-        gap: 8,
-        backgroundColor: '#fafafc',
-    },
-    manualHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    manualTitle: { fontSize: 13, fontWeight: '700', color: '#444' },
-    manualSection: { gap: 3 },
-    manualSectionTitle: {
-        fontSize: 11,
-        fontWeight: '700',
-        color: '#999',
-        textTransform: 'uppercase',
-        letterSpacing: 0.4,
-    },
-    manualRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
-    manualCode: {
-        fontFamily: 'monospace',
-        fontSize: 12,
-        color: '#2a5db0',
-        minWidth: 118,
-    },
-    manualDesc: { flex: 1, fontSize: 12, color: '#666', lineHeight: 16 },
-    metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-    meta: { fontSize: 12, color: '#999', flexShrink: 1 },
-    clear: { fontSize: 13, fontWeight: '600', color: '#3B82F6' },
-    // facet bar
-    facetBar: { gap: 6 },
-    facetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    facetToggle: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: 'rgba(128,128,128,0.35)',
-    },
-    facetToggleOn: { borderColor: '#3B82F6' },
-    facetToggleText: { fontSize: 12, fontWeight: '600', color: '#666' },
-    facetToggleTextOn: { color: '#3B82F6' },
-    facetRows: { gap: 4 },
-    facetGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    facetLabel: { fontSize: 11, fontWeight: '600', color: '#999', width: 58 },
-    chipRow: { gap: 6, paddingRight: 8 },
-    chip: {
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: 'rgba(128,128,128,0.35)',
-        maxWidth: 180,
-    },
-    chipOn: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
-    chipText: { fontSize: 12, fontWeight: '600', color: '#666' },
-    chipTextOn: { color: '#fff' },
-    // list
-    column: { gap: GRID_GAP, justifyContent: 'flex-start' },
-    listContent: { paddingBottom: 16 },
-    empty: { textAlign: 'center', color: '#999', marginTop: 24, fontSize: 13 },
-    footer: { paddingTop: 4 },
-    // series/set grid tiles
-    taxTile: {
-        height: TAX_TILE_H,
-        marginBottom: ROW_GAP,
-        borderWidth: 1,
-        borderColor: '#ececed',
-        borderRadius: 10,
-        padding: 8,
-        gap: 4,
-        backgroundColor: '#fafafc',
-    },
-    taxLogoWrap: {
-        height: 52,
-        borderRadius: 6,
-        backgroundColor: '#f0f0f3',
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-    },
-    taxLogo: { width: '100%', height: '100%' },
-    taxInitial: { fontSize: 22, fontWeight: '800', color: '#c4c4c8' },
-    taxTitle: { fontSize: 12, fontWeight: '700', color: '#2a2a30', lineHeight: 15 },
-    taxMeta: { fontSize: 10, color: '#8a8a93', lineHeight: 13 },
-    // dense card tiles
-    cardTile: { marginBottom: ROW_GAP },
-    cardTileSelected: { backgroundColor: '#e8f0fe', borderRadius: 6 },
-    cardImageWrap: {
-        width: '100%',
-        aspectRatio: 63 / 88,
-        borderRadius: 5,
-        overflow: 'hidden',
-        backgroundColor: '#f0f0f3',
-    },
-    cardImage: { width: '100%', height: '100%' },
-    cardImageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    cardImageFallbackText: { color: '#b0b0b8', fontSize: 8 },
-    cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: '#555', textAlign: 'center' },
-    cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: '#3B82F6', textAlign: 'center' },
-    // breadcrumb
-    bcBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
-    bcItem: { flexDirection: 'row', alignItems: 'center' },
-    bcSep: { fontSize: 13, color: '#bbb', marginHorizontal: 6 },
-    bcCrumb: { fontSize: 13 },
-    bcLink: { color: '#3B82F6', fontWeight: '600' },
-    bcCurrent: { color: '#666' },
-});
+function makeStyles(t) {
+    return StyleSheet.create({
+        browser: { flex: 1 },
+        // The list must claim the remaining sheet height (sibling of the fixed-height controls)
+        // so it gets a bounded, scrollable viewport instead of growing to full content height.
+        list: { flex: 1 },
+        analyticsContent: { padding: 12 },
+        tabRow: { flexDirection: 'row', gap: 6 },
+        tab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
+        tabOn: { backgroundColor: t.selected },
+        tabText: { fontSize: 13, fontWeight: '700', color: t.subtext },
+        tabTextOn: { color: t.text },
+        controls: { gap: 6, paddingBottom: 8 },
+        sectionLabel: {
+            fontSize: 12,
+            fontWeight: '700',
+            color: t.subtext,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+            marginTop: 4,
+        },
+        search: {
+            borderWidth: 1,
+            borderColor: t.border,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 7,
+            fontSize: 14,
+            color: t.text,
+        },
+        searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        searchFlex: { flex: 1 },
+        pocketSimilar: {
+            borderWidth: 1,
+            borderColor: t.accent,
+            backgroundColor: t.selected,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+        },
+        pocketSimilarText: { fontSize: 12, fontWeight: '600', color: t.link },
+        helpBtn: {
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            borderWidth: 1,
+            borderColor: t.border,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        helpBtnOn: { backgroundColor: t.accent, borderColor: t.accent },
+        helpBtnText: { fontSize: 14, fontWeight: '700', color: t.subtext },
+        helpBtnTextOn: { color: t.accentText },
+        // search manual panel
+        manual: {
+            borderWidth: 1,
+            borderColor: t.border,
+            borderRadius: 10,
+            padding: 10,
+            gap: 8,
+            backgroundColor: t.panel,
+        },
+        manualHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+        manualTitle: { fontSize: 13, fontWeight: '700', color: t.text },
+        manualSection: { gap: 3 },
+        manualSectionTitle: {
+            fontSize: 11,
+            fontWeight: '700',
+            color: t.subtext,
+            textTransform: 'uppercase',
+            letterSpacing: 0.4,
+        },
+        manualRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+        manualCode: {
+            fontFamily: 'monospace',
+            fontSize: 12,
+            color: t.link,
+            minWidth: 118,
+        },
+        manualDesc: { flex: 1, fontSize: 12, color: t.subtext, lineHeight: 16 },
+        metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+        meta: { fontSize: 12, color: t.subtext, flexShrink: 1 },
+        clear: { fontSize: 13, fontWeight: '600', color: t.accent },
+        // facet bar
+        facetBar: { gap: 6 },
+        facetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+        facetToggle: {
+            paddingHorizontal: 10,
+            paddingVertical: 4,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: t.border,
+        },
+        facetToggleOn: { borderColor: t.accent },
+        facetToggleText: { fontSize: 12, fontWeight: '600', color: t.subtext },
+        facetToggleTextOn: { color: t.accent },
+        facetRows: { gap: 4 },
+        facetGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        facetLabel: { fontSize: 11, fontWeight: '600', color: t.subtext, width: 58 },
+        chipRow: { gap: 6, paddingRight: 8 },
+        chip: {
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: t.border,
+            maxWidth: 180,
+        },
+        chipOn: { backgroundColor: t.accent, borderColor: t.accent },
+        chipText: { fontSize: 12, fontWeight: '600', color: t.subtext },
+        chipTextOn: { color: t.accentText },
+        // list
+        column: { gap: GRID_GAP, justifyContent: 'flex-start' },
+        listContent: { paddingBottom: 16 },
+        empty: { textAlign: 'center', color: t.subtext, marginTop: 24, fontSize: 13 },
+        footer: { paddingTop: 4 },
+        // series/set grid tiles
+        taxTile: {
+            height: TAX_TILE_H,
+            marginBottom: ROW_GAP,
+            borderWidth: 1,
+            borderColor: t.border,
+            borderRadius: 10,
+            padding: 8,
+            gap: 4,
+            backgroundColor: t.panel,
+        },
+        taxLogoWrap: {
+            height: 52,
+            borderRadius: 6,
+            backgroundColor: t.imagePlaceholder,
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+        },
+        taxLogo: { width: '100%', height: '100%' },
+        taxInitial: { fontSize: 22, fontWeight: '800', color: t.faint },
+        taxTitle: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15 },
+        taxMeta: { fontSize: 10, color: t.subtext, lineHeight: 13 },
+        // dense card tiles
+        cardTile: { marginBottom: ROW_GAP },
+        cardTileSelected: { backgroundColor: t.selected, borderRadius: 6 },
+        cardImageWrap: {
+            width: '100%',
+            aspectRatio: 63 / 88,
+            borderRadius: 5,
+            overflow: 'hidden',
+            backgroundColor: t.imagePlaceholder,
+        },
+        cardImage: { width: '100%', height: '100%' },
+        cardImageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+        cardImageFallbackText: { color: t.faint, fontSize: 8 },
+        // inline quick-action pill: top-right of the thumb, accent-filled
+        cardQuick: {
+            position: 'absolute',
+            top: 3,
+            right: 3,
+            minWidth: 18,
+            height: 18,
+            paddingHorizontal: 4,
+            borderRadius: 9,
+            backgroundColor: t.accent,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        cardQuickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+        cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
+        cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.accent, textAlign: 'center' },
+        // breadcrumb
+        bcBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
+        bcItem: { flexDirection: 'row', alignItems: 'center' },
+        bcSep: { fontSize: 13, color: t.faint, marginHorizontal: 6 },
+        bcCrumb: { fontSize: 13 },
+        bcLink: { color: t.accent, fontWeight: '600' },
+        bcCurrent: { color: t.subtext },
+    });
+}
