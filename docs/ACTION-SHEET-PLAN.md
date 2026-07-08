@@ -1,7 +1,12 @@
 # Plan: make the card action sheet app-agnostic
 
-Status: **package side DONE (v0.3.0)** · consumer wiring pending · Owner repo:
+Status: **DONE (v0.3.0)** — package + both consumers wired · Owner repo:
 `tcgscan-browse` · Consumers: `tcgscan-app`, `poke-michi`
+
+**Consumers on v0.3.0 (2026-07-07):** poke-michi bumped (rides the back-compat
+`onPickCard` default — behavior unchanged); tcgscan-expo bumped + passes explicit
+`cardActions` (View details / Add to collection), so the "Place in pocket" wording
+bug is gone.
 
 ## Status update — 2026-07-07 (v0.3.0)
 

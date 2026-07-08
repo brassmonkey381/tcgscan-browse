@@ -60,9 +60,8 @@ in the catalog (see the tcgscan-data pipeline): `QueryableCard`, `fieldValues()`
 
 ## Status
 
-- Consumed by **poke-michi** (michi-maker) since 2026-07-07.
-- **tcgscan-app** adoption pending — its browse tab still has the older parallel
-  implementation (`src/lib/cards.ts`); swap it for this kit in a dedicated pass.
+- Consumed by **poke-michi** (michi-maker) and **tcgscan-expo** (the Expo app under
+  `tcgscan-app/tcgscan-expo`), both on **v0.3.0** since 2026-07-07.
 - **v0.3.0** — the card action sheet is now app-agnostic (`cardActions` +
   `CardAction` model; `onPickCard` is a back-compat default), value analytics
   (`SetAnalytics`/`SeriesAnalytics`/`PriceChart`) and inline `quickAction` ship from the

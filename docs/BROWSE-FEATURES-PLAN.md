@@ -1,7 +1,13 @@
 # Plan: move all catalog-browsing features into tcgscan-browse
 
-Status: **package side DONE (v0.3.0)** · consumer cleanup pending · Owner repo:
+Status: **DONE (v0.3.0)** — package + both consumers wired · Owner repo:
 `tcgscan-browse` · Consumers: `tcgscan-app`, `poke-michi`
+
+**Consumers on v0.3.0 (2026-07-07):** poke-michi bumped; tcgscan-expo bumped +
+themed (light/dark), `cardActions` + `＋` `quickAction` wired, and the orphaned
+`set-analytics` / `series-analytics` components + `browse/[seriesId]` /
+`browse/set/[setId]` routes deleted. `value-over-time-chart.tsx` was **kept** — the
+plan's delete-list was wrong; it's still used by the collection-detail screen.
 
 ## Status update — 2026-07-07 (v0.3.0)
 
