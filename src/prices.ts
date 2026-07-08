@@ -165,3 +165,39 @@ export function getCardPrices(productId: string): Promise<CardPrices | null> {
   }
   return p;
 }
+
+// ---- precomputed set/series value-over-time ----------------------------------
+//
+// The pipeline publishes a per-set / per-series total-value time series to
+// `${browseUrl}/value-series/set-<id>.json` and `series-<slug>.json`, so the app
+// fetches ONE small file per analytics view instead of fanning out a price-history
+// request per card. Missing file (older data) -> null, so callers fall back to the
+// client-side aggregate.
+
+export type ValueSeriesKind = 'set' | 'series';
+/** One total-value observation for a set/series (matches analytics' ValuePoint). */
+export interface ValueSeriesPoint {
+  d: string; // yyyy-mm-dd
+  v: number;
+}
+
+/** Series-name → filename slug, matching the pipeline's set_art._slug. */
+function valueSeriesSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
+}
+
+const valueSeriesCache = new Map<string, Promise<ValueSeriesPoint[] | null>>();
+
+/** Precomputed value-over-time for a set or series, or null if not published yet. */
+export function getValueSeries(kind: ValueSeriesKind, id: string): Promise<ValueSeriesPoint[] | null> {
+  const key = `${kind}:${id}`;
+  let p = valueSeriesCache.get(key);
+  if (!p) {
+    const file = kind === 'set' ? `set-${id}` : `series-${valueSeriesSlug(id)}`;
+    p = fetch(`${getBrowseUrl()}/value-series/${file}.json`)
+      .then((res) => (res.ok ? (res.json() as Promise<ValueSeriesPoint[]>) : null))
+      .catch(() => null);
+    valueSeriesCache.set(key, p);
+  }
+  return p;
+}

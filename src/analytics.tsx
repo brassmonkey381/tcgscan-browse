@@ -19,11 +19,13 @@ import Svg, { Defs, LinearGradient, Path, Stop, Text as SvgText } from 'react-na
 import type { Catalog, CatalogCard } from './catalog';
 import {
   getCardPrices,
+  getValueSeries,
   orderedVariants,
   rangeCutoff,
   TIME_RANGES,
   TimeRange,
   usePriceSummary,
+  type ValueSeriesKind,
 } from './prices';
 import { lightTheme, RARITY_PALETTE, type BrowseTheme } from './theme';
 
@@ -64,7 +66,8 @@ export function SetAnalytics({
 }) {
   const summary = usePriceSummary();
   const priced = useMemo(() => pricedCards(catalog.listCards(setId), summary), [catalog, summary, setId]);
-  return <ValueAnalytics priced={priced} ready={!!summary} onOpenCard={onOpenCard} theme={theme} />;
+  const scope = useMemo(() => ({ kind: 'set' as ValueSeriesKind, id: setId }), [setId]);
+  return <ValueAnalytics priced={priced} ready={!!summary} scope={scope} onOpenCard={onOpenCard} theme={theme} />;
 }
 
 /** Series-level value analytics — the same view over every card in the series. */
@@ -85,18 +88,21 @@ export function SeriesAnalytics({
     [catalog, seriesId],
   );
   const priced = useMemo(() => pricedCards(cards, summary), [cards, summary]);
-  return <ValueAnalytics priced={priced} ready={!!summary} onOpenCard={onOpenCard} theme={theme} />;
+  const scope = useMemo(() => ({ kind: 'series' as ValueSeriesKind, id: seriesId }), [seriesId]);
+  return <ValueAnalytics priced={priced} ready={!!summary} scope={scope} onOpenCard={onOpenCard} theme={theme} />;
 }
 
 /** The shared value view (tiles, top-K bars, legend, value-over-time). */
 function ValueAnalytics({
   priced,
   ready,
+  scope,
   onOpenCard,
   theme,
 }: {
   priced: Priced[];
   ready: boolean;
+  scope: { kind: ValueSeriesKind; id: string };
   onOpenCard: (cardId: string) => void;
   theme: BrowseTheme;
 }) {
@@ -176,7 +182,7 @@ function ValueAnalytics({
         ))}
       </View>
 
-      <AggregateValueOverTime priced={priced} theme={theme} />
+      <ValueOverTime scope={scope} priced={priced} theme={theme} />
     </View>
   );
 }
@@ -190,55 +196,71 @@ function Tile({ styles, label, value }: { styles: Styles; label: string; value: 
   );
 }
 
-// --- aggregate value over time (lazy) ----------------------------------------
+// --- value over time (precomputed, with client fallback) ---------------------
 
 /**
- * Cap the value-over-time aggregate to the top-N priciest cards. Summing EVERY
- * priced card fans out one price-history request per card — hundreds for a big set,
- * thousands for a series (e.g. ~7.8k for "Promos & Miscellaneous") — which queues
- * behind the ~6-connection limit and hammers the price API. The line is dominated
- * by the top cards, so the top-N sum is visually near-identical for a fraction of
- * the requests. When capped, the chart title says so rather than posing as the full
- * total (which the "Total value" tile still reports over all priced cards).
+ * Cap for the CLIENT-SIDE fallback aggregate. Normally the pipeline publishes a
+ * precomputed per-set/series series (`getValueSeries`) and we fetch that ONE file.
+ * Only when it's absent (older data) do we sum client-side — and then over just the
+ * top-N priciest cards, since summing every card fans out one price-history request
+ * per card (thousands for a big series). The line is dominated by the top cards, so
+ * the top-N sum is visually near-identical; when it's used, the title says so.
  */
 const AGG_TOP_N = 100;
 
-/** Sum the priciest variant of the top-N priced cards by date → one value-over-time series. */
-function AggregateValueOverTime({ priced, theme }: { priced: Priced[]; theme: BrowseTheme }) {
+/**
+ * Set/series value over time. Prefers the precomputed `value-series/*.json` (one
+ * request); falls back to the capped client aggregate when it isn't published yet.
+ */
+function ValueOverTime({
+  scope,
+  priced,
+  theme,
+}: {
+  scope: { kind: ValueSeriesKind; id: string };
+  priced: Priced[];
+  theme: BrowseTheme;
+}) {
   const [series, setSeries] = useState<ValuePoint[] | null>(null);
+  const [fellBack, setFellBack] = useState(false);
   const capped = priced.length > AGG_TOP_N;
-  const shown = Math.min(priced.length, AGG_TOP_N);
 
   useEffect(() => {
     let on = true;
     setSeries(null);
-    // priced is sorted priciest-first, so the first AGG_TOP_N are the top by value.
-    const source = capped ? priced.slice(0, AGG_TOP_N) : priced;
-    Promise.all(source.map((p) => getCardPrices(p.card.id))).then((all) => {
+    setFellBack(false);
+    getValueSeries(scope.kind, scope.id).then((pre) => {
       if (!on) return;
-      const byDate = new Map<string, number>();
-      for (const p of all) {
-        if (!p) continue;
-        const v = orderedVariants(p)[0];
-        for (const pt of p.variants[v] ?? []) {
-          if (pt.m != null) byDate.set(pt.d, (byDate.get(pt.d) ?? 0) + pt.m);
-        }
+      if (pre && pre.length) {
+        setSeries(pre);
+        return;
       }
-      setSeries([...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, v]) => ({ d, v })));
+      // Fallback: sum the top-N priced cards client-side (priced is priciest-first).
+      setFellBack(true);
+      const source = capped ? priced.slice(0, AGG_TOP_N) : priced;
+      Promise.all(source.map((p) => getCardPrices(p.card.id))).then((all) => {
+        if (!on) return;
+        const byDate = new Map<string, number>();
+        for (const p of all) {
+          if (!p) continue;
+          const v = orderedVariants(p)[0];
+          for (const pt of p.variants[v] ?? []) {
+            if (pt.m != null) byDate.set(pt.d, (byDate.get(pt.d) ?? 0) + pt.m);
+          }
+        }
+        setSeries([...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, v]) => ({ d, v })));
+      });
     });
     return () => {
       on = false;
     };
-  }, [priced, capped]);
+  }, [scope.kind, scope.id, priced, capped]);
 
-  return (
-    <ValueOverTimeChart
-      title={capped ? `Value over time · top ${AGG_TOP_N}` : 'Value over time'}
-      series={series}
-      loadingLabel={`aggregating ${shown} cards…`}
-      theme={theme}
-    />
-  );
+  // Only the capped client fallback is a partial view; the precomputed series is complete.
+  const title = fellBack && capped ? `Value over time · top ${AGG_TOP_N}` : 'Value over time';
+  const loadingLabel = fellBack ? `aggregating ${Math.min(priced.length, AGG_TOP_N)} cards…` : undefined;
+
+  return <ValueOverTimeChart title={title} series={series} loadingLabel={loadingLabel} theme={theme} />;
 }
 
 // --- per-card price history ---------------------------------------------------

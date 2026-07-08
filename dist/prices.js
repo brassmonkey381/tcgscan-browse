@@ -116,3 +116,21 @@ export function getCardPrices(productId) {
     }
     return p;
 }
+/** Series-name → filename slug, matching the pipeline's set_art._slug. */
+function valueSeriesSlug(name) {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
+}
+const valueSeriesCache = new Map();
+/** Precomputed value-over-time for a set or series, or null if not published yet. */
+export function getValueSeries(kind, id) {
+    const key = `${kind}:${id}`;
+    let p = valueSeriesCache.get(key);
+    if (!p) {
+        const file = kind === 'set' ? `set-${id}` : `series-${valueSeriesSlug(id)}`;
+        p = fetch(`${getBrowseUrl()}/value-series/${file}.json`)
+            .then((res) => (res.ok ? res.json() : null))
+            .catch(() => null);
+        valueSeriesCache.set(key, p);
+    }
+    return p;
+}

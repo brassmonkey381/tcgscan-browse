@@ -10,7 +10,7 @@
 export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, } from './config';
 export { hydrateImageManifest, imageManifestReady, subscribeImageManifest, useImageManifest, } from './images';
 export { formatSetDate, getCatalog, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, } from './catalog';
-export { formatUsd, getCardPrices, getPriceSummary, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, TIME_RANGES, usePriceSummary, windowByRange, } from './prices';
+export { formatUsd, getCardPrices, getPriceSummary, getValueSeries, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, TIME_RANGES, usePriceSummary, windowByRange, } from './prices';
 export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, } from './analytics';
 export { resolveActions, resolveLabel, } from './actions';
 export { lightTheme, resolveTheme, RARITY_PALETTE } from './theme';

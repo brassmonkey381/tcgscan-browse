@@ -51,6 +51,7 @@ export {
   formatUsd,
   getCardPrices,
   getPriceSummary,
+  getValueSeries,
   lastMarket,
   orderedVariants,
   pctChange,
@@ -64,6 +65,8 @@ export {
   type PriceSummary,
   type PriceSummaryEntry,
   type TimeRange,
+  type ValueSeriesKind,
+  type ValueSeriesPoint,
 } from './prices';
 
 export {

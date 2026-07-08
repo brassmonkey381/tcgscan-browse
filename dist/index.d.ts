@@ -10,7 +10,7 @@
 export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, type BrowseConfig, } from './config';
 export { hydrateImageManifest, imageManifestReady, subscribeImageManifest, useImageManifest, type ManifestCache, } from './images';
 export { formatSetDate, getCatalog, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, type Catalog, type CatalogCard, type CatalogSeries, type CatalogSet, type CardKind, type RawCard, type RawCatalog, type RawSeries, type RawSet, type RawVUnionGroup, type VUnionGroup, } from './catalog';
-export { formatUsd, getCardPrices, getPriceSummary, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, TIME_RANGES, usePriceSummary, windowByRange, type CardPrices, type PricePoint, type PriceSummary, type PriceSummaryEntry, type TimeRange, } from './prices';
+export { formatUsd, getCardPrices, getPriceSummary, getValueSeries, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, TIME_RANGES, usePriceSummary, windowByRange, type CardPrices, type PricePoint, type PriceSummary, type PriceSummaryEntry, type TimeRange, type ValueSeriesKind, type ValueSeriesPoint, } from './prices';
 export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, type ValuePoint, } from './analytics';
 export { resolveActions, resolveLabel, type BrowserBuiltins, type CardAction, type CardActionsFactory, } from './actions';
 export { lightTheme, resolveTheme, RARITY_PALETTE, type BrowseTheme } from './theme';

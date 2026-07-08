@@ -39,3 +39,11 @@ export declare function orderedVariants(prices: CardPrices): string[];
 export declare function pctChange(points: PricePoint[]): number | null;
 /** Full price history for one card, or null if unpriced. Cached per productId. */
 export declare function getCardPrices(productId: string): Promise<CardPrices | null>;
+export type ValueSeriesKind = 'set' | 'series';
+/** One total-value observation for a set/series (matches analytics' ValuePoint). */
+export interface ValueSeriesPoint {
+    d: string;
+    v: number;
+}
+/** Precomputed value-over-time for a set or series, or null if not published yet. */
+export declare function getValueSeries(kind: ValueSeriesKind, id: string): Promise<ValueSeriesPoint[] | null>;
