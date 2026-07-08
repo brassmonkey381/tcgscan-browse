@@ -27,7 +27,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } f
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery } from './query';
 import { browseState } from './state';
 import { CardActionModal } from './CardActionModal';
-import { SetAnalytics } from './analytics';
+import { SeriesAnalytics, SetAnalytics } from './analytics';
 import { resolveActions, } from './actions';
 import { formatSetDate, seriesDateRange, } from './catalog';
 import { resolveImageUrl } from './config';
@@ -157,12 +157,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
     // Tapping a card opens the action sheet (app-supplied actions + built-ins)
     // instead of silently replacing the pocket's occupant.
     const [actionCard, setActionCard] = useState(null);
-    // Cards | Analytics toggle within a set (only when `analytics` is enabled).
-    // Resets to the card grid whenever the drilled-into set changes.
+    // Cards | Analytics toggle within a set OR a series (only when `analytics` is enabled).
+    // Resets to the card/set grid whenever the drilled-into series or set changes.
     const [analyticsTab, setAnalyticsTab] = useState('cards');
     useEffect(() => {
         setAnalyticsTab('cards');
-    }, [setId]);
+    }, [seriesId, setId]);
     // Headline card values (load-once) — powers >$N queries, sort:value, and value labels.
     const priceSummary = usePriceSummary();
     const priceOf = (id) => priceSummary?.[id]?.cur ?? 0;
@@ -402,8 +402,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
             // app-injected inline quick action (＋add / quick-place), if any
             quickAction: quickAction?.(c) }));
     };
-    // Analytics replaces the card grid within a set when the toggle is on.
-    const analyticsView = !!analytics && level === 'cards' && !!setId && analyticsTab === 'analytics';
+    // Analytics is offered at the set level (over the set's cards) and the series level
+    // (over every card in the series). `analyticsScope` is the target of the current toggle,
+    // or null when analytics isn't applicable here.
+    const analyticsScope = !analytics ? null : level === 'cards' && setId ? 'set' : level === 'sets' && seriesId ? 'series' : null;
+    // Analytics replaces the card/set grid when the toggle is on.
+    const analyticsView = analyticsScope != null && analyticsTab === 'analytics';
     // getItemLayout: for the grid, every `cols` items share a row of `rowHeight`; for the
     // single-column text levels each item is one row. Lets the list skip hundreds/thousands
     // of offscreen rows without measuring them.
@@ -415,10 +419,11 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
                                         ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
                                         : `${filteredCards.length} of ${viewCards.length}`, viewCards.length >= SEARCH_LIMIT ? '+' : '', " \u00B7 ", describeQuery(parsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarCards.length > 0
                                     ? `${filteredCards.length} cards similar to “${similarTo.name}”`
-                                    : `Finding cards similar to “${similarTo.name}”…` }), _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : seriesId ? (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs })) : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), analytics && level === 'cards' && setId ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
+                                    : `Finding cards similar to “${similarTo.name}”…` }), _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : seriesId ? (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs })) : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), analyticsScope ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
                             const on = t === analyticsTab;
-                            return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn], children: t === 'cards' ? 'Cards' : 'Analytics' }) }, t));
-                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null] }), analyticsView && setId ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: _jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme }) })) : (_jsx(FlatList
+                            const label = t === 'analytics' ? 'Analytics' : analyticsScope === 'series' ? 'Sets' : 'Cards';
+                            return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn], children: label }) }, t));
+                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : (_jsx(FlatList
             // Remount when the level or column count changes so numColumns/getItemLayout stay
             // consistent (FlatList can't change numColumns in place).
             , { style: styles.list, data: data, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching

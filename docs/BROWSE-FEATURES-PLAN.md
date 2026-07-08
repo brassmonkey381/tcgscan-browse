@@ -31,8 +31,9 @@ All four target items now ship from the package:
   `quickAction`, then delete the orphaned `components/set-analytics.tsx`,
   `series-analytics.tsx`, `value-over-time-chart.tsx`, `price-chart.tsx` and the routed
   `browse/[seriesId].tsx` / `browse/set/[setId].tsx` screens (per "Consumer cleanup").
-- Not yet surfaced: a **series-level** Analytics toggle inside `CatalogBrowser` (the
-  `SeriesAnalytics` component exists; the in-browser toggle is still set-level only).
+
+The in-browser Analytics toggle is surfaced at **both** the set level (Cards | Analytics
+→ `SetAnalytics`) and the series level (Sets | Analytics → `SeriesAnalytics`).
 
 ---
 

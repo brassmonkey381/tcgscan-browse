@@ -36,7 +36,7 @@ import {
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery } from './query';
 import { browseState } from './state';
 import { CardActionModal } from './CardActionModal';
-import { SetAnalytics } from './analytics';
+import { SeriesAnalytics, SetAnalytics } from './analytics';
 import {
   resolveActions,
   type BrowserBuiltins,
@@ -270,12 +270,12 @@ export function CatalogBrowser({
   // Tapping a card opens the action sheet (app-supplied actions + built-ins)
   // instead of silently replacing the pocket's occupant.
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
-  // Cards | Analytics toggle within a set (only when `analytics` is enabled).
-  // Resets to the card grid whenever the drilled-into set changes.
+  // Cards | Analytics toggle within a set OR a series (only when `analytics` is enabled).
+  // Resets to the card/set grid whenever the drilled-into series or set changes.
   const [analyticsTab, setAnalyticsTab] = useState<'cards' | 'analytics'>('cards');
   useEffect(() => {
     setAnalyticsTab('cards');
-  }, [setId]);
+  }, [seriesId, setId]);
 
   // Headline card values (load-once) — powers >$N queries, sort:value, and value labels.
   const priceSummary = usePriceSummary();
@@ -552,8 +552,13 @@ export function CatalogBrowser({
     );
   };
 
-  // Analytics replaces the card grid within a set when the toggle is on.
-  const analyticsView = !!analytics && level === 'cards' && !!setId && analyticsTab === 'analytics';
+  // Analytics is offered at the set level (over the set's cards) and the series level
+  // (over every card in the series). `analyticsScope` is the target of the current toggle,
+  // or null when analytics isn't applicable here.
+  const analyticsScope: 'set' | 'series' | null =
+    !analytics ? null : level === 'cards' && setId ? 'set' : level === 'sets' && seriesId ? 'series' : null;
+  // Analytics replaces the card/set grid when the toggle is on.
+  const analyticsView = analyticsScope != null && analyticsTab === 'analytics';
 
   // getItemLayout: for the grid, every `cols` items share a row of `rowHeight`; for the
   // single-column text levels each item is one row. Lets the list skip hundreds/thousands
@@ -623,13 +628,14 @@ export function CatalogBrowser({
         ) : (
           <Text style={styles.meta}>{series.length} series</Text>
         )}
-        {analytics && level === 'cards' && setId ? (
+        {analyticsScope ? (
           <View style={styles.tabRow}>
             {(['cards', 'analytics'] as const).map((t) => {
               const on = t === analyticsTab;
+              const label = t === 'analytics' ? 'Analytics' : analyticsScope === 'series' ? 'Sets' : 'Cards';
               return (
                 <Pressable key={t} onPress={() => setAnalyticsTab(t)} style={[styles.tab, on && styles.tabOn]}>
-                  <Text style={[styles.tabText, on && styles.tabTextOn]}>{t === 'cards' ? 'Cards' : 'Analytics'}</Text>
+                  <Text style={[styles.tabText, on && styles.tabTextOn]}>{label}</Text>
                 </Pressable>
               );
             })}
@@ -649,9 +655,13 @@ export function CatalogBrowser({
         ) : null}
       </View>
 
-      {analyticsView && setId ? (
+      {analyticsView ? (
         <ScrollView style={styles.list} contentContainerStyle={styles.analyticsContent}>
-          <SetAnalytics catalog={catalog} setId={setId} onOpenCard={openCard} theme={theme} />
+          {analyticsScope === 'set' && setId ? (
+            <SetAnalytics catalog={catalog} setId={setId} onOpenCard={openCard} theme={theme} />
+          ) : analyticsScope === 'series' && seriesId ? (
+            <SeriesAnalytics catalog={catalog} seriesId={seriesId} onOpenCard={openCard} theme={theme} />
+          ) : null}
         </ScrollView>
       ) : (
       <FlatList
