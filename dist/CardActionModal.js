@@ -30,7 +30,15 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
     return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsxs(Pressable, { style: styles.sheet, onPress: () => { }, children: [_jsx(View, { style: styles.imageWrap, children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 120 })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "no image" }) })) }), _jsx(Text, { style: styles.name, numberOfLines: 2, children: card.name }), facts.map((f) => (_jsx(Text, { style: styles.fact, numberOfLines: 1, children: f }, f))), _jsxs(View, { style: styles.actions, children: [ordered.map((action) => {
                                 const primary = action.kind === 'primary';
                                 const destructive = action.kind === 'destructive';
-                                return (_jsx(Pressable, { style: [styles.action, primary && styles.actionPrimary], onPress: () => action.onPress(card), children: _jsx(Text, { style: [
+                                return (_jsx(Pressable, { style: [styles.action, primary && styles.actionPrimary], 
+                                    // Dismiss the sheet on any choice, THEN run the action — so
+                                    // "View details" doesn't leave the sheet over the card screen
+                                    // and "Add to collection" doesn't stack under it. (Built-ins
+                                    // also self-close; the extra close is idempotent.)
+                                    onPress: () => {
+                                        onClose();
+                                        action.onPress(card);
+                                    }, children: _jsx(Text, { style: [
                                             styles.actionText,
                                             primary && styles.actionPrimaryText,
                                             destructive && styles.actionDestructiveText,

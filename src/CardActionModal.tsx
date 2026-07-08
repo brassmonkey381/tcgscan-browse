@@ -73,7 +73,14 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
                 <Pressable
                   key={action.key}
                   style={[styles.action, primary && styles.actionPrimary]}
-                  onPress={() => action.onPress(card)}>
+                  // Dismiss the sheet on any choice, THEN run the action — so
+                  // "View details" doesn't leave the sheet over the card screen
+                  // and "Add to collection" doesn't stack under it. (Built-ins
+                  // also self-close; the extra close is idempotent.)
+                  onPress={() => {
+                    onClose();
+                    action.onPress(card);
+                  }}>
                   <Text
                     style={[
                       styles.actionText,
