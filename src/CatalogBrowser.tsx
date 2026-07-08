@@ -32,6 +32,7 @@ import {
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery } from './query';
 import { browseState } from './state';
 import { CardActionModal } from './CardActionModal';
+import { SetAnalytics } from './analytics';
 import {
   formatSetDate,
   seriesDateRange,
@@ -174,13 +175,17 @@ interface CatalogBrowserProps {
   /** Artwork-panel + tonal-insert sections, rendered as the list footer so they stay
    *  reachable below the browse without a second scroller. */
   footer: ReactNode;
+  /** Surface value analytics: a Cards | Analytics toggle in a set (SetAnalytics)
+   *  plus a headline value under each card tile. Off by default — apps that don't
+   *  want pricing (e.g. michi's binder picker) simply omit it. */
+  analytics?: boolean;
 }
 
 /**
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }: CatalogBrowserProps) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, analytics }: CatalogBrowserProps) {
   // Hydrate from the session browse state so reopening the picker restores the
   // last search/drill-down/similar view (one search often feeds several pockets).
   const [cardQuery, setCardQuery] = useState(browseState.cardQuery);
@@ -216,6 +221,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }: 
   // Tapping a card opens the action sheet (place/replace, find similar, view set)
   // instead of silently replacing the pocket's occupant.
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
+  // Cards | Analytics toggle within a set (only when `analytics` is enabled).
+  // Resets to the card grid whenever the drilled-into set changes.
+  const [analyticsTab, setAnalyticsTab] = useState<'cards' | 'analytics'>('cards');
+  useEffect(() => {
+    setAnalyticsTab('cards');
+  }, [setId]);
 
   // Headline card values (load-once) — powers >$N queries, sort:value, and value labels.
   const priceSummary = usePriceSummary();
@@ -423,9 +434,14 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }: 
         onPress={() => setActionCard(c)}
         // value replaces the name line when sorting by value (keeps row geometry fixed)
         label={parsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name}
+        // headline value under the name, only when pricing is surfaced
+        value={analytics ? value : undefined}
       />
     );
   };
+
+  // Analytics replaces the card grid within a set when the toggle is on.
+  const analyticsView = !!analytics && level === 'cards' && !!setId && analyticsTab === 'analytics';
 
   // getItemLayout: for the grid, every `cols` items share a row of `rowHeight`; for the
   // single-column text levels each item is one row. Lets the list skip hundreds/thousands
@@ -495,7 +511,19 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }: 
         ) : (
           <Text style={styles.meta}>{series.length} series</Text>
         )}
-        {isCardLevel && facetOptions.length > 0 ? (
+        {analytics && level === 'cards' && setId ? (
+          <View style={styles.tabRow}>
+            {(['cards', 'analytics'] as const).map((t) => {
+              const on = t === analyticsTab;
+              return (
+                <Pressable key={t} onPress={() => setAnalyticsTab(t)} style={[styles.tab, on && styles.tabOn]}>
+                  <Text style={[styles.tabText, on && styles.tabTextOn]}>{t === 'cards' ? 'Cards' : 'Analytics'}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+        {isCardLevel && facetOptions.length > 0 && !analyticsView ? (
           <FacetBar
             options={facetOptions}
             selection={selection}
@@ -508,6 +536,11 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }: 
         ) : null}
       </View>
 
+      {analyticsView && setId ? (
+        <ScrollView style={styles.list} contentContainerStyle={styles.analyticsContent}>
+          <SetAnalytics catalog={catalog} setId={setId} onOpenCard={onPickCard} />
+        </ScrollView>
+      ) : (
       <FlatList
         // Remount when the level or column count changes so numColumns/getItemLayout stay
         // consistent (FlatList can't change numColumns in place).
@@ -541,6 +574,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }: 
         }
         ListFooterComponent={<View style={styles.footer}>{footer}</View>}
       />
+      )}
 
       {actionCard ? (
         <CardActionModal
@@ -631,6 +665,7 @@ function CardTile({
   selected,
   onPress,
   label,
+  value,
 }: {
   card: CatalogCard;
   width: number;
@@ -638,6 +673,8 @@ function CardTile({
   onPress: () => void;
   /** Text under the thumb; defaults to the card name (value when sorting by value). */
   label?: string;
+  /** Headline value shown under the name (when pricing is surfaced); hidden if 0/absent. */
+  value?: number;
 }) {
   // Grid tier: the 245px webp (~20KB) when the card has one; full-size fallback.
   const uri = resolveImageUrl(card.imageSmall ?? card.image);
@@ -662,6 +699,11 @@ function CardTile({
       <Text style={styles.cardName} numberOfLines={1}>
         {label ?? card.name}
       </Text>
+      {value != null && value > 0 ? (
+        <Text style={styles.cardValue} numberOfLines={1}>
+          {formatUsd(value)}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -795,6 +837,12 @@ const styles = StyleSheet.create({
   // The list must claim the remaining sheet height (sibling of the fixed-height controls)
   // so it gets a bounded, scrollable viewport instead of growing to full content height.
   list: { flex: 1 },
+  analyticsContent: { padding: 12 },
+  tabRow: { flexDirection: 'row', gap: 6 },
+  tab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
+  tabOn: { backgroundColor: '#eaf0fd' },
+  tabText: { fontSize: 13, fontWeight: '700', color: '#888' },
+  tabTextOn: { color: '#222' },
   controls: { gap: 6, paddingBottom: 8 },
   sectionLabel: {
     fontSize: 12,
@@ -936,6 +984,7 @@ const styles = StyleSheet.create({
   cardImageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   cardImageFallbackText: { color: '#b0b0b8', fontSize: 8 },
   cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: '#555', textAlign: 'center' },
+  cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: '#3B82F6', textAlign: 'center' },
   // breadcrumb
   bcBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
   bcItem: { flexDirection: 'row', alignItems: 'center' },

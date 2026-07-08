@@ -49,12 +49,24 @@ export {
 
 export {
   formatUsd,
+  getCardPrices,
   getPriceSummary,
+  lastMarket,
+  orderedVariants,
+  pctChange,
   priceSnapshot,
+  rangeCutoff,
+  TIME_RANGES,
   usePriceSummary,
+  windowByRange,
+  type CardPrices,
+  type PricePoint,
   type PriceSummary,
   type PriceSummaryEntry,
+  type TimeRange,
 } from './prices';
+
+export { SetAnalytics, ValueOverTimeChart, type ValuePoint } from './analytics';
 
 export { findSimilar, similarAvailable, type SimilarHit } from './similar';
 

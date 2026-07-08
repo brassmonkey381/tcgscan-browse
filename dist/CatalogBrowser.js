@@ -23,6 +23,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } f
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery } from './query';
 import { browseState } from './state';
 import { CardActionModal } from './CardActionModal';
+import { SetAnalytics } from './analytics';
 import { formatSetDate, seriesDateRange, } from './catalog';
 import { resolveImageUrl } from './config';
 import { formatUsd, usePriceSummary } from './prices';
@@ -116,7 +117,7 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer, analytics }) {
     // Hydrate from the session browse state so reopening the picker restores the
     // last search/drill-down/similar view (one search often feeds several pockets).
     const [cardQuery, setCardQuery] = useState(browseState.cardQuery);
@@ -148,6 +149,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }) 
     // Tapping a card opens the action sheet (place/replace, find similar, view set)
     // instead of silently replacing the pocket's occupant.
     const [actionCard, setActionCard] = useState(null);
+    // Cards | Analytics toggle within a set (only when `analytics` is enabled).
+    // Resets to the card grid whenever the drilled-into set changes.
+    const [analyticsTab, setAnalyticsTab] = useState('cards');
+    useEffect(() => {
+        setAnalyticsTab('cards');
+    }, [setId]);
     // Headline card values (load-once) — powers >$N queries, sort:value, and value labels.
     const priceSummary = usePriceSummary();
     const priceOf = (id) => priceSummary?.[id]?.cur ?? 0;
@@ -326,8 +333,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }) 
         const value = priceOf(c.id);
         return (_jsx(CardTile, { card: c, width: tileW, selected: c.id === selectedCardId, onPress: () => setActionCard(c), 
             // value replaces the name line when sorting by value (keeps row geometry fixed)
-            label: parsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name }));
+            label: parsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name, 
+            // headline value under the name, only when pricing is surfaced
+            value: analytics ? value : undefined }));
     };
+    // Analytics replaces the card grid within a set when the toggle is on.
+    const analyticsView = !!analytics && level === 'cards' && !!setId && analyticsTab === 'analytics';
     // getItemLayout: for the grid, every `cols` items share a row of `rowHeight`; for the
     // single-column text levels each item is one row. Lets the list skip hundreds/thousands
     // of offscreen rows without measuring them.
@@ -339,7 +350,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }) 
                                         ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
                                         : `${filteredCards.length} of ${viewCards.length}`, viewCards.length >= SEARCH_LIMIT ? '+' : '', " \u00B7 ", describeQuery(parsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarCards.length > 0
                                     ? `${filteredCards.length} cards similar to “${similarTo.name}”`
-                                    : `Finding cards similar to “${similarTo.name}”…` }), _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : seriesId ? (_jsx(Breadcrumb, { crumbs: crumbs })) : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), isCardLevel && facetOptions.length > 0 ? (_jsx(FacetBar, { options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null] }), _jsx(FlatList
+                                    : `Finding cards similar to “${similarTo.name}”…` }), _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : seriesId ? (_jsx(Breadcrumb, { crumbs: crumbs })) : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), analytics && level === 'cards' && setId ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
+                            const on = t === analyticsTab;
+                            return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn], children: t === 'cards' ? 'Cards' : 'Analytics' }) }, t));
+                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null] }), analyticsView && setId ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: _jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: onPickCard }) })) : (_jsx(FlatList
             // Remount when the level or column count changes so numColumns/getItemLayout stay
             // consistent (FlatList can't change numColumns in place).
             , { style: styles.list, data: data, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching
@@ -350,7 +364,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, footer }) 
                                 : 'No similar cards found.'
                             : level === 'cards'
                                 ? 'No cards in this set.'
-                                : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`), actionCard ? (_jsx(CardActionModal, { card: actionCard, occupant: occupant, value: priceOf(actionCard.id), onPlace: () => {
+                                : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, occupant: occupant, value: priceOf(actionCard.id), onPlace: () => {
                     setActionCard(null);
                     onPickCard(actionCard.id);
                 }, onSimilar: similarAvailable()
@@ -384,10 +398,10 @@ function TaxonomyTile({ title, meta, coverUri, width, onPress, }) {
  * small. Cards with no local image show a neutral fallback, never a crash. Images use the
  * same memory-disk cache + recyclingKey pattern as BinderGrid.
  */
-function CardTile({ card, width, selected, onPress, label, }) {
+function CardTile({ card, width, selected, onPress, label, value, }) {
     // Grid tier: the 245px webp (~20KB) when the card has one; full-size fallback.
     const uri = resolveImageUrl(card.imageSmall ?? card.image);
-    return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected], onPress: onPress, children: [_jsx(View, { style: styles.cardImageWrap, children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })) }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name })] }));
+    return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected], onPress: onPress, children: [_jsx(View, { style: styles.cardImageWrap, children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })) }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
 }
 /** The "?" panel: the search grammar manual (content lives in browse/query.ts,
  *  shared with the sibling app; this just renders it compactly). */
@@ -414,6 +428,12 @@ const styles = StyleSheet.create({
     // The list must claim the remaining sheet height (sibling of the fixed-height controls)
     // so it gets a bounded, scrollable viewport instead of growing to full content height.
     list: { flex: 1 },
+    analyticsContent: { padding: 12 },
+    tabRow: { flexDirection: 'row', gap: 6 },
+    tab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
+    tabOn: { backgroundColor: '#eaf0fd' },
+    tabText: { fontSize: 13, fontWeight: '700', color: '#888' },
+    tabTextOn: { color: '#222' },
     controls: { gap: 6, paddingBottom: 8 },
     sectionLabel: {
         fontSize: 12,
@@ -555,6 +575,7 @@ const styles = StyleSheet.create({
     cardImageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     cardImageFallbackText: { color: '#b0b0b8', fontSize: 8 },
     cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: '#555', textAlign: 'center' },
+    cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: '#3B82F6', textAlign: 'center' },
     // breadcrumb
     bcBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
     bcItem: { flexDirection: 'row', alignItems: 'center' },
