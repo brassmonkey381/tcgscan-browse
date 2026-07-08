@@ -369,10 +369,87 @@ function matchByName<T>(
   return [...starts, ...contains].slice(0, limit);
 }
 
-async function loadCatalogFrom(base: string): Promise<Catalog> {
-  const res = await fetch(`${base}/catalog.json`);
+/** True when this runtime can offload the fetch+parse to a Web Worker (web only). */
+function catalogWorkerAvailable(): boolean {
+  return (
+    typeof Worker !== 'undefined' &&
+    typeof Blob !== 'undefined' &&
+    typeof URL !== 'undefined' &&
+    typeof URL.createObjectURL === 'function'
+  );
+}
+
+// Inline worker source: fetch + JSON.parse the (~27MB) catalog OFF the main thread, then
+// post the parsed object back. Kept as a plain string so no bundler worker support is needed.
+// The heavy JSON.parse runs in the worker; the main thread only pays the (cheaper) structured-
+// clone receive + LocalCatalog build, so the UI/spinner stays responsive while it loads.
+const CATALOG_WORKER_SRC =
+  'self.onmessage=function(e){' +
+  "fetch(e.data).then(function(r){if(!r.ok)throw new Error('status '+r.status);return r.json();})" +
+  '.then(function(d){self.postMessage({ok:true,data:d});})' +
+  ".catch(function(err){self.postMessage({ok:false,error:String((err&&err.message)||err)});});" +
+  '};';
+
+function fetchCatalogRawInWorker(url: string): Promise<RawCatalog> {
+  return new Promise<RawCatalog>((resolve, reject) => {
+    let objectUrl = '';
+    let worker: Worker | null = null;
+    const cleanup = () => {
+      try {
+        worker?.terminate();
+      } catch {
+        /* ignore */
+      }
+      if (objectUrl) {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    try {
+      objectUrl = URL.createObjectURL(new Blob([CATALOG_WORKER_SRC], { type: 'text/javascript' }));
+      worker = new Worker(objectUrl);
+    } catch (err) {
+      cleanup();
+      reject(err instanceof Error ? err : new Error('catalog worker init failed'));
+      return;
+    }
+    worker.onmessage = (e: MessageEvent) => {
+      const msg = e.data as { ok: boolean; data?: RawCatalog; error?: string };
+      cleanup();
+      if (msg && msg.ok) resolve(msg.data as RawCatalog);
+      else reject(new Error((msg && msg.error) || 'catalog worker failed'));
+    };
+    worker.onerror = (e: ErrorEvent) => {
+      cleanup();
+      reject(new Error(e.message || 'catalog worker error'));
+    };
+    worker.postMessage(url);
+  });
+}
+
+async function fetchCatalogRawOnMain(url: string): Promise<RawCatalog> {
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load catalog.json (${res.status})`);
-  return new LocalCatalog((await res.json()) as RawCatalog);
+  return (await res.json()) as RawCatalog;
+}
+
+async function loadCatalogFrom(base: string): Promise<Catalog> {
+  const url = `${base}/catalog.json`;
+  let raw: RawCatalog;
+  if (catalogWorkerAvailable()) {
+    try {
+      raw = await fetchCatalogRawInWorker(url);
+    } catch {
+      // Worker unavailable/blocked (e.g. a strict CSP) — fall back to a main-thread parse.
+      raw = await fetchCatalogRawOnMain(url);
+    }
+  } else {
+    raw = await fetchCatalogRawOnMain(url);
+  }
+  return new LocalCatalog(raw);
 }
 
 let cache: Promise<Catalog> | null = null;
