@@ -7,7 +7,7 @@
  * once at startup (from app code, where EXPO_PUBLIC_* env inlining works) and
  * inject app-specific actions (place/portfolio-add/find-similar) via props.
  */
-export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, } from './config';
+export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, cdnImageUrl, productUrl, } from './config';
 export { hydrateImageManifest, imageManifestReady, subscribeImageManifest, useImageManifest, } from './images';
 export { formatSetDate, getCatalog, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, } from './catalog';
 export { formatUsd, getCardPrices, getPriceSummary, getValueSeries, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, TIME_RANGES, usePriceSummary, windowByRange, } from './prices';

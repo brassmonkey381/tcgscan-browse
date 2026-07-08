@@ -30,7 +30,8 @@ import { CardActionModal } from './CardActionModal';
 import { SeriesAnalytics, SetAnalytics } from './analytics';
 import { resolveActions, } from './actions';
 import { formatSetDate, seriesDateRange, } from './catalog';
-import { resolveImageUrl } from './config';
+import { cardThumbUrl } from './config';
+import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
 import { findSimilar, similarAvailable } from './similar';
 import { resolveTheme } from './theme';
@@ -126,6 +127,9 @@ function applyFacets(cards, selection) {
 export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme), [theme]);
+    // Hydrate the content-hashed image manifest and repaint tiles when it lands —
+    // card images resolve by id (cardThumbUrl), not from URLs in the catalog.
+    useImageManifest();
     // Hydrate from the session browse state so reopening the picker restores the
     // last search/drill-down/similar view (one search often feeds several pockets).
     const [cardQuery, setCardQuery] = useState(browseState.cardQuery);
@@ -243,7 +247,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
         prefetchedKey.current = viewKey;
         const uris = filteredCards
             .slice(0, PREFETCH_COUNT)
-            .map((c) => resolveImageUrl(c.imageSmall ?? c.image))
+            .map((c) => cardThumbUrl(c.id, 245))
             .filter(Boolean);
         if (uris.length > 0)
             Image.prefetch(uris, 'memory-disk').catch(() => { });
@@ -451,8 +455,8 @@ function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, }) {
  * same memory-disk cache + recyclingKey pattern as BinderGrid.
  */
 function CardTile({ styles, card, width, selected, onPress, label, value, quickAction, }) {
-    // Grid tier: the 245px webp (~20KB) when the card has one; full-size fallback.
-    const uri = resolveImageUrl(card.imageSmall ?? card.image);
+    // Grid tier: the 245px webp (~20KB), resolved by id via the image manifest.
+    const uri = cardThumbUrl(card.id, 245);
     return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
 }
 /** The "?" panel: the search grammar manual (content lives in browse/query.ts,

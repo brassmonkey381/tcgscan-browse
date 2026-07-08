@@ -14,7 +14,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { CardAction } from './actions';
 import { resolveLabel } from './actions';
 import type { CatalogCard } from './catalog';
-import { resolveImageUrl } from './config';
+import { cardThumbUrl } from './config';
 import { formatUsd } from './prices';
 import { lightTheme, type BrowseTheme } from './theme';
 
@@ -30,8 +30,8 @@ interface CardActionModalProps {
 
 export function CardActionModal({ card, actions, value, onClose, theme = lightTheme }: CardActionModalProps) {
   const styles = makeStyles(theme);
-  // 640px webp — the full-size jpg 400s on the migrated backend.
-  const uri = resolveImageUrl(card.imageMedium ?? card.image);
+  // 640px webp (inspection tier), resolved by id via the image manifest.
+  const uri = cardThumbUrl(card.id, 640);
   const facts = [
     [card.setName, card.number].filter(Boolean).join(' · '),
     [card.rarity, card.stage].filter(Boolean).join(' · '),

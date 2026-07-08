@@ -183,17 +183,32 @@ class LocalCatalog implements Catalog {
   private readonly searchIndex: { card: CatalogCard; lc: string }[] = [];
 
   constructor(raw: RawCatalog) {
+    // Set-level attributes (name/code/series) are stored ONCE per set, not stamped
+    // onto every card — the normalized catalog drops the per-card copies. Build a
+    // lookup so each card can derive them from its set_id. `raw_c.set_name ?? …`
+    // keeps reading the old fat catalog (which still carries them) unchanged.
+    const setMeta = new Map<string, { name: string; code: string; series: string }>();
+    for (const raw_s of Object.values(raw.sets)) {
+      setMeta.set(String(raw_s.id), {
+        name: raw_s.name ?? '',
+        code: raw_s.code ?? '',
+        series: raw_s.series ?? '',
+      });
+    }
+
     for (const raw_c of Object.values(raw.cards)) {
+      const setId = String(raw_c.set_id ?? '');
+      const meta = setMeta.get(setId);
       const card: CatalogCard = {
         id: String(raw_c.id),
         name: raw_c.name ?? '',
         number: raw_c.number ?? '',
         rarity: raw_c.rarity ?? '',
         cardType: raw_c.card_type ?? [],
-        setId: String(raw_c.set_id ?? ''),
-        setName: raw_c.set_name ?? '',
-        setCode: raw_c.set_code ?? '',
-        seriesId: raw_c.series ?? '',
+        setId,
+        setName: raw_c.set_name ?? meta?.name ?? '',
+        setCode: raw_c.set_code ?? meta?.code ?? '',
+        seriesId: raw_c.series ?? meta?.series ?? '',
         releaseDate: raw_c.release_date ?? '',
         image: raw_c.image ?? '',
         kind: normalizeKind(raw_c.kind),

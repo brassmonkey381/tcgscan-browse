@@ -51,7 +51,8 @@ import {
   type CatalogSeries,
   type CatalogSet,
 } from './catalog';
-import { resolveImageUrl } from './config';
+import { cardThumbUrl } from './config';
+import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
 import { findSimilar, similarAvailable } from './similar';
 import { resolveTheme, type BrowseTheme } from './theme';
@@ -234,6 +235,9 @@ export function CatalogBrowser({
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  // Hydrate the content-hashed image manifest and repaint tiles when it lands —
+  // card images resolve by id (cardThumbUrl), not from URLs in the catalog.
+  useImageManifest();
 
   // Hydrate from the session browse state so reopening the picker restores the
   // last search/drill-down/similar view (one search often feeds several pockets).
@@ -370,7 +374,7 @@ export function CatalogBrowser({
     prefetchedKey.current = viewKey;
     const uris = filteredCards
       .slice(0, PREFETCH_COUNT)
-      .map((c) => resolveImageUrl(c.imageSmall ?? c.image))
+      .map((c) => cardThumbUrl(c.id, 245))
       .filter(Boolean);
     if (uris.length > 0) Image.prefetch(uris, 'memory-disk').catch(() => {});
   }, [isCardLevel, viewKey, filteredCards]);
@@ -782,8 +786,8 @@ function CardTile({
   /** Inline quick action pill (app-injected); its onPress fires without opening the sheet. */
   quickAction?: CardAction;
 }) {
-  // Grid tier: the 245px webp (~20KB) when the card has one; full-size fallback.
-  const uri = resolveImageUrl(card.imageSmall ?? card.image);
+  // Grid tier: the 245px webp (~20KB), resolved by id via the image manifest.
+  const uri = cardThumbUrl(card.id, 245);
   return (
     <Pressable style={[styles.cardTile, { width }, selected && styles.cardTileSelected]} onPress={onPress}>
       <View style={styles.cardImageWrap}>

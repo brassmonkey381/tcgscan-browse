@@ -12,13 +12,13 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { Image } from 'expo-image';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { resolveLabel } from './actions';
-import { resolveImageUrl } from './config';
+import { cardThumbUrl } from './config';
 import { formatUsd } from './prices';
 import { lightTheme } from './theme';
 export function CardActionModal({ card, actions, value, onClose, theme = lightTheme }) {
     const styles = makeStyles(theme);
-    // 640px webp — the full-size jpg 400s on the migrated backend.
-    const uri = resolveImageUrl(card.imageMedium ?? card.image);
+    // 640px webp (inspection tier), resolved by id via the image manifest.
+    const uri = cardThumbUrl(card.id, 640);
     const facts = [
         [card.setName, card.number].filter(Boolean).join(' · '),
         [card.rarity, card.stage].filter(Boolean).join(' · '),

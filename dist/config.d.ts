@@ -45,14 +45,27 @@ export declare function getApiKey(): string;
  */
 export declare function resolveImageUrl(path: string): string;
 /**
- * Image tiers, keyed by a card's stable id — so a card's image can be shown
- * WITHOUT loading the ~25MB catalog.json first:
- *   - 245 → 245px webp (grids / covers; complete for every card)
- *   - 640 → 640px webp (binder-page view)
- *   - 'full' → full-size jpg (the safe fallback if a webp 404s)
- * Hosted buckets key images by content hash, so the URL is resolved through the
- * image manifest (hydrateImageManifest) when it's loaded; otherwise it falls
- * back to the flat `<id>` convention path — correct for local static assets and
- * for cards not yet in the manifest. Requires imgBase at the bucket's public root.
+ * TCGPlayer product page for a card — a pure function of its id (verified 100% of
+ * the catalog). Stored per-card in the old fat catalog; derive it instead.
+ */
+export declare function productUrl(id: string): string;
+/**
+ * TCGPlayer CDN image for a card — also a pure `{id}` template (the `<id>_in_NxN.jpg`
+ * convention). Used as the fallback for cards not yet mirrored to our bucket, and
+ * for any consumer that wants the source image without the manifest. `size` is the
+ * square edge in px (TCGPlayer serves `_in_<size>x<size>.jpg`).
+ */
+export declare function cdnImageUrl(id: string, size?: number): string;
+/**
+ * Image tiers, keyed by a card's stable id — so a card's image resolves WITHOUT the
+ * per-card image URLs living in catalog.json:
+ *   - 245 → 245px webp (grids / covers; complete for every mirrored card)
+ *   - 640 → 640px webp (binder-page / inspection view)
+ *   - 'full' → full-size jpg
+ * Hosted buckets key images by content hash, so the URL comes from the image
+ * manifest (hydrateImageManifest). If the manifest is loaded but the card isn't in
+ * it (not yet mirrored), fall back to the id-derivable TCGPlayer CDN image. Only
+ * before the manifest has loaded at all (static/offline) do we use the flat
+ * convention path.
  */
 export declare function cardThumbUrl(id: string, tier: 245 | 640 | 'full'): string;

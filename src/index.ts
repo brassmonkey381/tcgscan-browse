@@ -15,6 +15,8 @@ export {
   getImgBase,
   resolveImageUrl,
   cardThumbUrl,
+  cdnImageUrl,
+  productUrl,
   type BrowseConfig,
 } from './config';
 
