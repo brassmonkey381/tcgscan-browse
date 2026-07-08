@@ -45,6 +45,11 @@ import { CatalogBrowser, loadCatalog, usePriceSummary, findSimilar } from 'tcgsc
 
 ## What lives here vs. in the apps
 
+See **`docs/ARCHITECTURE.md`** for the full three-layer breakdown (datasource /
+kit / app), the four seams between them, and the grammar-sync checklist. Quick
+table:
+
+
 | Here (shared) | In each app |
 |---|---|
 | Catalog types + loader (load-once, subscribe, prefetch) | View-model adapters (michi's `catalogCardToDemoCard`) |
