@@ -406,23 +406,30 @@ export function CatalogBrowser({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog, searching, parsed, setId, similarTo, similarCards, priceSummary]);
 
-  // Whether the catalog carries assembled V-UNION groups (drives the Size=V-UNION option).
-  const hasVUnion = useMemo(() => catalog.vunionGroups().length > 0, [catalog]);
+  // Ids currently in view (search results / set cards) — keeps facet options and the V-UNION
+  // groups relevant to what's actually on screen.
+  const inView = useMemo(() => new Set(viewCards.map((c) => c.id)), [viewCards]);
+  // Offer the Size=V-UNION option only when a group's pieces are actually in view.
+  const hasVUnionInView = useMemo(
+    () => catalog.vunionGroups().some((g) => g.pieces.some((pid) => inView.has(pid))),
+    [catalog, inView],
+  );
 
-  // Facets that actually have ≥2 distinct values in the cards in view get a chip row. The
-  // Size facet also offers a synthetic 'V-UNION' value (group tiles) when the catalog has them.
+  // Facet options narrow to the searched/filtered subset: each facet's values are the ones
+  // present after the OTHER facets' selections are applied (exclude self, so you can still
+  // change this facet). Standard faceted search — one pass per facet, not recursive. Facets
+  // with <2 options in the subset drop out.
   const facetOptions = useMemo(
     () =>
       isCardLevel
         ? FACETS.map((f) => {
-            const values =
-              f.key === 'size' && hasVUnion
-                ? [...f.available(viewCards), VUNION_SIZE]
-                : f.available(viewCards);
+            const subset = applyFacets(viewCards, { ...selection, [f.key]: [] });
+            const base = f.available(subset);
+            const values = f.key === 'size' && hasVUnionInView ? [...base, VUNION_SIZE] : base;
             return { facet: f, values };
           }).filter((o) => o.values.length >= 2)
         : [],
-    [isCardLevel, viewCards, hasVUnion],
+    [isCardLevel, viewCards, selection, hasVUnionInView],
   );
 
   const filteredCards = useMemo(() => applyFacets(viewCards, selection), [viewCards, selection]);
@@ -456,9 +463,15 @@ export function CatalogBrowser({
     if (level === 'sets') return sets.map((s) => ({ kind: 'set' as const, set: s }));
     const cards = filteredCards.map((c) => ({ kind: 'card' as const, card: c }));
     if (!showVUnionGroups) return cards;
-    const groups = catalog.vunionGroups().map((g) => ({ kind: 'vunion' as const, group: g }));
+    // Only groups relevant to the CURRENT view: a group qualifies when one of its piece cards is
+    // in the searched/set cards. So "charizard" + V-UNION returns nothing (no Charizard V-UNION),
+    // while "greninja" surfaces the Greninja group. Without this every group shows on every query.
+    const groups = catalog
+      .vunionGroups()
+      .filter((g) => g.pieces.some((pid) => inView.has(pid)))
+      .map((g) => ({ kind: 'vunion' as const, group: g }));
     return [...groups, ...cards];
-  }, [level, series, sets, filteredCards, showVUnionGroups, catalog]);
+  }, [level, series, sets, filteredCards, inView, showVUnionGroups, catalog]);
 
   // Warm the first row of card images through the cache once per distinct view (set/filter/
   // search change), off the render path. Guarded so it fires at most once per view key.
