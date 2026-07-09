@@ -90,6 +90,10 @@ export interface RawCard {
     series?: string;
     release_date?: string;
     image?: string;
+    /** Oversized card, published by the pipeline (true for every card in TCGPlayer's
+     *  synthetic "Jumbo Cards" set). The authoritative footprint signal — `kind` below is
+     *  a legacy string the slim catalog no longer emits. */
+    jumbo?: boolean;
     kind?: string;
     illustrator?: string;
     types?: string[];

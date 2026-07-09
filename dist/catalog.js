@@ -8,9 +8,15 @@
  * (e.g. michi's catalogCardToDemoCard) stay in the apps.
  */
 import { getBrowseUrl } from './config';
-/** Coerce a raw kind string into a valid CardKind, defaulting to 'standard'. */
-function normalizeKind(raw) {
-    return raw === 'jumbo' || raw === 'vunion' ? raw : 'standard';
+/**
+ * A card's footprint kind. The oversized flag (`jumbo: bool`) is the real signal in
+ * today's slim catalog; `raw.kind` is a legacy string kept only so an older fat catalog
+ * still resolves. (V-UNION is derived separately from `vunionGroups`, not from here.)
+ */
+function cardKind(raw) {
+    if (raw.jumbo)
+        return 'jumbo';
+    return raw.kind === 'jumbo' || raw.kind === 'vunion' ? raw.kind : 'standard';
 }
 /** Sort key for collector numbers: "12/102" -> 12, "SWSH045" -> 45, "" -> ∞. */
 function numberKey(n) {
@@ -78,7 +84,7 @@ class LocalCatalog {
                 seriesId: raw_c.series ?? meta?.series ?? '',
                 releaseDate: raw_c.release_date ?? '',
                 image: raw_c.image ?? '',
-                kind: normalizeKind(raw_c.kind),
+                kind: cardKind(raw_c),
                 illustrator: raw_c.illustrator ?? '',
                 types: raw_c.types ?? [],
                 stage: raw_c.stage ?? '',

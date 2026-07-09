@@ -111,7 +111,11 @@ export interface RawCard {
   series?: string;
   release_date?: string;
   image?: string;
-  kind?: string; // 'standard' | 'jumbo' | 'vunion'
+  /** Oversized card, published by the pipeline (true for every card in TCGPlayer's
+   *  synthetic "Jumbo Cards" set). The authoritative footprint signal — `kind` below is
+   *  a legacy string the slim catalog no longer emits. */
+  jumbo?: boolean;
+  kind?: string; // legacy: 'standard' | 'jumbo' | 'vunion' (absent from the slim catalog)
   illustrator?: string;
   types?: string[];
   stage?: string;
@@ -145,9 +149,14 @@ export interface RawCatalog {
   vunionGroups?: RawVUnionGroup[];
 }
 
-/** Coerce a raw kind string into a valid CardKind, defaulting to 'standard'. */
-function normalizeKind(raw?: string): CardKind {
-  return raw === 'jumbo' || raw === 'vunion' ? raw : 'standard';
+/**
+ * A card's footprint kind. The oversized flag (`jumbo: bool`) is the real signal in
+ * today's slim catalog; `raw.kind` is a legacy string kept only so an older fat catalog
+ * still resolves. (V-UNION is derived separately from `vunionGroups`, not from here.)
+ */
+function cardKind(raw: RawCard): CardKind {
+  if (raw.jumbo) return 'jumbo';
+  return raw.kind === 'jumbo' || raw.kind === 'vunion' ? raw.kind : 'standard';
 }
 
 /** Sort key for collector numbers: "12/102" -> 12, "SWSH045" -> 45, "" -> ∞. */
@@ -223,7 +232,7 @@ class LocalCatalog implements Catalog {
         seriesId: raw_c.series ?? meta?.series ?? '',
         releaseDate: raw_c.release_date ?? '',
         image: raw_c.image ?? '',
-        kind: normalizeKind(raw_c.kind),
+        kind: cardKind(raw_c),
         illustrator: raw_c.illustrator ?? '',
         types: raw_c.types ?? [],
         stage: raw_c.stage ?? '',
