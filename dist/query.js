@@ -292,6 +292,7 @@ export const QUERY_MANUAL = [
         rows: [
             ['grey line', 'shows how your search was understood — tweak from there'],
             ['≈ similar', 'select a card, then tap ≈ similar for visual look-alikes'],
+            ['View <artist>', "tap a card → View <artist> to see all of that illustrator's cards"],
             ['Filters', 'the chip filters combine with any search'],
         ],
     },

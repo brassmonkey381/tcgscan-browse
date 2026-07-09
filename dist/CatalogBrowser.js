@@ -312,6 +312,16 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
         setSeriesId(card.seriesId || null);
         setSetId(card.setId ?? null);
     };
+    /** Show every card by this card's illustrator — a search on the `artist:` field
+     *  (quoted, since illustrator names have spaces). Sets both the raw and debounced
+     *  query so results appear immediately, like jumpToSet/openSimilar. */
+    const viewIllustrator = (card) => {
+        const q = `artist:"${card.illustrator}"`;
+        clearSimilar();
+        clearFilters();
+        setCardQuery(q);
+        setCardQueryDebounced(q);
+    };
     const toggleFacetValue = (key, value) => setSelection((prev) => {
         const current = prev[key] ?? [];
         const next = current.includes(value)
@@ -347,6 +357,16 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
                 },
             }
             : undefined,
+        viewIllustrator: card.illustrator
+            ? {
+                key: 'view-illustrator',
+                label: (c) => `View ${c.illustrator}`,
+                onPress: (c) => {
+                    setActionCard(null);
+                    viewIllustrator(c);
+                },
+            }
+            : undefined,
     });
     /** Resolve the sheet's actions for the tapped card: app-supplied, or the michi default. */
     const actionsFor = (card) => {
@@ -367,7 +387,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
                 },
             ]
             : [];
-        const list = [...placeDefault, builtins.findSimilar, builtins.viewSet].filter((a) => Boolean(a));
+        const list = [
+            ...placeDefault,
+            builtins.findSimilar,
+            builtins.viewSet,
+            builtins.viewIllustrator,
+        ].filter((a) => Boolean(a));
         return resolveActions(list, card);
     };
     const crumbs = [{ label: 'Series', onPress: seriesId ? goSeriesRoot : undefined }];

@@ -6,10 +6,11 @@
  * package no longer hardcodes poke-michi's "Place in pocket" — each app fills in
  * its own verbs (michi: place/replace; tcgscan-app: add to collection / details).
  *
- * Two actions can't live in app code cleanly because they drive the browser's own
- * state or the data server — `Find similar` and `View set`. The browser builds
- * those as `BrowserBuiltins` and passes them to the `cardActions(card, builtins)`
- * factory, so an app composes `[...appActions, builtins.findSimilar, builtins.viewSet]`.
+ * Some actions can't live in app code cleanly because they drive the browser's own
+ * state or the data server — `Find similar`, `View set`, and `View illustrator`. The
+ * browser builds those as `BrowserBuiltins` and passes them to the
+ * `cardActions(card, builtins)` factory, so an app composes
+ * `[...appActions, builtins.findSimilar, builtins.viewSet, builtins.viewIllustrator]`.
  */
 import type { CatalogCard } from './catalog';
 export interface CardAction {
@@ -32,6 +33,9 @@ export interface CardAction {
 export interface BrowserBuiltins {
     findSimilar?: CardAction;
     viewSet?: CardAction;
+    /** Search the catalog for every card by this card's illustrator (undefined when
+     *  the card has no illustrator). */
+    viewIllustrator?: CardAction;
 }
 /** The per-card action factory an app supplies to `CatalogBrowser`. */
 export type CardActionsFactory = (card: CatalogCard, builtins: BrowserBuiltins) => CardAction[];

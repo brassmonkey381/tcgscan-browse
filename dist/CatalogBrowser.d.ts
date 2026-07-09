@@ -14,9 +14,10 @@ interface CatalogBrowserProps {
     onPickCard?: (cardId: string) => void;
     /**
      * App-supplied per-card action list for the tap sheet. Receives the browser's
-     * `BrowserBuiltins` (findSimilar / viewSet, each present only when applicable) so the app
-     * composes `[...appActions, builtins.findSimilar, builtins.viewSet]`. When omitted, the
-     * sheet falls back to the `onPickCard` default above.
+     * `BrowserBuiltins` (findSimilar / viewSet / viewIllustrator, each present only when
+     * applicable) so the app composes
+     * `[...appActions, builtins.findSimilar, builtins.viewSet, builtins.viewIllustrator]`.
+     * When omitted, the sheet falls back to the `onPickCard` default above.
      */
     cardActions?: CardActionsFactory;
     /**
