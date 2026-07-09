@@ -232,26 +232,22 @@ export function RecentProducts({
     </View>
   );
 
-  const renderCard = (card: CatalogCard, _tileWidth: number): ReactNode => {
+  const renderCard = (card: CatalogCard): ReactNode => {
     const value = priceOf(card.id);
     return (
       <Pressable
         style={styles.scard}
         onPress={() => setActionCard(card)}
         accessibilityLabel={`${card.name} actions`}>
-        <View style={styles.scardImg}>
-          <Image
-            source={{ uri: cardThumbUrl(card.id, 245) }}
-            style={styles.fillImg}
-            contentFit="contain"
-            cachePolicy="memory-disk"
-            recyclingKey={card.id}
-            transition={100}
-          />
-        </View>
+        <CardThumb card={card} styles={styles} />
         <Text style={styles.scardName} numberOfLines={1}>
           {card.name}
         </Text>
+        {card.setName ? (
+          <Text style={styles.scardSet} numberOfLines={1}>
+            {card.setName}
+          </Text>
+        ) : null}
         <Text style={styles.scardMeta} numberOfLines={1}>
           {value > 0 ? formatUsd(value) : formatSetDate(card.releaseDate)}
         </Text>
@@ -339,15 +335,27 @@ function Carousel<T>({
   const itemW = trackW > 0 ? Math.floor((trackW - TILE_GAP * (count - 1)) / count) : undefined;
   // Wrap-around window: no duplicates within a view because count < items.length when paging.
   const shown = Array.from({ length: count }, (_, i) => items[(start + i) % items.length]);
-  const prev = () => setStart((s) => (s - 1 + items.length) % items.length);
-  const next = () => setStart((s) => (s + 1) % items.length);
+  // Page by the group size (next/prev whole screen of items), wrapping infinitely.
+  const prev = () => setStart((s) => (s - count + items.length) % items.length);
+  const next = () => setStart((s) => (s + count) % items.length);
+  const atStart = start === 0;
 
   return (
     <View style={styles.carousel}>
       {canPage ? (
-        <Pressable style={styles.arrow} onPress={prev} hitSlop={6} accessibilityLabel="Previous">
-          <Text style={styles.arrowText}>‹</Text>
-        </Pressable>
+        <>
+          <Pressable
+            style={[styles.arrow, atStart && styles.arrowDim]}
+            onPress={() => setStart(0)}
+            disabled={atStart}
+            hitSlop={6}
+            accessibilityLabel="Back to start">
+            <Text style={styles.arrowText}>⟲</Text>
+          </Pressable>
+          <Pressable style={styles.arrow} onPress={prev} hitSlop={6} accessibilityLabel="Previous group">
+            <Text style={styles.arrowText}>‹</Text>
+          </Pressable>
+        </>
       ) : null}
       <View
         style={styles.track}
@@ -364,10 +372,43 @@ function Carousel<T>({
           : null}
       </View>
       {canPage ? (
-        <Pressable style={styles.arrow} onPress={next} hitSlop={6} accessibilityLabel="Next">
+        <Pressable style={styles.arrow} onPress={next} hitSlop={6} accessibilityLabel="Next group">
           <Text style={styles.arrowText}>›</Text>
         </Pressable>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * A card thumbnail that falls back to a dated placeholder when the image is missing —
+ * e.g. upcoming cards not yet mirrored. The failure is tracked per-URL, so a pre-manifest
+ * flat-path 404 still retries the hashed URL once the image manifest lands (otherwise a
+ * real card would latch onto the placeholder forever).
+ */
+function CardThumb({ card, styles }: { card: CatalogCard; styles: Styles }) {
+  const uri = cardThumbUrl(card.id, 245);
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const missing = !uri || failedUri === uri;
+  return (
+    <View style={styles.scardImg}>
+      {missing ? (
+        <View style={styles.thumbPlaceholder}>
+          <Text style={styles.thumbPlaceholderText} numberOfLines={2}>
+            {card.releaseDate ? formatSetDate(card.releaseDate) : 'No image'}
+          </Text>
+        </View>
+      ) : (
+        <Image
+          source={{ uri }}
+          style={styles.fillImg}
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          recyclingKey={card.id}
+          transition={100}
+          onError={() => setFailedUri(uri)}
+        />
+      )}
     </View>
   );
 }
@@ -392,6 +433,7 @@ function makeStyles(t: BrowseTheme) {
       justifyContent: 'center',
     },
     arrowText: { fontSize: 18, lineHeight: 20, fontWeight: '800', color: t.subtext },
+    arrowDim: { opacity: 0.35 },
 
     // shared image fill
     fillImg: { width: '100%', height: '100%' },
@@ -436,7 +478,16 @@ function makeStyles(t: BrowseTheme) {
       overflow: 'hidden',
       backgroundColor: t.imagePlaceholder,
     },
+    thumbPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 3 },
+    thumbPlaceholderText: {
+      fontSize: 9,
+      lineHeight: 12,
+      fontWeight: '700',
+      color: t.faint,
+      textAlign: 'center',
+    },
     scardName: { fontSize: 10, lineHeight: 12, color: t.text, textAlign: 'center' },
+    scardSet: { fontSize: 8, lineHeight: 10, color: t.subtext, textAlign: 'center' },
     scardMeta: { fontSize: 9, lineHeight: 11, fontWeight: '700', color: t.accent, textAlign: 'center' },
   });
 }

@@ -125,9 +125,9 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     const renderSet = (t, tileWidth) => (_jsxs(View, { style: styles.tile, children: [_jsxs(View, { style: styles.montage, children: [t.montage.map((card) => (_jsx(Pressable, { style: styles.montageSlot, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }, card.id))), t.upcoming ? (_jsx(View, { style: styles.badge, pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }), _jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
                     .filter(Boolean)
                     .join(' · ') }), _jsx(Pressable, { onPress: () => open(t.chaseUrl), hitSlop: 4, disabled: !t.chaseUrl, children: _jsx(Text, { style: styles.tileLink, children: "TCGPlayer \u2197" }) })] }));
-    const renderCard = (card, _tileWidth) => {
+    const renderCard = (card) => {
         const value = priceOf(card.id);
-        return (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: [_jsx(View, { style: styles.scardImg, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), _jsx(Text, { style: styles.scardMeta, numberOfLines: 1, children: value > 0 ? formatUsd(value) : formatSetDate(card.releaseDate) })] }));
+        return (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: [_jsx(CardThumb, { card: card, styles: styles }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, _jsx(Text, { style: styles.scardMeta, numberOfLines: 1, children: value > 0 ? formatUsd(value) : formatSetDate(card.releaseDate) })] }));
     };
     return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.header, children: title }), _jsx(Carousel, { items: setTiles, visible: SETS_PER_VIEW, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, upcomingCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Upcoming cards" }), _jsx(Carousel, { items: upcomingCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, releasedCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Recently released" }), _jsx(Carousel, { items: releasedCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
 }
@@ -144,15 +144,29 @@ function Carousel({ items, visible, keyOf, renderItem, styles, }) {
     const itemW = trackW > 0 ? Math.floor((trackW - TILE_GAP * (count - 1)) / count) : undefined;
     // Wrap-around window: no duplicates within a view because count < items.length when paging.
     const shown = Array.from({ length: count }, (_, i) => items[(start + i) % items.length]);
-    const prev = () => setStart((s) => (s - 1 + items.length) % items.length);
-    const next = () => setStart((s) => (s + 1) % items.length);
-    return (_jsxs(View, { style: styles.carousel, children: [canPage ? (_jsx(Pressable, { style: styles.arrow, onPress: prev, hitSlop: 6, accessibilityLabel: "Previous", children: _jsx(Text, { style: styles.arrowText, children: "\u2039" }) })) : null, _jsx(View, { style: styles.track, onLayout: (e) => {
+    // Page by the group size (next/prev whole screen of items), wrapping infinitely.
+    const prev = () => setStart((s) => (s - count + items.length) % items.length);
+    const next = () => setStart((s) => (s + count) % items.length);
+    const atStart = start === 0;
+    return (_jsxs(View, { style: styles.carousel, children: [canPage ? (_jsxs(_Fragment, { children: [_jsx(Pressable, { style: [styles.arrow, atStart && styles.arrowDim], onPress: () => setStart(0), disabled: atStart, hitSlop: 6, accessibilityLabel: "Back to start", children: _jsx(Text, { style: styles.arrowText, children: "\u27F2" }) }), _jsx(Pressable, { style: styles.arrow, onPress: prev, hitSlop: 6, accessibilityLabel: "Previous group", children: _jsx(Text, { style: styles.arrowText, children: "\u2039" }) })] })) : null, _jsx(View, { style: styles.track, onLayout: (e) => {
                     const w = e.nativeEvent.layout.width;
                     if (w > 0 && Math.abs(w - trackW) > 0.5)
                         setTrackW(w);
                 }, children: itemW != null
                     ? shown.map((item) => (_jsx(View, { style: { width: itemW }, children: renderItem(item, itemW) }, keyOf(item))))
-                    : null }), canPage ? (_jsx(Pressable, { style: styles.arrow, onPress: next, hitSlop: 6, accessibilityLabel: "Next", children: _jsx(Text, { style: styles.arrowText, children: "\u203A" }) })) : null] }));
+                    : null }), canPage ? (_jsx(Pressable, { style: styles.arrow, onPress: next, hitSlop: 6, accessibilityLabel: "Next group", children: _jsx(Text, { style: styles.arrowText, children: "\u203A" }) })) : null] }));
+}
+/**
+ * A card thumbnail that falls back to a dated placeholder when the image is missing —
+ * e.g. upcoming cards not yet mirrored. The failure is tracked per-URL, so a pre-manifest
+ * flat-path 404 still retries the hashed URL once the image manifest lands (otherwise a
+ * real card would latch onto the placeholder forever).
+ */
+function CardThumb({ card, styles }) {
+    const uri = cardThumbUrl(card.id, 245);
+    const [failedUri, setFailedUri] = useState(null);
+    const missing = !uri || failedUri === uri;
+    return (_jsx(View, { style: styles.scardImg, children: missing ? (_jsx(View, { style: styles.thumbPlaceholder, children: _jsx(Text, { style: styles.thumbPlaceholderText, numberOfLines: 2, children: card.releaseDate ? formatSetDate(card.releaseDate) : 'No image' }) })) : (_jsx(Image, { source: { uri }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100, onError: () => setFailedUri(uri) })) }));
 }
 function makeStyles(t) {
     return StyleSheet.create({
@@ -173,6 +187,7 @@ function makeStyles(t) {
             justifyContent: 'center',
         },
         arrowText: { fontSize: 18, lineHeight: 20, fontWeight: '800', color: t.subtext },
+        arrowDim: { opacity: 0.35 },
         // shared image fill
         fillImg: { width: '100%', height: '100%' },
         // set tile
@@ -214,7 +229,16 @@ function makeStyles(t) {
             overflow: 'hidden',
             backgroundColor: t.imagePlaceholder,
         },
+        thumbPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 3 },
+        thumbPlaceholderText: {
+            fontSize: 9,
+            lineHeight: 12,
+            fontWeight: '700',
+            color: t.faint,
+            textAlign: 'center',
+        },
         scardName: { fontSize: 10, lineHeight: 12, color: t.text, textAlign: 'center' },
+        scardSet: { fontSize: 8, lineHeight: 10, color: t.subtext, textAlign: 'center' },
         scardMeta: { fontSize: 9, lineHeight: 11, fontWeight: '700', color: t.accent, textAlign: 'center' },
     });
 }
