@@ -14,7 +14,8 @@ export interface BrowseState {
   setId: string | null;
   /** Facet chip selection: facet key -> selected values. */
   selection: Record<string, string[]>;
-  similarTo: { id: string; name: string } | null;
+  /** The source card(s) a similarity search was run on: their ids + a short label. */
+  similarTo: { ids: string[]; name: string } | null;
   similarCards: CatalogCard[];
 }
 

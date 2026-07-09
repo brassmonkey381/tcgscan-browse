@@ -298,7 +298,7 @@ export function CatalogBrowser({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // "Find similar" mode: results of the data server's embedding RPC for one card.
-  const [similarTo, setSimilarTo] = useState<{ id: string; name: string } | null>(
+  const [similarTo, setSimilarTo] = useState<{ ids: string[]; name: string } | null>(
     browseState.similarTo,
   );
   const [similarCards, setSimilarCards] = useState<CatalogCard[]>(browseState.similarCards);
@@ -534,7 +534,7 @@ export function CatalogBrowser({
     setCardQuery('');
     setCardQueryDebounced('');
     clearFilters();
-    setSimilarTo({ id: card.id, name: card.name });
+    setSimilarTo({ ids: [card.id], name: card.name });
     setSimilarCards([]);
     findSimilar(card.id, 24).then((hits) => {
       const cards = hits
@@ -550,7 +550,7 @@ export function CatalogBrowser({
     setCardQuery('');
     setCardQueryDebounced('');
     clearFilters();
-    setSimilarTo({ id: 'multi', name: `${ids.length} cards` });
+    setSimilarTo({ ids: [...ids], name: `${ids.length} cards` });
     setSimilarCards([]);
     findSimilarToMany(ids, 24).then((hits) => {
       const cards = hits
@@ -776,7 +776,9 @@ export function CatalogBrowser({
           </Pressable>
         </View>
         {helpOpen ? <SearchManual styles={styles} onClose={() => setHelpOpen(false)} /> : null}
-        {occupant && similarAvailable() && similarTo?.id !== occupant.id ? (
+        {occupant &&
+        similarAvailable() &&
+        !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (
           <Pressable style={styles.pocketSimilar} onPress={() => openSimilar(occupant)}>
             <Text style={styles.pocketSimilarText} numberOfLines={1}>
               ≈ Find similar to “{occupant.name}” (in this pocket)
@@ -798,15 +800,49 @@ export function CatalogBrowser({
             </Pressable>
           </View>
         ) : similarTo ? (
-          <View style={styles.metaRow}>
-            <Text style={styles.meta} numberOfLines={1}>
-              {similarCards.length > 0
-                ? `${filteredCards.length} cards similar to “${similarTo.name}”`
-                : `Finding cards similar to “${similarTo.name}”…`}
-            </Text>
-            <Pressable onPress={clearSimilar} hitSlop={8}>
-              <Text style={styles.clear}>Clear</Text>
-            </Pressable>
+          <View style={styles.similarBar}>
+            <View style={styles.metaRow}>
+              <Text style={styles.meta} numberOfLines={1}>
+                {similarCards.length > 0
+                  ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}:`
+                  : 'Finding similar cards…'}
+              </Text>
+              <Pressable onPress={clearSimilar} hitSlop={8}>
+                <Text style={styles.clear}>Clear</Text>
+              </Pressable>
+            </View>
+            {/* The source card(s) the similarity ran on — tap one to open its sheet. */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.similarThumbs}
+              keyboardShouldPersistTaps="handled">
+              {similarTo.ids.map((sid) => {
+                const src = catalog.getCard(sid);
+                const uri = cardThumbUrl(sid, 245);
+                return (
+                  <Pressable
+                    key={sid}
+                    style={styles.similarThumb}
+                    onPress={() => src && setActionCard(src)}>
+                    {uri ? (
+                      <Image
+                        source={{ uri }}
+                        style={styles.cardImage}
+                        contentFit="contain"
+                        cachePolicy="memory-disk"
+                        recyclingKey={sid}
+                        transition={80}
+                      />
+                    ) : (
+                      <View style={styles.cardImageFallback}>
+                        <Text style={styles.cardImageFallbackText}>{src?.name?.slice(0, 1) ?? '?'}</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
         ) : seriesId ? (
           <Breadcrumb styles={styles} crumbs={crumbs} />
@@ -1319,6 +1355,10 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
     meta: { fontSize: 12, color: t.subtext, flexShrink: 1 },
     clear: { fontSize: 13, fontWeight: '600', color: t.accent },
+    // "Similar to" source-card strip (the cards the similarity ran on, clickable)
+    similarBar: { gap: 6 },
+    similarThumbs: { gap: 6, paddingVertical: 2 },
+    similarThumb: { width: 34, aspectRatio: 63 / 88, borderRadius: 4, overflow: 'hidden', backgroundColor: t.imagePlaceholder },
     // facet bar
     facetBar: { gap: 6 },
     facetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
