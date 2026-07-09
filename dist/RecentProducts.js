@@ -137,24 +137,39 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
  * Item width is derived from the measured track so tiles fill the row evenly.
  */
 function Carousel({ items, visible, keyOf, renderItem, styles, }) {
-    const [start, setStart] = useState(0);
+    const [page, setPage] = useState(0);
     const [trackW, setTrackW] = useState(0);
-    const count = Math.min(visible, items.length);
-    const canPage = items.length > count;
-    const itemW = trackW > 0 ? Math.floor((trackW - TILE_GAP * (count - 1)) / count) : undefined;
-    // Wrap-around window: no duplicates within a view because count < items.length when paging.
-    const shown = Array.from({ length: count }, (_, i) => items[(start + i) % items.length]);
-    // Page by the group size (next/prev whole screen of items), wrapping infinitely.
-    const prev = () => setStart((s) => (s - count + items.length) % items.length);
-    const next = () => setStart((s) => (s + count) % items.length);
-    const atStart = start === 0;
-    return (_jsxs(View, { style: styles.carousel, children: [canPage ? (_jsxs(_Fragment, { children: [_jsx(Pressable, { style: [styles.arrow, atStart && styles.arrowDim], onPress: () => setStart(0), disabled: atStart, hitSlop: 6, accessibilityLabel: "Back to start", children: _jsx(Text, { style: styles.arrowText, children: "\u27F2" }) }), _jsx(Pressable, { style: styles.arrow, onPress: prev, hitSlop: 6, accessibilityLabel: "Previous group", children: _jsx(Text, { style: styles.arrowText, children: "\u2039" }) })] })) : null, _jsx(View, { style: styles.track, onLayout: (e) => {
-                    const w = e.nativeEvent.layout.width;
-                    if (w > 0 && Math.abs(w - trackW) > 0.5)
-                        setTrackW(w);
-                }, children: itemW != null
-                    ? shown.map((item) => (_jsx(View, { style: { width: itemW }, children: renderItem(item, itemW) }, keyOf(item))))
-                    : null }), canPage ? (_jsx(Pressable, { style: styles.arrow, onPress: next, hitSlop: 6, accessibilityLabel: "Next group", children: _jsx(Text, { style: styles.arrowText, children: "\u203A" }) })) : null] }));
+    // Discrete pages of `visible` items each (last page may be partial). Paging wraps
+    // infinitely; the indicator below reports position, so pages don't drift off-boundary.
+    const pageSize = visible;
+    const pages = Math.max(1, Math.ceil(items.length / pageSize));
+    const canPage = pages > 1;
+    const safePage = Math.min(page, pages - 1);
+    // Tiles-per-row for the width math: a full page while paging, else however many exist
+    // (so a single short page fills the row instead of leaving a big gap).
+    const perRow = canPage ? pageSize : items.length;
+    const itemW = trackW > 0 ? Math.floor((trackW - TILE_GAP * (perRow - 1)) / perRow) : undefined;
+    const shown = canPage ? items.slice(safePage * pageSize, safePage * pageSize + pageSize) : items;
+    const prev = () => setPage((p) => (Math.min(p, pages - 1) - 1 + pages) % pages);
+    const next = () => setPage((p) => (Math.min(p, pages - 1) + 1) % pages);
+    const atStart = safePage === 0;
+    return (_jsxs(View, { style: styles.carouselWrap, children: [_jsxs(View, { style: styles.carousel, children: [canPage ? (_jsxs(_Fragment, { children: [_jsx(Pressable, { style: [styles.arrow, atStart && styles.arrowDim], onPress: () => setPage(0), disabled: atStart, hitSlop: 6, accessibilityLabel: "Back to start", children: _jsx(Text, { style: styles.arrowText, children: "\u27F2" }) }), _jsx(Pressable, { style: styles.arrow, onPress: prev, hitSlop: 6, accessibilityLabel: "Previous group", children: _jsx(Text, { style: styles.arrowText, children: "\u2039" }) })] })) : null, _jsx(View, { style: styles.track, onLayout: (e) => {
+                            const w = e.nativeEvent.layout.width;
+                            if (w > 0 && Math.abs(w - trackW) > 0.5)
+                                setTrackW(w);
+                        }, children: itemW != null
+                            ? shown.map((item) => (_jsx(View, { style: { width: itemW }, children: renderItem(item, itemW) }, keyOf(item))))
+                            : null }), canPage ? (_jsx(Pressable, { style: styles.arrow, onPress: next, hitSlop: 6, accessibilityLabel: "Next group", children: _jsx(Text, { style: styles.arrowText, children: "\u203A" }) })) : null] }), canPage ? (_jsx(PageIndicator, { pages: pages, current: safePage, onJump: setPage, styles: styles })) : null] }));
+}
+/**
+ * Page indicator under a carousel: tappable dots when there are few pages, or a compact
+ * "n / total" readout when there are too many dots to scan.
+ */
+function PageIndicator({ pages, current, onJump, styles, }) {
+    if (pages > 12) {
+        return (_jsxs(Text, { style: styles.pageText, children: [current + 1, " / ", pages] }));
+    }
+    return (_jsx(View, { style: styles.dots, children: Array.from({ length: pages }, (_, i) => (_jsx(Pressable, { onPress: () => onJump(i), hitSlop: 6, accessibilityLabel: `Page ${i + 1}`, children: _jsx(View, { style: [styles.dot, i === current && styles.dotOn] }) }, i))) }));
 }
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** yyyy-mm-dd -> "Sep 12, 2026" — the full date (incl. day) for the imageless-card placeholder. */
@@ -183,6 +198,7 @@ function makeStyles(t) {
         header: { fontSize: 18, fontWeight: '800', color: t.text },
         subHeader: { fontSize: 13, fontWeight: '700', color: t.subtext, marginTop: 4 },
         // carousel
+        carouselWrap: { gap: 6 },
         carousel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
         track: { flex: 1, flexDirection: 'row', gap: TILE_GAP },
         arrow: {
@@ -197,6 +213,17 @@ function makeStyles(t) {
         },
         arrowText: { fontSize: 18, lineHeight: 20, fontWeight: '800', color: t.subtext },
         arrowDim: { opacity: 0.35 },
+        // page indicator
+        dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
+        dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: t.border },
+        dotOn: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: t.accent },
+        pageText: {
+            textAlign: 'center',
+            fontSize: 11,
+            fontWeight: '700',
+            color: t.subtext,
+            fontVariant: ['tabular-nums'],
+        },
         // shared image fill
         fillImg: { width: '100%', height: '100%' },
         // set tile

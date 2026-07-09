@@ -328,55 +328,99 @@ function Carousel<T>({
   renderItem: (item: T, width: number) => ReactNode;
   styles: Styles;
 }) {
-  const [start, setStart] = useState(0);
+  const [page, setPage] = useState(0);
   const [trackW, setTrackW] = useState(0);
 
-  const count = Math.min(visible, items.length);
-  const canPage = items.length > count;
-  const itemW = trackW > 0 ? Math.floor((trackW - TILE_GAP * (count - 1)) / count) : undefined;
-  // Wrap-around window: no duplicates within a view because count < items.length when paging.
-  const shown = Array.from({ length: count }, (_, i) => items[(start + i) % items.length]);
-  // Page by the group size (next/prev whole screen of items), wrapping infinitely.
-  const prev = () => setStart((s) => (s - count + items.length) % items.length);
-  const next = () => setStart((s) => (s + count) % items.length);
-  const atStart = start === 0;
+  // Discrete pages of `visible` items each (last page may be partial). Paging wraps
+  // infinitely; the indicator below reports position, so pages don't drift off-boundary.
+  const pageSize = visible;
+  const pages = Math.max(1, Math.ceil(items.length / pageSize));
+  const canPage = pages > 1;
+  const safePage = Math.min(page, pages - 1);
+  // Tiles-per-row for the width math: a full page while paging, else however many exist
+  // (so a single short page fills the row instead of leaving a big gap).
+  const perRow = canPage ? pageSize : items.length;
+  const itemW = trackW > 0 ? Math.floor((trackW - TILE_GAP * (perRow - 1)) / perRow) : undefined;
+  const shown = canPage ? items.slice(safePage * pageSize, safePage * pageSize + pageSize) : items;
+
+  const prev = () => setPage((p) => (Math.min(p, pages - 1) - 1 + pages) % pages);
+  const next = () => setPage((p) => (Math.min(p, pages - 1) + 1) % pages);
+  const atStart = safePage === 0;
 
   return (
-    <View style={styles.carousel}>
-      {canPage ? (
-        <>
-          <Pressable
-            style={[styles.arrow, atStart && styles.arrowDim]}
-            onPress={() => setStart(0)}
-            disabled={atStart}
-            hitSlop={6}
-            accessibilityLabel="Back to start">
-            <Text style={styles.arrowText}>⟲</Text>
+    <View style={styles.carouselWrap}>
+      <View style={styles.carousel}>
+        {canPage ? (
+          <>
+            <Pressable
+              style={[styles.arrow, atStart && styles.arrowDim]}
+              onPress={() => setPage(0)}
+              disabled={atStart}
+              hitSlop={6}
+              accessibilityLabel="Back to start">
+              <Text style={styles.arrowText}>⟲</Text>
+            </Pressable>
+            <Pressable style={styles.arrow} onPress={prev} hitSlop={6} accessibilityLabel="Previous group">
+              <Text style={styles.arrowText}>‹</Text>
+            </Pressable>
+          </>
+        ) : null}
+        <View
+          style={styles.track}
+          onLayout={(e) => {
+            const w = e.nativeEvent.layout.width;
+            if (w > 0 && Math.abs(w - trackW) > 0.5) setTrackW(w);
+          }}>
+          {itemW != null
+            ? shown.map((item) => (
+                <View key={keyOf(item)} style={{ width: itemW }}>
+                  {renderItem(item, itemW)}
+                </View>
+              ))
+            : null}
+        </View>
+        {canPage ? (
+          <Pressable style={styles.arrow} onPress={next} hitSlop={6} accessibilityLabel="Next group">
+            <Text style={styles.arrowText}>›</Text>
           </Pressable>
-          <Pressable style={styles.arrow} onPress={prev} hitSlop={6} accessibilityLabel="Previous group">
-            <Text style={styles.arrowText}>‹</Text>
-          </Pressable>
-        </>
-      ) : null}
-      <View
-        style={styles.track}
-        onLayout={(e) => {
-          const w = e.nativeEvent.layout.width;
-          if (w > 0 && Math.abs(w - trackW) > 0.5) setTrackW(w);
-        }}>
-        {itemW != null
-          ? shown.map((item) => (
-              <View key={keyOf(item)} style={{ width: itemW }}>
-                {renderItem(item, itemW)}
-              </View>
-            ))
-          : null}
+        ) : null}
       </View>
       {canPage ? (
-        <Pressable style={styles.arrow} onPress={next} hitSlop={6} accessibilityLabel="Next group">
-          <Text style={styles.arrowText}>›</Text>
-        </Pressable>
+        <PageIndicator pages={pages} current={safePage} onJump={setPage} styles={styles} />
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Page indicator under a carousel: tappable dots when there are few pages, or a compact
+ * "n / total" readout when there are too many dots to scan.
+ */
+function PageIndicator({
+  pages,
+  current,
+  onJump,
+  styles,
+}: {
+  pages: number;
+  current: number;
+  onJump: (page: number) => void;
+  styles: Styles;
+}) {
+  if (pages > 12) {
+    return (
+      <Text style={styles.pageText}>
+        {current + 1} / {pages}
+      </Text>
+    );
+  }
+  return (
+    <View style={styles.dots}>
+      {Array.from({ length: pages }, (_, i) => (
+        <Pressable key={i} onPress={() => onJump(i)} hitSlop={6} accessibilityLabel={`Page ${i + 1}`}>
+          <View style={[styles.dot, i === current && styles.dotOn]} />
+        </Pressable>
+      ))}
     </View>
   );
 }
@@ -431,6 +475,7 @@ function makeStyles(t: BrowseTheme) {
     subHeader: { fontSize: 13, fontWeight: '700', color: t.subtext, marginTop: 4 },
 
     // carousel
+    carouselWrap: { gap: 6 },
     carousel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     track: { flex: 1, flexDirection: 'row', gap: TILE_GAP },
     arrow: {
@@ -445,6 +490,17 @@ function makeStyles(t: BrowseTheme) {
     },
     arrowText: { fontSize: 18, lineHeight: 20, fontWeight: '800', color: t.subtext },
     arrowDim: { opacity: 0.35 },
+    // page indicator
+    dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
+    dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: t.border },
+    dotOn: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: t.accent },
+    pageText: {
+      textAlign: 'center',
+      fontSize: 11,
+      fontWeight: '700',
+      color: t.subtext,
+      fontVariant: ['tabular-nums'],
+    },
 
     // shared image fill
     fillImg: { width: '100%', height: '100%' },
