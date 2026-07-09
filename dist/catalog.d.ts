@@ -19,6 +19,10 @@ export interface CatalogCard {
     stage: string;
     imageSmall?: string;
     imageMedium?: string;
+    /** The displayed image is a CLEAN twin borrowed for an overlay-marked reprint
+     *  (WCD/oversize) — visually right, but the real card may carry a stamp, overlay,
+     *  or signature the substitute lacks. Detail views surface a caveat. */
+    imageSubstituted?: boolean;
 }
 /**
  * A V-UNION set: four 1×1 catalog pieces that tile a 2×2 block, in
@@ -100,6 +104,7 @@ export interface RawCard {
     stage?: string;
     image_small?: string;
     image_medium?: string;
+    imageSubstituted?: boolean;
 }
 export interface RawSet {
     id: number | string;

@@ -90,6 +90,7 @@ class LocalCatalog {
                 stage: raw_c.stage ?? '',
                 imageSmall: raw_c.image_small,
                 imageMedium: raw_c.image_medium,
+                imageSubstituted: raw_c.imageSubstituted,
             };
             this.cards.set(card.id, card);
             this.all.push(card);

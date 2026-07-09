@@ -33,6 +33,10 @@ export interface CatalogCard {
   // size tiers (245px / 640px webp), when generated for this card
   imageSmall?: string;
   imageMedium?: string;
+  /** The displayed image is a CLEAN twin borrowed for an overlay-marked reprint
+   *  (WCD/oversize) — visually right, but the real card may carry a stamp, overlay,
+   *  or signature the substitute lacks. Detail views surface a caveat. */
+  imageSubstituted?: boolean;
 }
 
 /**
@@ -121,6 +125,7 @@ export interface RawCard {
   stage?: string;
   image_small?: string; // 245px webp tier (data server)
   image_medium?: string; // 640px webp tier (data server)
+  imageSubstituted?: boolean; // image borrowed from a clean twin (may differ; see CatalogCard)
 }
 export interface RawSet {
   id: number | string;
@@ -238,6 +243,7 @@ class LocalCatalog implements Catalog {
         stage: raw_c.stage ?? '',
         imageSmall: raw_c.image_small,
         imageMedium: raw_c.image_medium,
+        imageSubstituted: raw_c.imageSubstituted,
       };
       this.cards.set(card.id, card);
       this.all.push(card);

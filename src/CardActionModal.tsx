@@ -64,6 +64,12 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
               {f}
             </Text>
           ))}
+          {card.imageSubstituted ? (
+            <Text style={styles.caveat}>
+              This image may differ slightly from the real card — it could carry a stamp,
+              overlay, or signature we missed.
+            </Text>
+          ) : null}
 
           <View style={styles.actions}>
             {ordered.map((action) => {
@@ -134,6 +140,7 @@ function makeStyles(t: BrowseTheme) {
     imageFallbackText: { color: t.faint, fontSize: 12 },
     name: { fontSize: 16, fontWeight: '700', color: t.text },
     fact: { fontSize: 12, color: t.subtext },
+    caveat: { fontSize: 11, color: t.faint, fontStyle: 'italic', marginTop: 4, lineHeight: 15 },
     actions: { marginTop: 10, gap: 6 },
     action: {
       borderRadius: 9,
