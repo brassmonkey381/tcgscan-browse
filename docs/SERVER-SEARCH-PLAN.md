@@ -177,6 +177,21 @@ truth. `runQuery`/`scoreCard` stay exported (fallback + tests).
   lazy-load the catalog (taxonomy + per-set on drill-down), collapsing the 250 MB /
   1-min cold start. (See the lazy-load discussion; server search is its prerequisite.)
 
+## Related consumer: the `RecentProducts` feed (P4 dependency)
+
+`RecentProducts` (v0.4.0+) is wired at the top of poke-michi's home screen and needs
+`catalog.allSets()` + a few `listCards(setId)` per set — so it currently **forces the
+full `catalog.json` load on home**, the exact cold-start cost P4 aims to remove. It only
+needs set-level rows plus the chase cards for ~a handful of recent/upcoming sets, so it's
+a natural client of a lightweight endpoint:
+
+- a `recent_sets` view/RPC (sets ⋈ their top-N cards by value, filtered to the last N
+  months + future-dated) would let the feed render **without** the in-memory catalog, and
+- pairs with the async `getCardDetail(id)` from P4's open question below.
+
+Until then the feed loads the catalog in the background (covers paint first). Fold this
+into P4 so the home screen goes back to catalog-free.
+
 ## Open questions
 
 - **`getCard` for binders** (poke-michi) still needs random-access to any card by id —
