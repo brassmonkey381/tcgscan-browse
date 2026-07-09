@@ -42,8 +42,11 @@ const STRIP_CARD_W = 66;
 
 interface RecentProductsProps {
   catalog: Catalog;
-  /** How many recent sets to show in the grid. Default 12. */
-  setLimit?: number;
+  /**
+   * How far back (in months) a released set stays in the feed. Every set from this
+   * window plus all upcoming (future-dated) sets are shown, newest first. Default 3.
+   */
+  monthsBack?: number;
   /** How many chase cards to montage per set tile. Default 3 (like the reference wall). */
   montageCount?: number;
   /** How many newest cards to show in the strip. Default 20; pass 0 to hide the strip. */
@@ -64,11 +67,11 @@ interface SetTile {
 
 export function RecentProducts({
   catalog,
-  setLimit = 12,
+  monthsBack = 3,
   montageCount = 3,
   cardLimit = 20,
   theme: themeProp,
-  title = 'Recent Sets',
+  title = 'Recent & Upcoming',
 }: RecentProductsProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -80,13 +83,22 @@ export function RecentProducts({
   const priceSummary = usePriceSummary();
   const priceOf = (id: string) => priceSummary?.[id]?.cur ?? 0;
 
-  // Today (yyyy-mm-dd) for the upcoming/released split. Computed once.
+  // Today (yyyy-mm-dd) for the upcoming/released split, and the release cutoff
+  // `monthsBack` months earlier. Computed once (setMonth handles year rollover).
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const cutoff = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - monthsBack);
+    return d.toISOString().slice(0, 10);
+  }, [monthsBack]);
 
   const tiles = useMemo<SetTile[]>(() => {
+    // Keep sets released within the window OR still upcoming (future dates are
+    // >= cutoff by definition, so this one bound covers both). allSets() is
+    // already sorted newest/future first.
     return catalog
       .allSets()
-      .slice(0, setLimit)
+      .filter((set) => Boolean(set.releaseDate) && set.releaseDate >= cutoff)
       .map((set) => {
         const cards = catalog.listCards(set.id);
         const montage = [...cards]
@@ -96,12 +108,12 @@ export function RecentProducts({
           set,
           montage,
           chaseUrl: montage[0] ? productUrl(montage[0].id) : '',
-          upcoming: Boolean(set.releaseDate) && set.releaseDate > today,
+          upcoming: set.releaseDate > today,
         };
       })
       .filter((t) => t.montage.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, setLimit, montageCount, priceSummary, today]);
+  }, [catalog, cutoff, montageCount, priceSummary, today]);
 
   const newCards = useMemo(
     () => (cardLimit > 0 ? catalog.recentCards(cardLimit) : []),
@@ -124,50 +136,57 @@ export function RecentProducts({
     if (url) Linking.openURL(url).catch(() => {});
   };
 
+  // Nothing in the window (and no cards) → render nothing rather than a bare header.
+  if (tiles.length === 0 && newCards.length === 0) return null;
+
   return (
     <View style={styles.root} onLayout={onLayout}>
-      <Text style={styles.header}>{title}</Text>
+      {tiles.length > 0 ? (
+        <>
+          <Text style={styles.header}>{title}</Text>
 
-      <View style={styles.grid}>
-        {tiles.map(({ set, montage, chaseUrl, upcoming }) => (
-          <Pressable
-            key={set.id}
-            style={[styles.tile, { width: tileW }]}
-            onPress={() => open(chaseUrl)}
-            accessibilityLabel={`${set.name} on TCGPlayer`}>
-            <View style={styles.montage}>
-              {montage.map((card) => (
-                <View key={card.id} style={styles.montageSlot}>
-                  <Image
-                    source={{ uri: cardThumbUrl(card.id, 245) }}
-                    style={styles.montageImg}
-                    contentFit="contain"
-                    cachePolicy="memory-disk"
-                    recyclingKey={card.id}
-                    transition={100}
-                  />
+          <View style={styles.grid}>
+            {tiles.map(({ set, montage, chaseUrl, upcoming }) => (
+              <Pressable
+                key={set.id}
+                style={[styles.tile, { width: tileW }]}
+                onPress={() => open(chaseUrl)}
+                accessibilityLabel={`${set.name} on TCGPlayer`}>
+                <View style={styles.montage}>
+                  {montage.map((card) => (
+                    <View key={card.id} style={styles.montageSlot}>
+                      <Image
+                        source={{ uri: cardThumbUrl(card.id, 245) }}
+                        style={styles.montageImg}
+                        contentFit="contain"
+                        cachePolicy="memory-disk"
+                        recyclingKey={card.id}
+                        transition={100}
+                      />
+                    </View>
+                  ))}
+                  {upcoming ? (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>Upcoming</Text>
+                    </View>
+                  ) : null}
                 </View>
-              ))}
-              {upcoming ? (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>Upcoming</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={styles.tileName} numberOfLines={2}>
-              {set.name}
-            </Text>
-            <Text style={styles.tileMeta} numberOfLines={1}>
-              {[formatSetDate(set.releaseDate), `${set.cardCount.toLocaleString()} cards`]
-                .filter(Boolean)
-                .join(' · ')}
-            </Text>
-            <Text style={styles.tileLink} numberOfLines={1}>
-              TCGPlayer ↗
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+                <Text style={styles.tileName} numberOfLines={2}>
+                  {set.name}
+                </Text>
+                <Text style={styles.tileMeta} numberOfLines={1}>
+                  {[formatSetDate(set.releaseDate), `${set.cardCount.toLocaleString()} cards`]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Text>
+                <Text style={styles.tileLink} numberOfLines={1}>
+                  TCGPlayer ↗
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : null}
 
       {newCards.length > 0 ? (
         <>

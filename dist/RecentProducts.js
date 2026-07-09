@@ -30,7 +30,7 @@ const TARGET_TILE_W = 156;
 const GRID_GAP = 10;
 /** New-cards strip thumbnail width (px). */
 const STRIP_CARD_W = 66;
-export function RecentProducts({ catalog, setLimit = 12, montageCount = 3, cardLimit = 20, theme: themeProp, title = 'Recent Sets', }) {
+export function RecentProducts({ catalog, monthsBack = 3, montageCount = 3, cardLimit = 20, theme: themeProp, title = 'Recent & Upcoming', }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme), [theme]);
     // Card thumbs resolve by id via the content-hashed manifest; repaint when it lands.
@@ -39,12 +39,21 @@ export function RecentProducts({ catalog, setLimit = 12, montageCount = 3, cardL
     // all and the montage falls back to the set's natural (collector-number) order.
     const priceSummary = usePriceSummary();
     const priceOf = (id) => priceSummary?.[id]?.cur ?? 0;
-    // Today (yyyy-mm-dd) for the upcoming/released split. Computed once.
+    // Today (yyyy-mm-dd) for the upcoming/released split, and the release cutoff
+    // `monthsBack` months earlier. Computed once (setMonth handles year rollover).
     const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+    const cutoff = useMemo(() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - monthsBack);
+        return d.toISOString().slice(0, 10);
+    }, [monthsBack]);
     const tiles = useMemo(() => {
+        // Keep sets released within the window OR still upcoming (future dates are
+        // >= cutoff by definition, so this one bound covers both). allSets() is
+        // already sorted newest/future first.
         return catalog
             .allSets()
-            .slice(0, setLimit)
+            .filter((set) => Boolean(set.releaseDate) && set.releaseDate >= cutoff)
             .map((set) => {
             const cards = catalog.listCards(set.id);
             const montage = [...cards]
@@ -54,12 +63,12 @@ export function RecentProducts({ catalog, setLimit = 12, montageCount = 3, cardL
                 set,
                 montage,
                 chaseUrl: montage[0] ? productUrl(montage[0].id) : '',
-                upcoming: Boolean(set.releaseDate) && set.releaseDate > today,
+                upcoming: set.releaseDate > today,
             };
         })
             .filter((t) => t.montage.length > 0);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [catalog, setLimit, montageCount, priceSummary, today]);
+    }, [catalog, cutoff, montageCount, priceSummary, today]);
     const newCards = useMemo(() => (cardLimit > 0 ? catalog.recentCards(cardLimit) : []), [catalog, cardLimit]);
     // Measured width → set-tile column count (packs to `TARGET_TILE_W`, min 2).
     const [width, setWidth] = useState(0);
@@ -78,9 +87,12 @@ export function RecentProducts({ catalog, setLimit = 12, montageCount = 3, cardL
         if (url)
             Linking.openURL(url).catch(() => { });
     };
-    return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [_jsx(Text, { style: styles.header, children: title }), _jsx(View, { style: styles.grid, children: tiles.map(({ set, montage, chaseUrl, upcoming }) => (_jsxs(Pressable, { style: [styles.tile, { width: tileW }], onPress: () => open(chaseUrl), accessibilityLabel: `${set.name} on TCGPlayer`, children: [_jsxs(View, { style: styles.montage, children: [montage.map((card) => (_jsx(View, { style: styles.montageSlot, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.montageImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }, card.id))), upcoming ? (_jsx(View, { style: styles.badge, children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }), _jsx(Text, { style: styles.tileName, numberOfLines: 2, children: set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(set.releaseDate), `${set.cardCount.toLocaleString()} cards`]
-                                .filter(Boolean)
-                                .join(' · ') }), _jsx(Text, { style: styles.tileLink, numberOfLines: 1, children: "TCGPlayer \u2197" })] }, set.id))) }), newCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "New cards" }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.strip, children: newCards.map((card) => (_jsxs(Pressable, { style: styles.stripCard, onPress: () => open(productUrl(card.id)), accessibilityLabel: `${card.name} on TCGPlayer`, children: [_jsx(View, { style: styles.stripImgWrap, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.montageImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }), _jsx(Text, { style: styles.stripName, numberOfLines: 1, children: card.name }), priceOf(card.id) > 0 ? (_jsx(Text, { style: styles.stripValue, numberOfLines: 1, children: formatUsd(priceOf(card.id)) })) : null] }, card.id))) })] })) : null] }));
+    // Nothing in the window (and no cards) → render nothing rather than a bare header.
+    if (tiles.length === 0 && newCards.length === 0)
+        return null;
+    return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [tiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.header, children: title }), _jsx(View, { style: styles.grid, children: tiles.map(({ set, montage, chaseUrl, upcoming }) => (_jsxs(Pressable, { style: [styles.tile, { width: tileW }], onPress: () => open(chaseUrl), accessibilityLabel: `${set.name} on TCGPlayer`, children: [_jsxs(View, { style: styles.montage, children: [montage.map((card) => (_jsx(View, { style: styles.montageSlot, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.montageImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }, card.id))), upcoming ? (_jsx(View, { style: styles.badge, children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }), _jsx(Text, { style: styles.tileName, numberOfLines: 2, children: set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(set.releaseDate), `${set.cardCount.toLocaleString()} cards`]
+                                        .filter(Boolean)
+                                        .join(' · ') }), _jsx(Text, { style: styles.tileLink, numberOfLines: 1, children: "TCGPlayer \u2197" })] }, set.id))) })] })) : null, newCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "New cards" }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.strip, children: newCards.map((card) => (_jsxs(Pressable, { style: styles.stripCard, onPress: () => open(productUrl(card.id)), accessibilityLabel: `${card.name} on TCGPlayer`, children: [_jsx(View, { style: styles.stripImgWrap, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.montageImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }), _jsx(Text, { style: styles.stripName, numberOfLines: 1, children: card.name }), priceOf(card.id) > 0 ? (_jsx(Text, { style: styles.stripValue, numberOfLines: 1, children: formatUsd(priceOf(card.id)) })) : null] }, card.id))) })] })) : null] }));
 }
 function makeStyles(t) {
     return StyleSheet.create({
