@@ -424,10 +424,15 @@ export function CatalogBrowser({
       isCardLevel
         ? FACETS.map((f) => {
             const subset = applyFacets(viewCards, { ...selection, [f.key]: [] });
-            const base = f.available(subset);
-            const values = f.key === 'size' && hasVUnionInView ? [...base, VUNION_SIZE] : base;
+            const selected = selection[f.key] ?? [];
+            // Currently-selected values ALWAYS stay visible (even if absent from the subset), so a
+            // filter that now matches nothing is still deselectable — never a silent stuck 0.
+            const values = [...new Set([...f.available(subset), ...selected])];
+            if (f.key === 'size' && hasVUnionInView && !values.includes(VUNION_SIZE)) {
+              values.push(VUNION_SIZE);
+            }
             return { facet: f, values };
-          }).filter((o) => o.values.length >= 2)
+          }).filter((o) => o.values.length >= 2 || (selection[o.facet.key]?.length ?? 0) > 0)
         : [],
     [isCardLevel, viewCards, selection, hasVUnionInView],
   );
