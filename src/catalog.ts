@@ -73,6 +73,12 @@ export interface Catalog {
   getSet(setId: string): CatalogSet | undefined;
   listCards(setId: string): CatalogCard[];
   getCard(cardId: string): CatalogCard | undefined;
+  /** Every set, newest release first (empty dates sink last) — for a recent/upcoming
+   *  products feed. Future-dated sets naturally lead the list. */
+  allSets(): CatalogSet[];
+  /** The newest cards by release date (dateless cards excluded) — for a "new cards"
+   *  strip. Capped at `limit`. */
+  recentCards(limit?: number): CatalogCard[];
   /** Every card (stable order) — for structured queries that scan the corpus. */
   listAll(): CatalogCard[];
   /** Every jumbo (oversized, 2×2) card in the catalog. */
@@ -310,6 +316,17 @@ class LocalCatalog implements Catalog {
 
   getCard(cardId: string): CatalogCard | undefined {
     return this.cards.get(cardId);
+  }
+
+  allSets(): CatalogSet[] {
+    return [...this.sets.values()].sort(byReleaseDesc);
+  }
+
+  recentCards(limit = 24): CatalogCard[] {
+    return this.all
+      .filter((c) => c.releaseDate)
+      .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
+      .slice(0, limit);
   }
 
   listAll(): CatalogCard[] {

@@ -55,6 +55,12 @@ export interface Catalog {
     getSet(setId: string): CatalogSet | undefined;
     listCards(setId: string): CatalogCard[];
     getCard(cardId: string): CatalogCard | undefined;
+    /** Every set, newest release first (empty dates sink last) — for a recent/upcoming
+     *  products feed. Future-dated sets naturally lead the list. */
+    allSets(): CatalogSet[];
+    /** The newest cards by release date (dateless cards excluded) — for a "new cards"
+     *  strip. Capped at `limit`. */
+    recentCards(limit?: number): CatalogCard[];
     /** Every card (stable order) — for structured queries that scan the corpus. */
     listAll(): CatalogCard[];
     /** Every jumbo (oversized, 2×2) card in the catalog. */

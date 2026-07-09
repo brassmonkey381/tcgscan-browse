@@ -171,6 +171,15 @@ class LocalCatalog {
     getCard(cardId) {
         return this.cards.get(cardId);
     }
+    allSets() {
+        return [...this.sets.values()].sort(byReleaseDesc);
+    }
+    recentCards(limit = 24) {
+        return this.all
+            .filter((c) => c.releaseDate)
+            .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
+            .slice(0, limit);
+    }
     listAll() {
         return this.all;
     }

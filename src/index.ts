@@ -111,3 +111,4 @@ export { browseState, type BrowseState } from './state';
 
 export { CatalogBrowser } from './CatalogBrowser';
 export { CardActionModal } from './CardActionModal';
+export { RecentProducts } from './RecentProducts';
