@@ -9,7 +9,7 @@
  * only), so the sheet image would otherwise fail to load.
  */
 import { Image } from 'expo-image';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { CardAction } from './actions';
 import { resolveLabel } from './actions';
@@ -109,6 +109,89 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
   );
 }
 
+/**
+ * Multi-select action sheet — shown when 2+ cards are selected (Ctrl/Shift-click on web).
+ * The image area crams every selected thumb into the usual footprint (scrolls if they
+ * overflow), then offers the batch actions. Buttons are hidden when their handler is absent
+ * (e.g. no "Find similar to all" when the data server isn't configured).
+ */
+export function MultiCardActionModal({
+  cards,
+  onAddAll,
+  onFindSimilarAll,
+  onClose,
+  theme = lightTheme,
+}: {
+  cards: CatalogCard[];
+  /** "Add all to a binder" (app-supplied). Omit to hide the button. */
+  onAddAll?: () => void;
+  /** "Find similar to all" (kit-supplied embedding search). Omit to hide the button. */
+  onFindSimilarAll?: () => void;
+  onClose: () => void;
+  theme?: BrowseTheme;
+}) {
+  const styles = makeStyles(theme);
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
+          <View style={styles.imageWrap}>
+            <ScrollView contentContainerStyle={styles.multiGrid}>
+              {cards.map((c) => {
+                const uri = cardThumbUrl(c.id, 245);
+                return (
+                  <View key={c.id} style={styles.multiThumb}>
+                    {uri ? (
+                      <Image source={{ uri }} style={styles.image} contentFit="contain" transition={80} />
+                    ) : (
+                      <View style={styles.imageFallback}>
+                        <Text style={styles.imageFallbackText}>—</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+          <Text style={styles.name} numberOfLines={1}>
+            {cards.length} cards selected
+          </Text>
+
+          <View style={styles.actions}>
+            {onAddAll ? (
+              <Pressable
+                style={[styles.action, styles.actionPrimary]}
+                onPress={() => {
+                  onClose();
+                  onAddAll();
+                }}>
+                <Text style={[styles.actionText, styles.actionPrimaryText]} numberOfLines={1}>
+                  Add all to a binder
+                </Text>
+              </Pressable>
+            ) : null}
+            {onFindSimilarAll ? (
+              <Pressable
+                style={styles.action}
+                onPress={() => {
+                  onClose();
+                  onFindSimilarAll();
+                }}>
+                <Text style={styles.actionText} numberOfLines={1}>
+                  ≈ Find similar to all
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable style={styles.action} onPress={onClose}>
+              <Text style={styles.actionCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function makeStyles(t: BrowseTheme) {
   return StyleSheet.create({
     backdrop: {
@@ -136,6 +219,9 @@ function makeStyles(t: BrowseTheme) {
       marginBottom: 6,
     },
     image: { width: '100%', height: '100%' },
+    // Multi-select: cram the selected thumbs into the image footprint, wrapping + scrolling.
+    multiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 6, justifyContent: 'center' },
+    multiThumb: { width: 52, aspectRatio: 63 / 88, borderRadius: 6, overflow: 'hidden', backgroundColor: t.imagePlaceholder },
     imageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     imageFallbackText: { color: t.faint, fontSize: 12 },
     name: { fontSize: 16, fontWeight: '700', color: t.text },

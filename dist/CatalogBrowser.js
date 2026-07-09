@@ -1,4 +1,4 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 /**
  * Taxonomy browse for the 1×1 "Cards" section of the CardPicker.
  *
@@ -23,17 +23,17 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  */
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
+import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery } from './query';
 import { browseState, subscribeBrowseCommand } from './state';
-import { CardActionModal } from './CardActionModal';
+import { CardActionModal, MultiCardActionModal } from './CardActionModal';
 import { SeriesAnalytics, SetAnalytics } from './analytics';
 import { resolveActions, } from './actions';
 import { formatSetDate, seriesDateRange, } from './catalog';
 import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
-import { findSimilar, similarAvailable } from './similar';
+import { findSimilar, findSimilarToMany, similarAvailable } from './similar';
 import { resolveTheme } from './theme';
 /** Cap flat search results so a broad query can't build an unbounded grid. */
 const SEARCH_LIMIT = 200;
@@ -109,7 +109,19 @@ const FACETS = [
         valuesOf: (c) => (c.setName ? [c.setName] : []),
         available: (cards) => distinctSorted(cards, (c) => (c.setName ? [c.setName] : [])),
     },
+    {
+        // Card footprint. 'Standard' / 'Jumbo' come off each card's kind and filter cards
+        // normally; 'V-UNION' is injected as a value in the component (it has no per-card
+        // signal) and, when selected, surfaces assembled V-UNION group tiles — see the `data`
+        // memo. Selecting only 'V-UNION' matches no plain card (correct: groups show instead).
+        key: 'size',
+        label: 'Size',
+        valuesOf: (c) => [c.kind === 'jumbo' ? 'Jumbo' : 'Standard'],
+        available: (cards) => distinctSorted(cards, (c) => [c.kind === 'jumbo' ? 'Jumbo' : 'Standard']),
+    },
 ];
+/** Synthetic Size facet value that switches the browse to V-UNION group tiles. */
+const VUNION_SIZE = 'V-UNION';
 /** Apply the current selection: AND across facets, OR within one facet's values. */
 function applyFacets(cards, selection) {
     const active = FACETS.filter((f) => (selection[f.key]?.length ?? 0) > 0);
@@ -124,7 +136,7 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
     // Hydrate the content-hashed image manifest and repaint tiles when it lands —
@@ -161,6 +173,44 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
     // Tapping a card opens the action sheet (app-supplied actions + built-ins)
     // instead of silently replacing the pocket's occupant.
     const [actionCard, setActionCard] = useState(null);
+    // Multi-select (WEB ONLY): Ctrl/Shift-click toggles cards into `selectedIds`; releasing the
+    // modifier with 2+ selected opens the batch sheet. Native has no modifier keys, so this stays
+    // dormant there. modifierHeld/selectedIdsRef mirror live values for the window keyup listener
+    // (registered once) without re-binding it each render.
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [multiOpen, setMultiOpen] = useState(false);
+    // Explicit select mode — the cross-platform path (native has no Ctrl/Shift): toggle it on,
+    // tap cards to select, then "Continue". Web additionally supports Ctrl/Shift-click.
+    const [multiSelectMode, setMultiSelectMode] = useState(false);
+    const modifierHeld = useRef(false);
+    const selectedIdsRef = useRef([]);
+    selectedIdsRef.current = selectedIds;
+    const clearSelection = () => setSelectedIds([]);
+    const toggleSelected = (id) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    useEffect(() => {
+        if (Platform.OS !== 'web')
+            return;
+        const g = globalThis;
+        if (!g.addEventListener)
+            return;
+        const down = (e) => {
+            if (e.ctrlKey || e.shiftKey || e.metaKey)
+                modifierHeld.current = true;
+        };
+        const up = (e) => {
+            if (e.ctrlKey || e.shiftKey || e.metaKey)
+                return; // another modifier still down
+            modifierHeld.current = false;
+            if (selectedIdsRef.current.length >= 2)
+                setMultiOpen(true);
+        };
+        g.addEventListener('keydown', down);
+        g.addEventListener('keyup', up);
+        return () => {
+            g.removeEventListener?.('keydown', down);
+            g.removeEventListener?.('keyup', up);
+        };
+    }, []);
     // Cards | Analytics toggle within a set OR a series (only when `analytics` is enabled).
     // Resets to the card/set grid whenever the drilled-into series or set changes.
     const [analyticsTab, setAnalyticsTab] = useState('cards');
@@ -207,10 +257,18 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
         return [];
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [catalog, searching, parsed, setId, similarTo, similarCards, priceSummary]);
-    // Facets that actually have ≥2 distinct values in the cards in view get a chip row.
+    // Whether the catalog carries assembled V-UNION groups (drives the Size=V-UNION option).
+    const hasVUnion = useMemo(() => catalog.vunionGroups().length > 0, [catalog]);
+    // Facets that actually have ≥2 distinct values in the cards in view get a chip row. The
+    // Size facet also offers a synthetic 'V-UNION' value (group tiles) when the catalog has them.
     const facetOptions = useMemo(() => isCardLevel
-        ? FACETS.map((f) => ({ facet: f, values: f.available(viewCards) })).filter((o) => o.values.length >= 2)
-        : [], [isCardLevel, viewCards]);
+        ? FACETS.map((f) => {
+            const values = f.key === 'size' && hasVUnion
+                ? [...f.available(viewCards), VUNION_SIZE]
+                : f.available(viewCards);
+            return { facet: f, values };
+        }).filter((o) => o.values.length >= 2)
+        : [], [isCardLevel, viewCards, hasVUnion]);
     const filteredCards = useMemo(() => applyFacets(viewCards, selection), [viewCards, selection]);
     const activeFilterCount = useMemo(() => Object.values(selection).reduce((n, vals) => n + vals.length, 0), [selection]);
     // Dense grid geometry from the measured width. Falls back to a sane default pre-layout.
@@ -228,13 +286,20 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
     const cols = isCardLevel ? numColumns : taxCols;
     const cardRowHeight = Math.round(tileW * CARD_ASPECT + CARD_LABEL_H + ROW_GAP);
     const rowHeight = isCardLevel ? cardRowHeight : taxTileHeight + ROW_GAP;
+    // Size=V-UNION surfaces assembled group tiles (no per-card signal exists for them). Shown
+    // ahead of any plain cards the rest of the Size selection matches (Standard/Jumbo).
+    const showVUnionGroups = isCardLevel && (selection.size ?? []).includes(VUNION_SIZE);
     const data = useMemo(() => {
         if (level === 'series')
             return series.map((s) => ({ kind: 'series', series: s }));
         if (level === 'sets')
             return sets.map((s) => ({ kind: 'set', set: s }));
-        return filteredCards.map((c) => ({ kind: 'card', card: c }));
-    }, [level, series, sets, filteredCards]);
+        const cards = filteredCards.map((c) => ({ kind: 'card', card: c }));
+        if (!showVUnionGroups)
+            return cards;
+        const groups = catalog.vunionGroups().map((g) => ({ kind: 'vunion', group: g }));
+        return [...groups, ...cards];
+    }, [level, series, sets, filteredCards, showVUnionGroups, catalog]);
     // Warm the first row of card images through the cache once per distinct view (set/filter/
     // search change), off the render path. Guarded so it fires at most once per view key.
     const prefetchedKey = useRef(null);
@@ -303,6 +368,25 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
             setSimilarCards(cards);
         });
     };
+    /** "Find similar to all" — embedding search on the AVERAGE of the selected cards' vectors
+     *  (find_similar_to_cards server-side). Results replace the grid, like openSimilar. */
+    const openSimilarMany = (ids) => {
+        setCardQuery('');
+        setCardQueryDebounced('');
+        clearFilters();
+        setSimilarTo({ id: 'multi', name: `${ids.length} cards` });
+        setSimilarCards([]);
+        findSimilarToMany(ids, 24).then((hits) => {
+            const cards = hits
+                .map((h) => catalog.getCard(h.id))
+                .filter((c) => Boolean(c));
+            setSimilarCards(cards);
+        });
+    };
+    // Multi-select is only meaningful when at least one batch action can run.
+    const canMultiSelect = Boolean(onPickCards) || similarAvailable();
+    // Read live at press time (modifierHeld is a ref → no re-render on key state change).
+    const isSelecting = () => canMultiSelect && (multiSelectMode || (Platform.OS === 'web' && modifierHeld.current));
     /** Jump the drill-down to a card's set (clearing search/similar/filters first). */
     const jumpToSet = (card) => {
         setCardQuery('');
@@ -419,7 +503,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
         ? `ser-${item.series.id}`
         : item.kind === 'set'
             ? `set-${item.set.id}`
-            : `card-${item.card.id}`;
+            : item.kind === 'vunion'
+                ? `vu-${item.group.pieces.join('-')}`
+                : `card-${item.card.id}`;
     const renderItem = ({ item }) => {
         if (item.kind === 'series') {
             const s = item.series;
@@ -435,9 +521,16 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
                 .join(' · ');
             return (_jsx(TaxonomyTile, { styles: styles, title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSet(s.id) }));
         }
+        if (item.kind === 'vunion') {
+            const g = item.group;
+            return _jsx(VUnionTile, { styles: styles, group: g, width: tileW, onPress: () => onPickVUnion?.(g.pieces) });
+        }
         const c = item.card;
         const value = priceOf(c.id);
-        return (_jsx(CardTile, { styles: styles, card: c, width: tileW, selected: c.id === selectedCardId, onPress: () => setActionCard(c), 
+        return (_jsx(CardTile, { styles: styles, card: c, width: tileW, selected: c.id === selectedCardId, 
+            // In select mode (toggle, or web Ctrl/Shift) a tap toggles selection; else it opens
+            // the single-card sheet.
+            onPress: () => (isSelecting() ? toggleSelected(c.id) : setActionCard(c)), multiSelected: selectedIds.includes(c.id), 
             // value replaces the name line when sorting by value (keeps row geometry fixed)
             label: parsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name, 
             // headline value under the name, only when pricing is surfaced
@@ -466,7 +559,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
                             const on = t === analyticsTab;
                             const label = t === 'analytics' ? 'Analytics' : analyticsScope === 'series' ? 'Sets' : 'Cards';
                             return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn], children: label }) }, t));
-                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : (_jsx(FlatList
+                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
+                                        setMultiSelectMode(false);
+                                        clearSelection();
+                                    }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : (_jsx(FlatList
             // Remount when the level or column count changes so numColumns/getItemLayout stay
             // consistent (FlatList can't change numColumns in place).
             , { style: styles.list, data: data, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching
@@ -477,7 +573,13 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
                                 : 'No similar cards found.'
                             : level === 'cards'
                                 ? 'No cards in this set.'
-                                : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
+                                : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedIds
+                    .map((id) => catalog.getCard(id))
+                    .filter((c) => Boolean(c)), onAddAll: onPickCards ? () => onPickCards(selectedIds) : undefined, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onClose: () => {
+                    setMultiOpen(false);
+                    setMultiSelectMode(false);
+                    clearSelection();
+                }, theme: theme })) : null] }));
 }
 // ---- compact taxonomy rows + card tile + breadcrumb ----------------------------
 /**
@@ -493,10 +595,18 @@ function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, }) {
  * small. Cards with no local image show a neutral fallback, never a crash. Images use the
  * same memory-disk cache + recyclingKey pattern as BinderGrid.
  */
-function CardTile({ styles, card, width, selected, onPress, label, value, quickAction, }) {
+function CardTile({ styles, card, width, selected, multiSelected, onPress, label, value, quickAction, }) {
     // Grid tier: the 245px webp (~20KB), resolved by id via the image manifest.
     const uri = cardThumbUrl(card.id, 245);
-    return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
+    return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected, multiSelected && styles.cardTileMulti], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
+}
+/**
+ * A V-UNION group tile (Size=V-UNION): the assembled art (its top-left piece thumb) with a
+ * V-UNION badge and label. Tapping places the whole 2×2 (onPress → onPickVUnion(pieces)).
+ */
+function VUnionTile({ styles, group, width, onPress, }) {
+    const uri = cardThumbUrl(group.pieces[0], 245);
+    return (_jsxs(Pressable, { style: [styles.cardTile, { width }], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: group.pieces[0], transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "V-UNION" }) })), _jsx(View, { style: styles.vunionTag, children: _jsx(Text, { style: styles.vunionTagText, children: "V-UNION" }) })] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: group.label })] }));
 }
 /** The "?" panel: the search grammar manual (content lives in browse/query.ts,
  *  shared with the sibling app; this just renders it compactly). */
@@ -686,6 +796,39 @@ function makeStyles(t, taxTileHeight) {
         cardQuickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
         cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
         cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.accent, textAlign: 'center' },
+        // multi-select: highlighted tile + a check badge, top-left of the thumb
+        cardTileMulti: { backgroundColor: t.selected, borderRadius: 6, borderWidth: 2, borderColor: t.accent },
+        cardCheck: {
+            position: 'absolute',
+            top: 3,
+            left: 3,
+            width: 18,
+            height: 18,
+            borderRadius: 9,
+            backgroundColor: t.accent,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        cardCheckText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+        // V-UNION group tile badge (bottom-left of the thumb)
+        vunionTag: {
+            position: 'absolute',
+            bottom: 3,
+            left: 3,
+            paddingHorizontal: 4,
+            paddingVertical: 1,
+            borderRadius: 4,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+        },
+        vunionTagText: { color: '#fff', fontSize: 8, fontWeight: '800', letterSpacing: 0.4 },
+        // multi-select control row (mode toggle + Continue)
+        selectRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+        selectMeta: { fontSize: 12, color: t.subtext, flexShrink: 1 },
+        selectBtn: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, backgroundColor: t.accent },
+        selectBtnOff: { opacity: 0.4 },
+        selectBtnText: { color: t.accentText, fontSize: 12, fontWeight: '700' },
+        selectToggle: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: t.border },
+        selectToggleText: { fontSize: 12, fontWeight: '600', color: t.link },
         // breadcrumb
         bcBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
         bcItem: { flexDirection: 'row', alignItems: 'center' },

@@ -13,6 +13,16 @@ interface CatalogBrowserProps {
      */
     onPickCard?: (cardId: string) => void;
     /**
+     * Place an assembled V-UNION (its four ordered piece ids) — the Size=V-UNION group tiles
+     * call this. Omit if the app can't place a 2×2 V-UNION (the group tiles then no-op).
+     */
+    onPickVUnion?: (pieces: readonly string[]) => void;
+    /**
+     * Multi-select batch placement: the ids selected via Ctrl/Shift-click (web). Wired to the
+     * "Add all to a binder" action. Omit to hide that action (e.g. surfaces with no binder).
+     */
+    onPickCards?: (cardIds: string[]) => void;
+    /**
      * App-supplied per-card action list for the tap sheet. Receives the browser's
      * `BrowserBuiltins` (findSimilar / viewSet / viewIllustrator, each present only when
      * applicable) so the app composes
@@ -52,5 +62,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth, taxTileHeight, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth, taxTileHeight, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

@@ -10,7 +10,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  * only), so the sheet image would otherwise fail to load.
  */
 import { Image } from 'expo-image';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { resolveLabel } from './actions';
 import { cardThumbUrl } from './config';
 import { formatUsd } from './prices';
@@ -45,6 +45,25 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
                                         ], numberOfLines: 1, children: resolveLabel(action, card) }) }, action.key));
                             }), _jsx(Pressable, { style: styles.action, onPress: onClose, children: _jsx(Text, { style: styles.actionCancelText, children: "Cancel" }) })] })] }) }) }));
 }
+/**
+ * Multi-select action sheet — shown when 2+ cards are selected (Ctrl/Shift-click on web).
+ * The image area crams every selected thumb into the usual footprint (scrolls if they
+ * overflow), then offers the batch actions. Buttons are hidden when their handler is absent
+ * (e.g. no "Find similar to all" when the data server isn't configured).
+ */
+export function MultiCardActionModal({ cards, onAddAll, onFindSimilarAll, onClose, theme = lightTheme, }) {
+    const styles = makeStyles(theme);
+    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsxs(Pressable, { style: styles.sheet, onPress: () => { }, children: [_jsx(View, { style: styles.imageWrap, children: _jsx(ScrollView, { contentContainerStyle: styles.multiGrid, children: cards.map((c) => {
+                                const uri = cardThumbUrl(c.id, 245);
+                                return (_jsx(View, { style: styles.multiThumb, children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 80 })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "\u2014" }) })) }, c.id));
+                            }) }) }), _jsxs(Text, { style: styles.name, numberOfLines: 1, children: [cards.length, " cards selected"] }), _jsxs(View, { style: styles.actions, children: [onAddAll ? (_jsx(Pressable, { style: [styles.action, styles.actionPrimary], onPress: () => {
+                                    onClose();
+                                    onAddAll();
+                                }, children: _jsx(Text, { style: [styles.actionText, styles.actionPrimaryText], numberOfLines: 1, children: "Add all to a binder" }) })) : null, onFindSimilarAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
+                                    onClose();
+                                    onFindSimilarAll();
+                                }, children: _jsx(Text, { style: styles.actionText, numberOfLines: 1, children: "\u2248 Find similar to all" }) })) : null, _jsx(Pressable, { style: styles.action, onPress: onClose, children: _jsx(Text, { style: styles.actionCancelText, children: "Cancel" }) })] })] }) }) }));
+}
 function makeStyles(t) {
     return StyleSheet.create({
         backdrop: {
@@ -72,6 +91,9 @@ function makeStyles(t) {
             marginBottom: 6,
         },
         image: { width: '100%', height: '100%' },
+        // Multi-select: cram the selected thumbs into the image footprint, wrapping + scrolling.
+        multiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 6, justifyContent: 'center' },
+        multiThumb: { width: 52, aspectRatio: 63 / 88, borderRadius: 6, overflow: 'hidden', backgroundColor: t.imagePlaceholder },
         imageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
         imageFallbackText: { color: t.faint, fontSize: 12 },
         name: { fontSize: 16, fontWeight: '700', color: t.text },

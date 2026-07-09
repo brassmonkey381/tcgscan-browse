@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   FlatList,
   type LayoutChangeEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -35,7 +36,7 @@ import {
 
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery } from './query';
 import { browseState, subscribeBrowseCommand } from './state';
-import { CardActionModal } from './CardActionModal';
+import { CardActionModal, MultiCardActionModal } from './CardActionModal';
 import { SeriesAnalytics, SetAnalytics } from './analytics';
 import {
   resolveActions,
@@ -50,11 +51,12 @@ import {
   type CatalogCard,
   type CatalogSeries,
   type CatalogSet,
+  type VUnionGroup,
 } from './catalog';
 import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
-import { findSimilar, similarAvailable } from './similar';
+import { findSimilar, findSimilarToMany, similarAvailable } from './similar';
 import { resolveTheme, type BrowseTheme } from './theme';
 
 /** Cap flat search results so a broad query can't build an unbounded grid. */
@@ -155,7 +157,20 @@ const FACETS: Facet[] = [
     valuesOf: (c) => (c.setName ? [c.setName] : []),
     available: (cards) => distinctSorted(cards, (c) => (c.setName ? [c.setName] : [])),
   },
+  {
+    // Card footprint. 'Standard' / 'Jumbo' come off each card's kind and filter cards
+    // normally; 'V-UNION' is injected as a value in the component (it has no per-card
+    // signal) and, when selected, surfaces assembled V-UNION group tiles — see the `data`
+    // memo. Selecting only 'V-UNION' matches no plain card (correct: groups show instead).
+    key: 'size',
+    label: 'Size',
+    valuesOf: (c) => [c.kind === 'jumbo' ? 'Jumbo' : 'Standard'],
+    available: (cards) => distinctSorted(cards, (c) => [c.kind === 'jumbo' ? 'Jumbo' : 'Standard']),
+  },
 ];
+
+/** Synthetic Size facet value that switches the browse to V-UNION group tiles. */
+const VUNION_SIZE = 'V-UNION';
 
 /** Selection state: facet key → the values OR-ed together for that facet. */
 type FacetSelection = Record<string, string[]>;
@@ -177,7 +192,11 @@ function applyFacets(cards: CatalogCard[], selection: FacetSelection): CatalogCa
 type BrowseItem =
   | { kind: 'series'; series: CatalogSeries }
   | { kind: 'set'; set: CatalogSet }
-  | { kind: 'card'; card: CatalogCard };
+  | { kind: 'card'; card: CatalogCard }
+  | { kind: 'vunion'; group: VUnionGroup };
+
+/** Modifier flags read off a web keyboard event (DOM lib isn't in the RN typings). */
+type KeyModifiers = { ctrlKey: boolean; shiftKey: boolean; metaKey: boolean };
 
 type Styles = ReturnType<typeof makeStyles>;
 
@@ -191,6 +210,16 @@ interface CatalogBrowserProps {
    * poke-michi's binder behavior. Apps with a richer action set pass `cardActions` instead.
    */
   onPickCard?: (cardId: string) => void;
+  /**
+   * Place an assembled V-UNION (its four ordered piece ids) — the Size=V-UNION group tiles
+   * call this. Omit if the app can't place a 2×2 V-UNION (the group tiles then no-op).
+   */
+  onPickVUnion?: (pieces: readonly string[]) => void;
+  /**
+   * Multi-select batch placement: the ids selected via Ctrl/Shift-click (web). Wired to the
+   * "Add all to a binder" action. Omit to hide that action (e.g. surfaces with no binder).
+   */
+  onPickCards?: (cardIds: string[]) => void;
   /**
    * App-supplied per-card action list for the tap sheet. Receives the browser's
    * `BrowserBuiltins` (findSimilar / viewSet / viewIllustrator, each present only when
@@ -236,6 +265,8 @@ export function CatalogBrowser({
   catalog,
   selectedCardId,
   onPickCard,
+  onPickVUnion,
+  onPickCards,
   cardActions,
   quickAction,
   onOpenCard,
@@ -286,6 +317,45 @@ export function CatalogBrowser({
   // Tapping a card opens the action sheet (app-supplied actions + built-ins)
   // instead of silently replacing the pocket's occupant.
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
+
+  // Multi-select (WEB ONLY): Ctrl/Shift-click toggles cards into `selectedIds`; releasing the
+  // modifier with 2+ selected opens the batch sheet. Native has no modifier keys, so this stays
+  // dormant there. modifierHeld/selectedIdsRef mirror live values for the window keyup listener
+  // (registered once) without re-binding it each render.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [multiOpen, setMultiOpen] = useState(false);
+  // Explicit select mode — the cross-platform path (native has no Ctrl/Shift): toggle it on,
+  // tap cards to select, then "Continue". Web additionally supports Ctrl/Shift-click.
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const modifierHeld = useRef(false);
+  const selectedIdsRef = useRef<string[]>([]);
+  selectedIdsRef.current = selectedIds;
+  const clearSelection = () => setSelectedIds([]);
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const g = globalThis as {
+      addEventListener?: (t: string, cb: (e: KeyModifiers) => void) => void;
+      removeEventListener?: (t: string, cb: (e: KeyModifiers) => void) => void;
+    };
+    if (!g.addEventListener) return;
+    const down = (e: KeyModifiers) => {
+      if (e.ctrlKey || e.shiftKey || e.metaKey) modifierHeld.current = true;
+    };
+    const up = (e: KeyModifiers) => {
+      if (e.ctrlKey || e.shiftKey || e.metaKey) return; // another modifier still down
+      modifierHeld.current = false;
+      if (selectedIdsRef.current.length >= 2) setMultiOpen(true);
+    };
+    g.addEventListener('keydown', down);
+    g.addEventListener('keyup', up);
+    return () => {
+      g.removeEventListener?.('keydown', down);
+      g.removeEventListener?.('keyup', up);
+    };
+  }, []);
   // Cards | Analytics toggle within a set OR a series (only when `analytics` is enabled).
   // Resets to the card/set grid whenever the drilled-into series or set changes.
   const [analyticsTab, setAnalyticsTab] = useState<'cards' | 'analytics'>('cards');
@@ -336,15 +406,23 @@ export function CatalogBrowser({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog, searching, parsed, setId, similarTo, similarCards, priceSummary]);
 
-  // Facets that actually have ≥2 distinct values in the cards in view get a chip row.
+  // Whether the catalog carries assembled V-UNION groups (drives the Size=V-UNION option).
+  const hasVUnion = useMemo(() => catalog.vunionGroups().length > 0, [catalog]);
+
+  // Facets that actually have ≥2 distinct values in the cards in view get a chip row. The
+  // Size facet also offers a synthetic 'V-UNION' value (group tiles) when the catalog has them.
   const facetOptions = useMemo(
     () =>
       isCardLevel
-        ? FACETS.map((f) => ({ facet: f, values: f.available(viewCards) })).filter(
-            (o) => o.values.length >= 2,
-          )
+        ? FACETS.map((f) => {
+            const values =
+              f.key === 'size' && hasVUnion
+                ? [...f.available(viewCards), VUNION_SIZE]
+                : f.available(viewCards);
+            return { facet: f, values };
+          }).filter((o) => o.values.length >= 2)
         : [],
-    [isCardLevel, viewCards],
+    [isCardLevel, viewCards, hasVUnion],
   );
 
   const filteredCards = useMemo(() => applyFacets(viewCards, selection), [viewCards, selection]);
@@ -370,11 +448,17 @@ export function CatalogBrowser({
   const cardRowHeight = Math.round(tileW * CARD_ASPECT + CARD_LABEL_H + ROW_GAP);
   const rowHeight = isCardLevel ? cardRowHeight : taxTileHeight + ROW_GAP;
 
+  // Size=V-UNION surfaces assembled group tiles (no per-card signal exists for them). Shown
+  // ahead of any plain cards the rest of the Size selection matches (Standard/Jumbo).
+  const showVUnionGroups = isCardLevel && (selection.size ?? []).includes(VUNION_SIZE);
   const data = useMemo<BrowseItem[]>(() => {
     if (level === 'series') return series.map((s) => ({ kind: 'series' as const, series: s }));
     if (level === 'sets') return sets.map((s) => ({ kind: 'set' as const, set: s }));
-    return filteredCards.map((c) => ({ kind: 'card' as const, card: c }));
-  }, [level, series, sets, filteredCards]);
+    const cards = filteredCards.map((c) => ({ kind: 'card' as const, card: c }));
+    if (!showVUnionGroups) return cards;
+    const groups = catalog.vunionGroups().map((g) => ({ kind: 'vunion' as const, group: g }));
+    return [...groups, ...cards];
+  }, [level, series, sets, filteredCards, showVUnionGroups, catalog]);
 
   // Warm the first row of card images through the cache once per distinct view (set/filter/
   // search change), off the render path. Guarded so it fires at most once per view key.
@@ -441,6 +525,28 @@ export function CatalogBrowser({
       setSimilarCards(cards);
     });
   };
+
+  /** "Find similar to all" — embedding search on the AVERAGE of the selected cards' vectors
+   *  (find_similar_to_cards server-side). Results replace the grid, like openSimilar. */
+  const openSimilarMany = (ids: string[]) => {
+    setCardQuery('');
+    setCardQueryDebounced('');
+    clearFilters();
+    setSimilarTo({ id: 'multi', name: `${ids.length} cards` });
+    setSimilarCards([]);
+    findSimilarToMany(ids, 24).then((hits) => {
+      const cards = hits
+        .map((h) => catalog.getCard(h.id))
+        .filter((c): c is CatalogCard => Boolean(c));
+      setSimilarCards(cards);
+    });
+  };
+
+  // Multi-select is only meaningful when at least one batch action can run.
+  const canMultiSelect = Boolean(onPickCards) || similarAvailable();
+  // Read live at press time (modifierHeld is a ref → no re-render on key state change).
+  const isSelecting = () =>
+    canMultiSelect && (multiSelectMode || (Platform.OS === 'web' && modifierHeld.current));
 
   /** Jump the drill-down to a card's set (clearing search/similar/filters first). */
   const jumpToSet = (card: CatalogCard) => {
@@ -564,7 +670,9 @@ export function CatalogBrowser({
       ? `ser-${item.series.id}`
       : item.kind === 'set'
         ? `set-${item.set.id}`
-        : `card-${item.card.id}`;
+        : item.kind === 'vunion'
+          ? `vu-${item.group.pieces.join('-')}`
+          : `card-${item.card.id}`;
 
   const renderItem = ({ item }: { item: BrowseItem }) => {
     if (item.kind === 'series') {
@@ -585,6 +693,10 @@ export function CatalogBrowser({
         <TaxonomyTile styles={styles} title={s.name} meta={meta} coverUri={s.coverUri} width={taxTileW} onPress={() => openSet(s.id)} />
       );
     }
+    if (item.kind === 'vunion') {
+      const g = item.group;
+      return <VUnionTile styles={styles} group={g} width={tileW} onPress={() => onPickVUnion?.(g.pieces)} />;
+    }
     const c = item.card;
     const value = priceOf(c.id);
     return (
@@ -593,7 +705,10 @@ export function CatalogBrowser({
         card={c}
         width={tileW}
         selected={c.id === selectedCardId}
-        onPress={() => setActionCard(c)}
+        // In select mode (toggle, or web Ctrl/Shift) a tap toggles selection; else it opens
+        // the single-card sheet.
+        onPress={() => (isSelecting() ? toggleSelected(c.id) : setActionCard(c))}
+        multiSelected={selectedIds.includes(c.id)}
         // value replaces the name line when sorting by value (keeps row geometry fixed)
         label={parsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name}
         // headline value under the name, only when pricing is surfaced
@@ -705,6 +820,35 @@ export function CatalogBrowser({
             onClear={clearFilters}
           />
         ) : null}
+        {isCardLevel && canMultiSelect && !analyticsView ? (
+          <View style={styles.selectRow}>
+            {multiSelectMode || selectedIds.length > 0 ? (
+              <>
+                <Text style={styles.selectMeta} numberOfLines={1}>
+                  {selectedIds.length} selected{selectedIds.length < 2 ? ' · tap 2+' : ''}
+                </Text>
+                <Pressable
+                  disabled={selectedIds.length < 2}
+                  onPress={() => setMultiOpen(true)}
+                  style={[styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff]}>
+                  <Text style={styles.selectBtnText}>Continue →</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setMultiSelectMode(false);
+                    clearSelection();
+                  }}
+                  hitSlop={8}>
+                  <Text style={styles.clear}>Cancel</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable onPress={() => setMultiSelectMode(true)} style={styles.selectToggle}>
+                <Text style={styles.selectToggleText}>⊕ Select multiple</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : null}
       </View>
 
       {analyticsView ? (
@@ -757,6 +901,22 @@ export function CatalogBrowser({
           actions={actionsFor(actionCard)}
           value={priceOf(actionCard.id)}
           onClose={() => setActionCard(null)}
+          theme={theme}
+        />
+      ) : null}
+
+      {multiOpen ? (
+        <MultiCardActionModal
+          cards={selectedIds
+            .map((id) => catalog.getCard(id))
+            .filter((c): c is CatalogCard => Boolean(c))}
+          onAddAll={onPickCards ? () => onPickCards(selectedIds) : undefined}
+          onFindSimilarAll={similarAvailable() ? () => openSimilarMany(selectedIds) : undefined}
+          onClose={() => {
+            setMultiOpen(false);
+            setMultiSelectMode(false);
+            clearSelection();
+          }}
           theme={theme}
         />
       ) : null}
@@ -817,6 +977,7 @@ function CardTile({
   card,
   width,
   selected,
+  multiSelected,
   onPress,
   label,
   value,
@@ -826,6 +987,8 @@ function CardTile({
   card: CatalogCard;
   width: number;
   selected: boolean;
+  /** Checked in multi-select mode (Ctrl/Shift-click / select mode). */
+  multiSelected?: boolean;
   onPress: () => void;
   /** Text under the thumb; defaults to the card name (value when sorting by value). */
   label?: string;
@@ -837,7 +1000,9 @@ function CardTile({
   // Grid tier: the 245px webp (~20KB), resolved by id via the image manifest.
   const uri = cardThumbUrl(card.id, 245);
   return (
-    <Pressable style={[styles.cardTile, { width }, selected && styles.cardTileSelected]} onPress={onPress}>
+    <Pressable
+      style={[styles.cardTile, { width }, selected && styles.cardTileSelected, multiSelected && styles.cardTileMulti]}
+      onPress={onPress}>
       <View style={styles.cardImageWrap}>
         {uri ? (
           <Image
@@ -853,6 +1018,11 @@ function CardTile({
             <Text style={styles.cardImageFallbackText}>no image</Text>
           </View>
         )}
+        {multiSelected ? (
+          <View style={styles.cardCheck}>
+            <Text style={styles.cardCheckText}>✓</Text>
+          </View>
+        ) : null}
         {quickAction ? (
           // Nested Pressable captures its own tap, so the tile's sheet doesn't open.
           <Pressable
@@ -874,6 +1044,50 @@ function CardTile({
           {formatUsd(value)}
         </Text>
       ) : null}
+    </Pressable>
+  );
+}
+
+/**
+ * A V-UNION group tile (Size=V-UNION): the assembled art (its top-left piece thumb) with a
+ * V-UNION badge and label. Tapping places the whole 2×2 (onPress → onPickVUnion(pieces)).
+ */
+function VUnionTile({
+  styles,
+  group,
+  width,
+  onPress,
+}: {
+  styles: Styles;
+  group: VUnionGroup;
+  width: number;
+  onPress: () => void;
+}) {
+  const uri = cardThumbUrl(group.pieces[0], 245);
+  return (
+    <Pressable style={[styles.cardTile, { width }]} onPress={onPress}>
+      <View style={styles.cardImageWrap}>
+        {uri ? (
+          <Image
+            source={{ uri }}
+            style={styles.cardImage}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            recyclingKey={group.pieces[0]}
+            transition={100}
+          />
+        ) : (
+          <View style={styles.cardImageFallback}>
+            <Text style={styles.cardImageFallbackText}>V-UNION</Text>
+          </View>
+        )}
+        <View style={styles.vunionTag}>
+          <Text style={styles.vunionTagText}>V-UNION</Text>
+        </View>
+      </View>
+      <Text style={styles.cardName} numberOfLines={1}>
+        {group.label}
+      </Text>
     </Pressable>
   );
 }
@@ -1172,6 +1386,39 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     cardQuickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
     cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
     cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.accent, textAlign: 'center' },
+    // multi-select: highlighted tile + a check badge, top-left of the thumb
+    cardTileMulti: { backgroundColor: t.selected, borderRadius: 6, borderWidth: 2, borderColor: t.accent },
+    cardCheck: {
+      position: 'absolute',
+      top: 3,
+      left: 3,
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: t.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cardCheckText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+    // V-UNION group tile badge (bottom-left of the thumb)
+    vunionTag: {
+      position: 'absolute',
+      bottom: 3,
+      left: 3,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      borderRadius: 4,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+    },
+    vunionTagText: { color: '#fff', fontSize: 8, fontWeight: '800', letterSpacing: 0.4 },
+    // multi-select control row (mode toggle + Continue)
+    selectRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+    selectMeta: { fontSize: 12, color: t.subtext, flexShrink: 1 },
+    selectBtn: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, backgroundColor: t.accent },
+    selectBtnOff: { opacity: 0.4 },
+    selectBtnText: { color: t.accentText, fontSize: 12, fontWeight: '700' },
+    selectToggle: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: t.border },
+    selectToggleText: { fontSize: 12, fontWeight: '600', color: t.link },
     // breadcrumb
     bcBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
     bcItem: { flexDirection: 'row', alignItems: 'center' },
