@@ -27,7 +27,7 @@ import { CardActionModal } from './CardActionModal';
 import { formatSetDate } from './catalog';
 import { cardThumbUrl, productUrl } from './config';
 import { useImageManifest } from './images';
-import { formatUsd, usePriceSummary } from './prices';
+import { usePriceSummary } from './prices';
 import { similarAvailable } from './similar';
 import { resolveTheme } from './theme';
 /** Gap between tiles in a carousel (px). */
@@ -85,6 +85,9 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
         if (url)
             Linking.openURL(url).catch(() => { });
     };
+    // The store link shared by set + card tiles. Labeled "Shop" (store-agnostic); points at
+    // the card's TCGPlayer product page for now (productUrl). `centered` for the card tiles.
+    const shopLink = (url, centered = false) => (_jsx(Pressable, { onPress: () => open(url), hitSlop: 4, disabled: !url, accessibilityLabel: "Shop this card", children: _jsx(Text, { style: [styles.tileLink, centered && styles.tileLinkCenter], children: "Shop \u2192" }) }));
     // The modal's actions for a card: drive-the-other-browser intents (when wired) + TCGPlayer.
     const actionsFor = (card) => {
         const actions = [];
@@ -124,11 +127,8 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     }
     const renderSet = (t, tileWidth) => (_jsxs(View, { style: styles.tile, children: [_jsxs(View, { style: styles.montage, children: [t.montage.map((card) => (_jsx(Pressable, { style: styles.montageSlot, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }, card.id))), t.upcoming ? (_jsx(View, { style: styles.badge, pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }), _jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
                     .filter(Boolean)
-                    .join(' · ') }), _jsx(Pressable, { onPress: () => open(t.chaseUrl), hitSlop: 4, disabled: !t.chaseUrl, children: _jsx(Text, { style: styles.tileLink, children: "TCGPlayer \u2197" }) })] }));
-    const renderCard = (card) => {
-        const value = priceOf(card.id);
-        return (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: [_jsx(CardThumb, { card: card, styles: styles }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, _jsx(Text, { style: styles.scardMeta, numberOfLines: 1, children: value > 0 ? formatUsd(value) : formatSetDate(card.releaseDate) })] }));
-    };
+                    .join(' · ') }), shopLink(t.chaseUrl)] }));
+    const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: [_jsx(CardThumb, { card: card, styles: styles }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, shopLink(productUrl(card.id), true)] }));
     return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.header, children: title }), _jsx(Carousel, { items: setTiles, visible: SETS_PER_VIEW, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, upcomingCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Upcoming cards" }), _jsx(Carousel, { items: upcomingCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, releasedCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Recently released" }), _jsx(Carousel, { items: releasedCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
 }
 /**
@@ -156,6 +156,15 @@ function Carousel({ items, visible, keyOf, renderItem, styles, }) {
                     ? shown.map((item) => (_jsx(View, { style: { width: itemW }, children: renderItem(item, itemW) }, keyOf(item))))
                     : null }), canPage ? (_jsx(Pressable, { style: styles.arrow, onPress: next, hitSlop: 6, accessibilityLabel: "Next group", children: _jsx(Text, { style: styles.arrowText, children: "\u203A" }) })) : null] }));
 }
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** yyyy-mm-dd -> "Sep 12, 2026" — the full date (incl. day) for the imageless-card placeholder. */
+function formatFullDate(iso) {
+    if (!iso)
+        return '';
+    const [y, m, d] = iso.split('-');
+    const mon = MONTHS[parseInt(m, 10) - 1] ?? '';
+    return d ? `${mon} ${parseInt(d, 10)}, ${y}` : `${mon} ${y}`.trim();
+}
 /**
  * A card thumbnail that falls back to a dated placeholder when the image is missing —
  * e.g. upcoming cards not yet mirrored. The failure is tracked per-URL, so a pre-manifest
@@ -166,7 +175,7 @@ function CardThumb({ card, styles }) {
     const uri = cardThumbUrl(card.id, 245);
     const [failedUri, setFailedUri] = useState(null);
     const missing = !uri || failedUri === uri;
-    return (_jsx(View, { style: styles.scardImg, children: missing ? (_jsx(View, { style: styles.thumbPlaceholder, children: _jsx(Text, { style: styles.thumbPlaceholderText, numberOfLines: 2, children: card.releaseDate ? formatSetDate(card.releaseDate) : 'No image' }) })) : (_jsx(Image, { source: { uri }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100, onError: () => setFailedUri(uri) })) }));
+    return (_jsx(View, { style: styles.scardImg, children: missing ? (_jsx(View, { style: styles.thumbPlaceholder, children: _jsx(Text, { style: styles.thumbPlaceholderText, numberOfLines: 2, children: card.releaseDate ? formatFullDate(card.releaseDate) : 'No image' }) })) : (_jsx(Image, { source: { uri }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100, onError: () => setFailedUri(uri) })) }));
 }
 function makeStyles(t) {
     return StyleSheet.create({
@@ -220,6 +229,7 @@ function makeStyles(t) {
         tileName: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15 },
         tileMeta: { fontSize: 10, color: t.subtext, fontVariant: ['tabular-nums'] },
         tileLink: { fontSize: 11, fontWeight: '700', color: t.link, marginTop: 1 },
+        tileLinkCenter: { textAlign: 'center' },
         // card tile
         scard: { gap: 2 },
         scardImg: {

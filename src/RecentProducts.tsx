@@ -34,7 +34,7 @@ import { CardActionModal } from './CardActionModal';
 import { formatSetDate, type Catalog, type CatalogCard, type CatalogSet } from './catalog';
 import { cardThumbUrl, productUrl } from './config';
 import { useImageManifest } from './images';
-import { formatUsd, usePriceSummary } from './prices';
+import { usePriceSummary } from './prices';
 import { similarAvailable } from './similar';
 import { resolveTheme, type BrowseTheme } from './theme';
 import type { CardAction } from './actions';
@@ -154,6 +154,14 @@ export function RecentProducts({
     if (url) Linking.openURL(url).catch(() => {});
   };
 
+  // The store link shared by set + card tiles. Labeled "Shop" (store-agnostic); points at
+  // the card's TCGPlayer product page for now (productUrl). `centered` for the card tiles.
+  const shopLink = (url: string, centered = false): ReactNode => (
+    <Pressable onPress={() => open(url)} hitSlop={4} disabled={!url} accessibilityLabel="Shop this card">
+      <Text style={[styles.tileLink, centered && styles.tileLinkCenter]}>Shop →</Text>
+    </Pressable>
+  );
+
   // The modal's actions for a card: drive-the-other-browser intents (when wired) + TCGPlayer.
   const actionsFor = (card: CatalogCard): CardAction[] => {
     const actions: CardAction[] = [];
@@ -226,34 +234,27 @@ export function RecentProducts({
           .filter(Boolean)
           .join(' · ')}
       </Text>
-      <Pressable onPress={() => open(t.chaseUrl)} hitSlop={4} disabled={!t.chaseUrl}>
-        <Text style={styles.tileLink}>TCGPlayer ↗</Text>
-      </Pressable>
+      {shopLink(t.chaseUrl)}
     </View>
   );
 
-  const renderCard = (card: CatalogCard): ReactNode => {
-    const value = priceOf(card.id);
-    return (
-      <Pressable
-        style={styles.scard}
-        onPress={() => setActionCard(card)}
-        accessibilityLabel={`${card.name} actions`}>
-        <CardThumb card={card} styles={styles} />
-        <Text style={styles.scardName} numberOfLines={1}>
-          {card.name}
+  const renderCard = (card: CatalogCard): ReactNode => (
+    <Pressable
+      style={styles.scard}
+      onPress={() => setActionCard(card)}
+      accessibilityLabel={`${card.name} actions`}>
+      <CardThumb card={card} styles={styles} />
+      <Text style={styles.scardName} numberOfLines={1}>
+        {card.name}
+      </Text>
+      {card.setName ? (
+        <Text style={styles.scardSet} numberOfLines={1}>
+          {card.setName}
         </Text>
-        {card.setName ? (
-          <Text style={styles.scardSet} numberOfLines={1}>
-            {card.setName}
-          </Text>
-        ) : null}
-        <Text style={styles.scardMeta} numberOfLines={1}>
-          {value > 0 ? formatUsd(value) : formatSetDate(card.releaseDate)}
-        </Text>
-      </Pressable>
-    );
-  };
+      ) : null}
+      {shopLink(productUrl(card.id), true)}
+    </Pressable>
+  );
 
   return (
     <View style={styles.root} onLayout={onLayout}>
@@ -380,6 +381,16 @@ function Carousel<T>({
   );
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** yyyy-mm-dd -> "Sep 12, 2026" — the full date (incl. day) for the imageless-card placeholder. */
+function formatFullDate(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  const mon = MONTHS[parseInt(m, 10) - 1] ?? '';
+  return d ? `${mon} ${parseInt(d, 10)}, ${y}` : `${mon} ${y}`.trim();
+}
+
 /**
  * A card thumbnail that falls back to a dated placeholder when the image is missing —
  * e.g. upcoming cards not yet mirrored. The failure is tracked per-URL, so a pre-manifest
@@ -395,7 +406,7 @@ function CardThumb({ card, styles }: { card: CatalogCard; styles: Styles }) {
       {missing ? (
         <View style={styles.thumbPlaceholder}>
           <Text style={styles.thumbPlaceholderText} numberOfLines={2}>
-            {card.releaseDate ? formatSetDate(card.releaseDate) : 'No image'}
+            {card.releaseDate ? formatFullDate(card.releaseDate) : 'No image'}
           </Text>
         </View>
       ) : (
@@ -468,6 +479,7 @@ function makeStyles(t: BrowseTheme) {
     tileName: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15 },
     tileMeta: { fontSize: 10, color: t.subtext, fontVariant: ['tabular-nums'] },
     tileLink: { fontSize: 11, fontWeight: '700', color: t.link, marginTop: 1 },
+    tileLinkCenter: { textAlign: 'center' },
 
     // card tile
     scard: { gap: 2 },
