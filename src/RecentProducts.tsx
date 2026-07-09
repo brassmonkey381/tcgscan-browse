@@ -1,60 +1,79 @@
 /**
- * RecentProducts — a "recently released" feed for the card catalog, modeled on the
- * product walls collectors browse on card-shop sites.
+ * RecentProducts — a "recently released & upcoming" feed for the card catalog, modeled
+ * on the product walls collectors browse on card-shop sites.
  *
- * Our catalog is cards + sets (no sealed-product records), so the faithful analog is
- * recently-released SETS, each tile a montage of that set's chase cards (its priciest
- * few) — which is exactly how those product tiles read. Below the sets grid, a "New
- * cards" strip surfaces the very newest individual cards.
+ * Our catalog is cards + sets (no sealed-product records), so a "product" is a SET,
+ * previewed by a montage of its chase cards. Three clickable, infinite carousels:
+ *   1. Sets  — released in the last `monthsBack` months + all upcoming (future-dated),
+ *              shown `setsPerView` (4) at a time.
+ *   2. Upcoming cards    — not yet released, soonest first.
+ *   3. Recently released — newest released cards.
+ * Each carousel loops (the arrows wrap around) and shows a fixed number at a time.
  *
- * Everything links straight to TCGPlayer via the card's stable id (`productUrl` — a
- * pure `{id}` template). A set has no single tcgid, so its tile opens its chase card's
- * product page. Future-dated sets sort first (see `catalog.allSets()`) and get an
- * "Upcoming" badge, so previews of not-yet-released products lead the feed for free.
+ * Tapping a card image opens the shared `CardActionModal` — the same sheet the browser
+ * uses — offering "Find similar", "View set", and "View on TCGPlayer". Find similar /
+ * View set are emitted as `onFindSimilar` / `onViewSet` so a host can route them into
+ * another browser on the same screen (see `sendBrowseCommand`); TCGPlayer opens the
+ * card's product page via its stable id (`productUrl`). Set tiles also keep a direct
+ * "TCGPlayer ↗" link to the set's chase card.
  *
- * App-agnostic like the rest of the kit: colors come from an injected `BrowseTheme`,
- * navigation is an external link (no router import), and the feed is self-contained —
- * drop `<RecentProducts catalog={catalog} />` onto any screen.
+ * App-agnostic like the rest of the kit: colors come from an injected `BrowseTheme`.
  */
 import { Image } from 'expo-image';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   Linking,
   type LayoutChangeEvent,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 
+import { CardActionModal } from './CardActionModal';
 import { formatSetDate, type Catalog, type CatalogCard, type CatalogSet } from './catalog';
 import { cardThumbUrl, productUrl } from './config';
 import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
+import { similarAvailable } from './similar';
 import { resolveTheme, type BrowseTheme } from './theme';
+import type { CardAction } from './actions';
 
-/** Target set-tile width (px); the grid packs as many columns as fit, min 2. */
-const TARGET_TILE_W = 156;
-const GRID_GAP = 10;
-/** New-cards strip thumbnail width (px). */
-const STRIP_CARD_W = 66;
+/** Gap between tiles in a carousel (px). */
+const TILE_GAP = 10;
+/** Set tiles shown at once (the reference wall's cadence). */
+const SETS_PER_VIEW = 4;
+/** Card carousels pack to roughly this tile width, then show as many as fit. */
+const CARD_TARGET_W = 104;
+
+type Styles = ReturnType<typeof makeStyles>;
 
 interface RecentProductsProps {
   catalog: Catalog;
   /**
    * How far back (in months) a released set stays in the feed. Every set from this
-   * window plus all upcoming (future-dated) sets are shown, newest first. Default 3.
+   * window plus all upcoming (future-dated) sets are shown, newest first. Default 12.
    */
   monthsBack?: number;
-  /** How many chase cards to montage per set tile. Default 3 (like the reference wall). */
+  /** How many chase cards to montage per set tile. Default 3. */
   montageCount?: number;
-  /** How many newest cards to show in the strip. Default 20; pass 0 to hide the strip. */
+  /** Max cards per card carousel (upcoming / released). Default 40. */
   cardLimit?: number;
   /** Injected color contract (partial override merged over the light default). */
   theme?: Partial<BrowseTheme>;
-  /** Optional header title. Default "Recent Sets". */
+  /** Header title. Default "Recent & Upcoming". */
   title?: string;
+  /**
+   * Show cards similar to the tapped one — surfaced as a "Find similar" modal action.
+   * Wire this to another browser on the page (e.g. via `sendBrowseCommand`). Omitted →
+   * the action is hidden.
+   */
+  onFindSimilar?: (card: CatalogCard) => void;
+  /**
+   * Open the tapped card's set — surfaced as a "View set" modal action. Wire this to
+   * another browser on the page. Omitted → the action is hidden.
+   */
+  onViewSet?: (card: CatalogCard) => void;
 }
 
 /** A set paired with its montage cards (priciest first) and its chase card's TCGPlayer URL. */
@@ -67,23 +86,23 @@ interface SetTile {
 
 export function RecentProducts({
   catalog,
-  monthsBack = 3,
+  monthsBack = 12,
   montageCount = 3,
-  cardLimit = 20,
+  cardLimit = 40,
   theme: themeProp,
   title = 'Recent & Upcoming',
+  onFindSimilar,
+  onViewSet,
 }: RecentProductsProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
   const styles = useMemo(() => makeStyles(theme), [theme]);
   // Card thumbs resolve by id via the content-hashed manifest; repaint when it lands.
   useImageManifest();
 
-  // Chase-card selection needs headline values; before prices load, priceOf is 0 for
-  // all and the montage falls back to the set's natural (collector-number) order.
   const priceSummary = usePriceSummary();
   const priceOf = (id: string) => priceSummary?.[id]?.cur ?? 0;
 
-  // Today (yyyy-mm-dd) for the upcoming/released split, and the release cutoff
+  // Today (yyyy-mm-dd) for the upcoming/released split, and the release-window cutoff
   // `monthsBack` months earlier. Computed once (setMonth handles year rollover).
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const cutoff = useMemo(() => {
@@ -92,10 +111,7 @@ export function RecentProducts({
     return d.toISOString().slice(0, 10);
   }, [monthsBack]);
 
-  const tiles = useMemo<SetTile[]>(() => {
-    // Keep sets released within the window OR still upcoming (future dates are
-    // >= cutoff by definition, so this one bound covers both). allSets() is
-    // already sorted newest/future first.
+  const setTiles = useMemo<SetTile[]>(() => {
     return catalog
       .allSets()
       .filter((set) => Boolean(set.releaseDate) && set.releaseDate >= cutoff)
@@ -115,114 +131,242 @@ export function RecentProducts({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog, cutoff, montageCount, priceSummary, today]);
 
-  const newCards = useMemo(
-    () => (cardLimit > 0 ? catalog.recentCards(cardLimit) : []),
-    [catalog, cardLimit],
+  const upcomingCards = useMemo(
+    () => catalog.upcomingCards(today, cardLimit),
+    [catalog, today, cardLimit],
+  );
+  const releasedCards = useMemo(
+    () => catalog.releasedCards(today, cardLimit),
+    [catalog, today, cardLimit],
   );
 
-  // Measured width → set-tile column count (packs to `TARGET_TILE_W`, min 2).
+  // Measured width → how many card tiles a card carousel shows at once.
   const [width, setWidth] = useState(0);
   const onLayout = (e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
     if (w > 0 && Math.abs(w - width) > 0.5) setWidth(w);
   };
-  const { cols, tileW } = useMemo(() => {
-    if (width <= 0) return { cols: 3, tileW: TARGET_TILE_W };
-    const c = Math.max(2, Math.floor((width + GRID_GAP) / (TARGET_TILE_W + GRID_GAP)));
-    return { cols: c, tileW: Math.floor((width - GRID_GAP * (c - 1)) / c) };
-  }, [width]);
+  const cardsPerView = width > 0 ? Math.max(3, Math.min(9, Math.floor(width / CARD_TARGET_W))) : 4;
+
+  const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
 
   const open = (url: string) => {
     if (url) Linking.openURL(url).catch(() => {});
   };
 
-  // Nothing in the window (and no cards) → render nothing rather than a bare header.
-  if (tiles.length === 0 && newCards.length === 0) return null;
+  // The modal's actions for a card: drive-the-other-browser intents (when wired) + TCGPlayer.
+  const actionsFor = (card: CatalogCard): CardAction[] => {
+    const actions: CardAction[] = [];
+    if (onFindSimilar && similarAvailable()) {
+      actions.push({
+        key: 'find-similar',
+        label: '≈ Find similar',
+        onPress: (c) => {
+          setActionCard(null);
+          onFindSimilar(c);
+        },
+      });
+    }
+    if (onViewSet && card.setId) {
+      actions.push({
+        key: 'view-set',
+        label: 'View set',
+        onPress: (c) => {
+          setActionCard(null);
+          onViewSet(c);
+        },
+      });
+    }
+    actions.push({
+      key: 'tcgplayer',
+      kind: 'primary',
+      label: 'View on TCGPlayer ↗',
+      onPress: (c) => {
+        setActionCard(null);
+        open(productUrl(c.id));
+      },
+    });
+    return actions;
+  };
+
+  if (setTiles.length === 0 && upcomingCards.length === 0 && releasedCards.length === 0) {
+    return null;
+  }
+
+  const renderSet = (t: SetTile, tileWidth: number): ReactNode => (
+    <View style={styles.tile}>
+      <View style={styles.montage}>
+        {t.montage.map((card) => (
+          <Pressable
+            key={card.id}
+            style={styles.montageSlot}
+            onPress={() => setActionCard(card)}
+            accessibilityLabel={`${card.name} actions`}>
+            <Image
+              source={{ uri: cardThumbUrl(card.id, 245) }}
+              style={styles.fillImg}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+              recyclingKey={card.id}
+              transition={100}
+            />
+          </Pressable>
+        ))}
+        {t.upcoming ? (
+          <View style={styles.badge} pointerEvents="none">
+            <Text style={styles.badgeText}>Upcoming</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.tileName} numberOfLines={2}>
+        {t.set.name}
+      </Text>
+      <Text style={styles.tileMeta} numberOfLines={1}>
+        {[formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
+          .filter(Boolean)
+          .join(' · ')}
+      </Text>
+      <Pressable onPress={() => open(t.chaseUrl)} hitSlop={4} disabled={!t.chaseUrl}>
+        <Text style={styles.tileLink}>TCGPlayer ↗</Text>
+      </Pressable>
+    </View>
+  );
+
+  const renderCard = (card: CatalogCard, _tileWidth: number): ReactNode => {
+    const value = priceOf(card.id);
+    return (
+      <Pressable
+        style={styles.scard}
+        onPress={() => setActionCard(card)}
+        accessibilityLabel={`${card.name} actions`}>
+        <View style={styles.scardImg}>
+          <Image
+            source={{ uri: cardThumbUrl(card.id, 245) }}
+            style={styles.fillImg}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            recyclingKey={card.id}
+            transition={100}
+          />
+        </View>
+        <Text style={styles.scardName} numberOfLines={1}>
+          {card.name}
+        </Text>
+        <Text style={styles.scardMeta} numberOfLines={1}>
+          {value > 0 ? formatUsd(value) : formatSetDate(card.releaseDate)}
+        </Text>
+      </Pressable>
+    );
+  };
 
   return (
     <View style={styles.root} onLayout={onLayout}>
-      {tiles.length > 0 ? (
+      {setTiles.length > 0 ? (
         <>
           <Text style={styles.header}>{title}</Text>
-
-          <View style={styles.grid}>
-            {tiles.map(({ set, montage, chaseUrl, upcoming }) => (
-              <Pressable
-                key={set.id}
-                style={[styles.tile, { width: tileW }]}
-                onPress={() => open(chaseUrl)}
-                accessibilityLabel={`${set.name} on TCGPlayer`}>
-                <View style={styles.montage}>
-                  {montage.map((card) => (
-                    <View key={card.id} style={styles.montageSlot}>
-                      <Image
-                        source={{ uri: cardThumbUrl(card.id, 245) }}
-                        style={styles.montageImg}
-                        contentFit="contain"
-                        cachePolicy="memory-disk"
-                        recyclingKey={card.id}
-                        transition={100}
-                      />
-                    </View>
-                  ))}
-                  {upcoming ? (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>Upcoming</Text>
-                    </View>
-                  ) : null}
-                </View>
-                <Text style={styles.tileName} numberOfLines={2}>
-                  {set.name}
-                </Text>
-                <Text style={styles.tileMeta} numberOfLines={1}>
-                  {[formatSetDate(set.releaseDate), `${set.cardCount.toLocaleString()} cards`]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </Text>
-                <Text style={styles.tileLink} numberOfLines={1}>
-                  TCGPlayer ↗
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <Carousel
+            items={setTiles}
+            visible={SETS_PER_VIEW}
+            keyOf={(t) => t.set.id}
+            renderItem={renderSet}
+            styles={styles}
+          />
         </>
       ) : null}
 
-      {newCards.length > 0 ? (
+      {upcomingCards.length > 0 ? (
         <>
-          <Text style={styles.subHeader}>New cards</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.strip}>
-            {newCards.map((card) => (
-              <Pressable
-                key={card.id}
-                style={styles.stripCard}
-                onPress={() => open(productUrl(card.id))}
-                accessibilityLabel={`${card.name} on TCGPlayer`}>
-                <View style={styles.stripImgWrap}>
-                  <Image
-                    source={{ uri: cardThumbUrl(card.id, 245) }}
-                    style={styles.montageImg}
-                    contentFit="contain"
-                    cachePolicy="memory-disk"
-                    recyclingKey={card.id}
-                    transition={100}
-                  />
-                </View>
-                <Text style={styles.stripName} numberOfLines={1}>
-                  {card.name}
-                </Text>
-                {priceOf(card.id) > 0 ? (
-                  <Text style={styles.stripValue} numberOfLines={1}>
-                    {formatUsd(priceOf(card.id))}
-                  </Text>
-                ) : null}
-              </Pressable>
-            ))}
-          </ScrollView>
+          <Text style={styles.subHeader}>Upcoming cards</Text>
+          <Carousel
+            items={upcomingCards}
+            visible={cardsPerView}
+            keyOf={(c) => c.id}
+            renderItem={renderCard}
+            styles={styles}
+          />
         </>
+      ) : null}
+
+      {releasedCards.length > 0 ? (
+        <>
+          <Text style={styles.subHeader}>Recently released</Text>
+          <Carousel
+            items={releasedCards}
+            visible={cardsPerView}
+            keyOf={(c) => c.id}
+            renderItem={renderCard}
+            styles={styles}
+          />
+        </>
+      ) : null}
+
+      {actionCard ? (
+        <CardActionModal
+          card={actionCard}
+          actions={actionsFor(actionCard)}
+          value={priceOf(actionCard.id)}
+          onClose={() => setActionCard(null)}
+          theme={theme}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * A clickable, infinite carousel: shows `visible` items at once, and the arrows step by
+ * one with wrap-around (so it loops forever). Arrows hide when everything already fits.
+ * Item width is derived from the measured track so tiles fill the row evenly.
+ */
+function Carousel<T>({
+  items,
+  visible,
+  keyOf,
+  renderItem,
+  styles,
+}: {
+  items: T[];
+  visible: number;
+  keyOf: (item: T) => string;
+  renderItem: (item: T, width: number) => ReactNode;
+  styles: Styles;
+}) {
+  const [start, setStart] = useState(0);
+  const [trackW, setTrackW] = useState(0);
+
+  const count = Math.min(visible, items.length);
+  const canPage = items.length > count;
+  const itemW = trackW > 0 ? Math.floor((trackW - TILE_GAP * (count - 1)) / count) : undefined;
+  // Wrap-around window: no duplicates within a view because count < items.length when paging.
+  const shown = Array.from({ length: count }, (_, i) => items[(start + i) % items.length]);
+  const prev = () => setStart((s) => (s - 1 + items.length) % items.length);
+  const next = () => setStart((s) => (s + 1) % items.length);
+
+  return (
+    <View style={styles.carousel}>
+      {canPage ? (
+        <Pressable style={styles.arrow} onPress={prev} hitSlop={6} accessibilityLabel="Previous">
+          <Text style={styles.arrowText}>‹</Text>
+        </Pressable>
+      ) : null}
+      <View
+        style={styles.track}
+        onLayout={(e) => {
+          const w = e.nativeEvent.layout.width;
+          if (w > 0 && Math.abs(w - trackW) > 0.5) setTrackW(w);
+        }}>
+        {itemW != null
+          ? shown.map((item) => (
+              <View key={keyOf(item)} style={{ width: itemW }}>
+                {renderItem(item, itemW)}
+              </View>
+            ))
+          : null}
+      </View>
+      {canPage ? (
+        <Pressable style={styles.arrow} onPress={next} hitSlop={6} accessibilityLabel="Next">
+          <Text style={styles.arrowText}>›</Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -233,7 +377,26 @@ function makeStyles(t: BrowseTheme) {
     root: { gap: 10 },
     header: { fontSize: 18, fontWeight: '800', color: t.text },
     subHeader: { fontSize: 13, fontWeight: '700', color: t.subtext, marginTop: 4 },
-    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
+
+    // carousel
+    carousel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    track: { flex: 1, flexDirection: 'row', gap: TILE_GAP },
+    arrow: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: t.border,
+      backgroundColor: t.panel,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    arrowText: { fontSize: 18, lineHeight: 20, fontWeight: '800', color: t.subtext },
+
+    // shared image fill
+    fillImg: { width: '100%', height: '100%' },
+
+    // set tile
     tile: {
       borderWidth: 1,
       borderColor: t.border,
@@ -242,8 +405,6 @@ function makeStyles(t: BrowseTheme) {
       gap: 3,
       backgroundColor: t.panel,
     },
-    // Montage: chase cards side by side. Each slot carries the portrait aspect ratio,
-    // so the row sizes its own height — no fixed height to keep in sync.
     montage: { flexDirection: 'row', gap: 3, marginBottom: 3 },
     montageSlot: {
       flex: 1,
@@ -252,7 +413,6 @@ function makeStyles(t: BrowseTheme) {
       borderRadius: 4,
       overflow: 'hidden',
     },
-    montageImg: { width: '100%', height: '100%' },
     badge: {
       position: 'absolute',
       top: 4,
@@ -264,19 +424,19 @@ function makeStyles(t: BrowseTheme) {
     },
     badgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
     tileName: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15 },
-    tileMeta: { fontSize: 10, color: t.subtext },
+    tileMeta: { fontSize: 10, color: t.subtext, fontVariant: ['tabular-nums'] },
     tileLink: { fontSize: 11, fontWeight: '700', color: t.link, marginTop: 1 },
-    // New-cards strip
-    strip: { gap: 8, paddingRight: 8 },
-    stripCard: { width: STRIP_CARD_W, gap: 2 },
-    stripImgWrap: {
+
+    // card tile
+    scard: { gap: 2 },
+    scardImg: {
       width: '100%',
       aspectRatio: 63 / 88,
       borderRadius: 5,
       overflow: 'hidden',
       backgroundColor: t.imagePlaceholder,
     },
-    stripName: { fontSize: 9, lineHeight: 11, color: t.subtext, textAlign: 'center' },
-    stripValue: { fontSize: 9, lineHeight: 11, fontWeight: '700', color: t.accent, textAlign: 'center' },
+    scardName: { fontSize: 10, lineHeight: 12, color: t.text, textAlign: 'center' },
+    scardMeta: { fontSize: 9, lineHeight: 11, fontWeight: '700', color: t.accent, textAlign: 'center' },
   });
 }

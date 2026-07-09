@@ -180,6 +180,18 @@ class LocalCatalog {
             .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
             .slice(0, limit);
     }
+    upcomingCards(today, limit = 40) {
+        return this.all
+            .filter((c) => c.releaseDate && c.releaseDate > today)
+            .sort((a, b) => a.releaseDate.localeCompare(b.releaseDate) || a.name.localeCompare(b.name))
+            .slice(0, limit);
+    }
+    releasedCards(today, limit = 40) {
+        return this.all
+            .filter((c) => c.releaseDate && c.releaseDate <= today)
+            .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
+            .slice(0, limit);
+    }
     listAll() {
         return this.all;
     }

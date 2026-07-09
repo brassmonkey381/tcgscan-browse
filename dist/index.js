@@ -16,7 +16,7 @@ export { resolveActions, resolveLabel, } from './actions';
 export { lightTheme, resolveTheme, RARITY_PALETTE } from './theme';
 export { findSimilar, similarAvailable } from './similar';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, } from './query';
-export { browseState } from './state';
+export { browseState, sendBrowseCommand, subscribeBrowseCommand, } from './state';
 export { CatalogBrowser } from './CatalogBrowser';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts } from './RecentProducts';

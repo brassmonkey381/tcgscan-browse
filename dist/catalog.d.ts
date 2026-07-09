@@ -61,6 +61,12 @@ export interface Catalog {
     /** The newest cards by release date (dateless cards excluded) — for a "new cards"
      *  strip. Capped at `limit`. */
     recentCards(limit?: number): CatalogCard[];
+    /** Cards not yet released (releaseDate strictly after `today`, yyyy-mm-dd), soonest
+     *  first. Capped at `limit`. */
+    upcomingCards(today: string, limit?: number): CatalogCard[];
+    /** Cards already released (releaseDate on/before `today`), newest first. Capped at
+     *  `limit`. */
+    releasedCards(today: string, limit?: number): CatalogCard[];
     /** Every card (stable order) — for structured queries that scan the corpus. */
     listAll(): CatalogCard[];
     /** Every jumbo (oversized, 2×2) card in the catalog. */

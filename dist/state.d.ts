@@ -20,3 +20,23 @@ export interface BrowseState {
     similarCards: CatalogCard[];
 }
 export declare const browseState: BrowseState;
+/**
+ * Cross-surface browse commands — lets another component on the same screen (e.g. the
+ * RecentProducts feed) drive a mounted CatalogBrowser: "show cards similar to X" or
+ * "open X's set". CatalogBrowser subscribes; callers use `sendBrowseCommand`.
+ *
+ * A command sent while nothing is subscribed (the browser is collapsed/unmounted) is
+ * held as a single pending command and delivered the moment the next browser subscribes
+ * — so the app can expand the browser and the command still lands.
+ */
+export type BrowseCommand = {
+    type: 'similar';
+    cardId: string;
+} | {
+    type: 'viewSet';
+    cardId: string;
+};
+/** Deliver a command to the mounted browser(s), or hold it for the next subscriber. */
+export declare function sendBrowseCommand(cmd: BrowseCommand): void;
+/** Subscribe a browser to incoming commands; flushes any pending command immediately. */
+export declare function subscribeBrowseCommand(listener: (cmd: BrowseCommand) => void): () => void;

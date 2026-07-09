@@ -25,7 +25,7 @@ import { Image } from 'expo-image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery } from './query';
-import { browseState } from './state';
+import { browseState, subscribeBrowseCommand } from './state';
 import { CardActionModal } from './CardActionModal';
 import { SeriesAnalytics, SetAnalytics } from './analytics';
 import { resolveActions, } from './actions';
@@ -312,6 +312,20 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, cardAction
         setSeriesId(card.seriesId || null);
         setSetId(card.setId ?? null);
     };
+    // Let another surface on the screen (e.g. the RecentProducts feed) drive this browser:
+    // "find similar to X" / "view X's set" run the same handlers as the in-sheet builtins.
+    useEffect(() => {
+        return subscribeBrowseCommand((cmd) => {
+            const card = catalog.getCard(cmd.cardId);
+            if (!card)
+                return;
+            if (cmd.type === 'similar')
+                openSimilar(card);
+            else if (cmd.type === 'viewSet')
+                jumpToSet(card);
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [catalog]);
     /** Show every card by this card's illustrator — a search on the `artist:` field
      *  (quoted, since illustrator names have spaces). Sets both the raw and debounced
      *  query so results appear immediately, like jumpToSet/openSimilar. */

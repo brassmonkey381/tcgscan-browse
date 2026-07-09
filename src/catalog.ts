@@ -79,6 +79,12 @@ export interface Catalog {
   /** The newest cards by release date (dateless cards excluded) — for a "new cards"
    *  strip. Capped at `limit`. */
   recentCards(limit?: number): CatalogCard[];
+  /** Cards not yet released (releaseDate strictly after `today`, yyyy-mm-dd), soonest
+   *  first. Capped at `limit`. */
+  upcomingCards(today: string, limit?: number): CatalogCard[];
+  /** Cards already released (releaseDate on/before `today`), newest first. Capped at
+   *  `limit`. */
+  releasedCards(today: string, limit?: number): CatalogCard[];
   /** Every card (stable order) — for structured queries that scan the corpus. */
   listAll(): CatalogCard[];
   /** Every jumbo (oversized, 2×2) card in the catalog. */
@@ -325,6 +331,20 @@ class LocalCatalog implements Catalog {
   recentCards(limit = 24): CatalogCard[] {
     return this.all
       .filter((c) => c.releaseDate)
+      .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
+      .slice(0, limit);
+  }
+
+  upcomingCards(today: string, limit = 40): CatalogCard[] {
+    return this.all
+      .filter((c) => c.releaseDate && c.releaseDate > today)
+      .sort((a, b) => a.releaseDate.localeCompare(b.releaseDate) || a.name.localeCompare(b.name))
+      .slice(0, limit);
+  }
+
+  releasedCards(today: string, limit = 40): CatalogCard[] {
+    return this.all
+      .filter((c) => c.releaseDate && c.releaseDate <= today)
       .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
       .slice(0, limit);
   }

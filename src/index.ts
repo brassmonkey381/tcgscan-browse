@@ -107,7 +107,13 @@ export {
   type QuerySort,
 } from './query';
 
-export { browseState, type BrowseState } from './state';
+export {
+  browseState,
+  sendBrowseCommand,
+  subscribeBrowseCommand,
+  type BrowseCommand,
+  type BrowseState,
+} from './state';
 
 export { CatalogBrowser } from './CatalogBrowser';
 export { CardActionModal } from './CardActionModal';
