@@ -416,6 +416,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // "find similar to X" / "view X's set" run the same handlers as the in-sheet builtins.
     useEffect(() => {
         return subscribeBrowseCommand((cmd) => {
+            if (cmd.type === 'similarMany') {
+                openSimilarMany(cmd.cardIds);
+                return;
+            }
             const card = catalog.getCard(cmd.cardId);
             if (!card)
                 return;

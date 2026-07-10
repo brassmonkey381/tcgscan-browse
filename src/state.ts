@@ -39,7 +39,9 @@ export const browseState: BrowseState = {
  */
 export type BrowseCommand =
   | { type: 'similar'; cardId: string }
-  | { type: 'viewSet'; cardId: string };
+  | { type: 'viewSet'; cardId: string }
+  /** Find cards similar to ALL of these (average embedding) — e.g. a binder multi-selection. */
+  | { type: 'similarMany'; cardIds: string[] };
 
 const commandListeners = new Set<(cmd: BrowseCommand) => void>();
 let pendingCommand: BrowseCommand | null = null;

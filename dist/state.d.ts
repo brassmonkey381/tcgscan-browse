@@ -36,6 +36,11 @@ export type BrowseCommand = {
 } | {
     type: 'viewSet';
     cardId: string;
+}
+/** Find cards similar to ALL of these (average embedding) — e.g. a binder multi-selection. */
+ | {
+    type: 'similarMany';
+    cardIds: string[];
 };
 /** Deliver a command to the mounted browser(s), or hold it for the next subscriber. */
 export declare function sendBrowseCommand(cmd: BrowseCommand): void;
