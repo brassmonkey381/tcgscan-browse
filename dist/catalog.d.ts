@@ -17,6 +17,10 @@ export interface CatalogCard {
     illustrator: string;
     types: string[];
     stage: string;
+    hp: number | null;
+    /** Evolution stage, 1-indexed (1 = Basic, 2 = Stage 1, …); -1 when unknown. Bumped from
+     *  the pipeline's 0-indexed `evolution_stage_index` so `stage>1` reads as "evolved". */
+    evolutionStage: number;
     imageSmall?: string;
     imageMedium?: string;
     /** The displayed image is a CLEAN twin borrowed for an overlay-marked reprint
@@ -102,6 +106,8 @@ export interface RawCard {
     illustrator?: string;
     types?: string[];
     stage?: string;
+    hp?: number | null;
+    evolution_stage_index?: number | null;
     image_small?: string;
     image_medium?: string;
     imageSubstituted?: boolean;

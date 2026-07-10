@@ -2,12 +2,13 @@
  * Search-box query grammar for the card browser — one box for almost everything.
  *
  *     charizard artist:arita rarity:"holo rare" set:base series:base type:fire
- *     stage:basic year:1999 num:4 >$100 <$500 sort:value
+ *     stage:basic year:1999 num:4 hp>200 stage>1 date>2023 >$100 <$500 sort:value
  *
  *  - bare words        AND-ed, case-insensitive substring match on the card name
  *  - key:value         field filters (quote multi-word values); substring match
- *  - >$N / <$N         price bounds (also >=$N / <=$N)
- *  - sort:value|newest|name   result ordering (default: name relevance)
+ *  - key OP value      numeric/date comparisons — hp>200, stage>1, date>=06-2024
+ *  - >$N / <$N         price bounds (also >=$N / <=$N, and value>N without the $)
+ *  - sort:field[:dir]  result ordering (default: name relevance); dir = asc | desc
  *
  * EXTRACTION-READY (shared-browse): pure functions, no app imports — the card
  * shape and the price lookup are injected. This module is the seam that will
@@ -27,8 +28,23 @@ export interface QueryableCard {
     illustrator: string;
     types: string[];
     stage: string;
+    /** Printed HP, or null when the card has none / it's unknown. */
+    hp: number | null;
+    /** Evolution stage, 1-indexed (1 = Basic, 2 = Stage 1, …); -1 when unknown. */
+    evolutionStage: number;
 }
-export type QuerySort = 'relevance' | 'value' | 'newest' | 'name';
+/** The attribute a `sort:` orders by. Direction is carried separately (see SortDir). */
+export type QuerySort = 'relevance' | 'value' | 'date' | 'name' | 'hp' | 'stage';
+export type SortDir = 'asc' | 'desc';
+/** A numeric/date comparison filter — `hp>200`, `stage>1`, `date>=06-2024`. */
+export type CompareField = 'hp' | 'stage' | 'date';
+export type CompareOp = '>' | '>=' | '<' | '<=' | '=';
+export interface Comparison {
+    field: CompareField;
+    op: CompareOp;
+    /** Numeric fields: the number as typed. Date field: a normalized yyyy[-mm[-dd]] prefix. */
+    value: string;
+}
 export interface ParsedQuery {
     /** Bare words — every one must appear in the card name. */
     words: string[];
@@ -37,14 +53,17 @@ export interface ParsedQuery {
         key: FieldKey;
         value: string;
     }[];
+    /** Numeric/date comparison filters (hp / evolution stage / release date). */
+    comparisons: Comparison[];
     minPrice: number | null;
     maxPrice: number | null;
     sort: QuerySort;
+    sortDir: SortDir;
     /** True when anything beyond bare name words is present. */
     hasStructure: boolean;
 }
 export type FieldKey = 'artist' | 'illustrator' | 'rarity' | 'set' | 'series' | 'type' | 'stage' | 'year' | 'num';
-/** `rarity:"holo rare"` / `artist:arita` / `>$100` / bare words — quote-aware. */
+/** `rarity:"holo rare"` / `artist:arita` / `hp>200` / `>$100` / bare words — quote-aware. */
 export declare function parseQuery(raw: string): ParsedQuery;
 /**
  * Relevance score for `card` against the query — 0 rejects, higher ranks earlier.
@@ -60,7 +79,7 @@ export declare function matchCard(card: QueryableCard, q: ParsedQuery, priceOf: 
  * within ties); explicit sort:value/newest/name overrides.
  */
 export declare function runQuery<T extends QueryableCard>(cards: T[], q: ParsedQuery, priceOf: (id: string) => number, limit?: number): T[];
-/** Order results per the query's sort (stable for equal keys; relevance = input order). */
+/** Order results per the query's sort field + direction (relevance = input order). */
 export declare function sortCards<T extends QueryableCard>(cards: T[], q: ParsedQuery, priceOf: (id: string) => number): T[];
 /**
  * Terse echo of how the query was UNDERSTOOD — shown under the search box.
@@ -71,7 +90,7 @@ export declare function sortCards<T extends QueryableCard>(cards: T[], q: Parsed
  */
 export declare function describeQuery(q: ParsedQuery, matched?: QueryableCard[]): string;
 /** Placeholder/help line advertising the grammar (shared by both apps' search boxes). */
-export declare const QUERY_HINT = "try: arita rarity:holo type:fire >$100 sort:value";
+export declare const QUERY_HINT = "try: charizard hp>200 date>2023 sort:value";
 /**
  * The search user manual — data, not UI, so every app renders the same manual
  * in its own components (the "?" help panel).

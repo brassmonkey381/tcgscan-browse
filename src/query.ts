@@ -2,12 +2,13 @@
  * Search-box query grammar for the card browser — one box for almost everything.
  *
  *     charizard artist:arita rarity:"holo rare" set:base series:base type:fire
- *     stage:basic year:1999 num:4 >$100 <$500 sort:value
+ *     stage:basic year:1999 num:4 hp>200 stage>1 date>2023 >$100 <$500 sort:value
  *
  *  - bare words        AND-ed, case-insensitive substring match on the card name
  *  - key:value         field filters (quote multi-word values); substring match
- *  - >$N / <$N         price bounds (also >=$N / <=$N)
- *  - sort:value|newest|name   result ordering (default: name relevance)
+ *  - key OP value      numeric/date comparisons — hp>200, stage>1, date>=06-2024
+ *  - >$N / <$N         price bounds (also >=$N / <=$N, and value>N without the $)
+ *  - sort:field[:dir]  result ordering (default: name relevance); dir = asc | desc
  *
  * EXTRACTION-READY (shared-browse): pure functions, no app imports — the card
  * shape and the price lookup are injected. This module is the seam that will
@@ -28,18 +29,37 @@ export interface QueryableCard {
   illustrator: string;
   types: string[];
   stage: string;
+  /** Printed HP, or null when the card has none / it's unknown. */
+  hp: number | null;
+  /** Evolution stage, 1-indexed (1 = Basic, 2 = Stage 1, …); -1 when unknown. */
+  evolutionStage: number;
 }
 
-export type QuerySort = 'relevance' | 'value' | 'newest' | 'name';
+/** The attribute a `sort:` orders by. Direction is carried separately (see SortDir). */
+export type QuerySort = 'relevance' | 'value' | 'date' | 'name' | 'hp' | 'stage';
+export type SortDir = 'asc' | 'desc';
+
+/** A numeric/date comparison filter — `hp>200`, `stage>1`, `date>=06-2024`. */
+export type CompareField = 'hp' | 'stage' | 'date';
+export type CompareOp = '>' | '>=' | '<' | '<=' | '=';
+export interface Comparison {
+  field: CompareField;
+  op: CompareOp;
+  /** Numeric fields: the number as typed. Date field: a normalized yyyy[-mm[-dd]] prefix. */
+  value: string;
+}
 
 export interface ParsedQuery {
   /** Bare words — every one must appear in the card name. */
   words: string[];
   /** key -> value filters (already lowercased). */
   fields: { key: FieldKey; value: string }[];
+  /** Numeric/date comparison filters (hp / evolution stage / release date). */
+  comparisons: Comparison[];
   minPrice: number | null;
   maxPrice: number | null;
   sort: QuerySort;
+  sortDir: SortDir;
   /** True when anything beyond bare name words is present. */
   hasStructure: boolean;
 }
@@ -69,19 +89,89 @@ const FIELD_ALIASES: Record<string, FieldKey> = {
   number: 'num',
 };
 
-/** `rarity:"holo rare"` / `artist:arita` / `>$100` / bare words — quote-aware. */
+/** Sort field aliases → (canonical field, implied direction when the alias carries one). */
+const SORT_ALIASES: Record<string, { field: QuerySort; dir?: SortDir }> = {
+  value: { field: 'value' },
+  price: { field: 'value' },
+  worth: { field: 'value' },
+  name: { field: 'name' },
+  alpha: { field: 'name' },
+  date: { field: 'date' },
+  released: { field: 'date' },
+  release: { field: 'date' },
+  newest: { field: 'date', dir: 'desc' },
+  new: { field: 'date', dir: 'desc' },
+  oldest: { field: 'date', dir: 'asc' },
+  old: { field: 'date', dir: 'asc' },
+  hp: { field: 'hp' },
+  stage: { field: 'stage' },
+  evo: { field: 'stage' },
+  evolution: { field: 'stage' },
+  relevance: { field: 'relevance' },
+  rel: { field: 'relevance' },
+  best: { field: 'relevance' },
+};
+
+/** Natural direction for each sort field when none is given (priciest/newest/highest first). */
+const SORT_DEFAULT_DIR: Record<QuerySort, SortDir> = {
+  relevance: 'desc',
+  value: 'desc',
+  date: 'desc',
+  name: 'asc',
+  hp: 'desc',
+  stage: 'asc',
+};
+
+/** Keys that address the release date via a comparison (`date>2023`, `year>=2010`). */
+const DATE_COMPARE_KEYS = new Set(['date', 'release_date', 'releasedate', 'released', 'year']);
+
+/**
+ * Normalize a (possibly partial) date to a comparable yyyy[-mm[-dd]] prefix, so a lexical
+ * string compare against a card's yyyy-mm-dd release date behaves like a real date compare:
+ *   2023            -> "2023"        (year)
+ *   06-2024 / 6/2024 -> "2024-06"    (month-year, month first)
+ *   2024-06         -> "2024-06"     (year-month)
+ *   2024-06-15      -> "2024-06-15"  (full date)
+ * Returns null for anything unparseable (caller then treats the token as a plain word).
+ */
+function normalizeDatePrefix(v: string): string | null {
+  const s = v.trim();
+  let m: RegExpMatchArray | null;
+  if ((m = s.match(/^(\d{4})$/))) return m[1];
+  if ((m = s.match(/^(\d{1,2})[-/](\d{4})$/))) return `${m[2]}-${m[1].padStart(2, '0')}`;
+  if ((m = s.match(/^(\d{4})[-/](\d{1,2})$/))) return `${m[1]}-${m[2].padStart(2, '0')}`;
+  if ((m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/)))
+    return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  return null;
+}
+
+/** Resolve a `sort:` value (which may carry a `:dir` suffix) to a field + direction. */
+function parseSort(rawValue: string): { sort: QuerySort; dir: SortDir } | null {
+  const [fieldTok, dirTok] = rawValue.toLowerCase().split(':', 2);
+  const alias = SORT_ALIASES[fieldTok];
+  if (!alias) return null;
+  let dir = alias.dir ?? SORT_DEFAULT_DIR[alias.field];
+  if (dirTok === 'asc' || dirTok === 'ascending' || dirTok === 'up') dir = 'asc';
+  else if (dirTok === 'desc' || dirTok === 'descending' || dirTok === 'down') dir = 'desc';
+  return { sort: alias.field, dir };
+}
+
+/** `rarity:"holo rare"` / `artist:arita` / `hp>200` / `>$100` / bare words — quote-aware. */
 export function parseQuery(raw: string): ParsedQuery {
   const out: ParsedQuery = {
     words: [],
     fields: [],
+    comparisons: [],
     minPrice: null,
     maxPrice: null,
     sort: 'relevance',
+    sortDir: 'desc',
     hasStructure: false,
   };
-  // Tokenize: key:"quoted value" | key:value | "quoted words" | word | >$n
-  const tokens = raw.match(/[a-zA-Z]+:"[^"]*"|[a-zA-Z]+:[^\s"]+|"[^"]*"|[^\s"]+/g) ?? [];
+  // Tokenize: key:"quoted value" | key:value | "quoted words" | word | >$n | key>n
+  const tokens = raw.match(/[a-zA-Z]+:"[^"]*"|[a-zA-Z_]+[<>]=?[^\s"]+|[a-zA-Z]+:[^\s"]+|"[^"]*"|[^\s"]+/g) ?? [];
   for (const token of tokens) {
+    // Bare price bound: >$100, <=$5 (the $ is optional so >100 works too).
     const price = token.match(/^(>=|<=|>|<)\$?(\d+(?:\.\d+)?)$/);
     if (price) {
       const n = parseFloat(price[2]);
@@ -90,17 +180,31 @@ export function parseQuery(raw: string): ParsedQuery {
       out.hasStructure = true;
       continue;
     }
+    // Keyed comparison: hp>200, stage>1, date>=06-2024, value>100.
+    const comp = token.match(/^([a-zA-Z_]+)(>=|<=|>|<)(.+)$/);
+    if (comp && addComparison(out, comp[1].toLowerCase(), comp[2] as CompareOp, comp[3])) {
+      out.hasStructure = true;
+      continue;
+    }
     const kv = token.match(/^([a-zA-Z]+):(.+)$/);
     if (kv) {
-      const key = FIELD_ALIASES[kv[1].toLowerCase()];
+      const rawKey = kv[1].toLowerCase();
       const value = kv[2].replace(/^"|"$/g, '').toLowerCase().trim();
-      if (kv[1].toLowerCase() === 'sort') {
-        if (value === 'value' || value === 'price') out.sort = 'value';
-        else if (value === 'newest' || value === 'new') out.sort = 'newest';
-        else if (value === 'name') out.sort = 'name';
+      if (rawKey === 'sort') {
+        const s = parseSort(value);
+        if (s) {
+          out.sort = s.sort;
+          out.sortDir = s.dir;
+        }
         out.hasStructure = true;
         continue;
       }
+      // Colon form of a numeric/date field means "equals": hp:120, date:2023.
+      if (value && addComparison(out, rawKey, '=', value)) {
+        out.hasStructure = true;
+        continue;
+      }
+      const key = FIELD_ALIASES[rawKey];
       if (key && value) {
         out.fields.push({ key, value });
         out.hasStructure = true;
@@ -112,6 +216,42 @@ export function parseQuery(raw: string): ParsedQuery {
     if (word) out.words.push(word);
   }
   return out;
+}
+
+/**
+ * Try to record `key OP value` as a comparison filter. Returns true when the key names a
+ * numeric/date field AND the value parses; false otherwise (caller falls back to a word).
+ */
+function addComparison(out: ParsedQuery, key: string, op: CompareOp, rawValue: string): boolean {
+  const value = rawValue.replace(/^"|"$/g, '').trim();
+  if (key === 'hp') {
+    if (!/^\d+(?:\.\d+)?$/.test(value)) return false;
+    out.comparisons.push({ field: 'hp', op, value });
+    return true;
+  }
+  if (key === 'stage') {
+    if (!/^-?\d+$/.test(value)) return false; // stage:basic stays a string field, not this
+    out.comparisons.push({ field: 'stage', op, value });
+    return true;
+  }
+  if (key === 'value' || key === 'price' || key === 'worth') {
+    const n = parseFloat(value);
+    if (!isFinite(n)) return false;
+    if (op === '>' || op === '>=') out.minPrice = n;
+    else if (op === '<' || op === '<=') out.maxPrice = n;
+    else {
+      out.minPrice = n;
+      out.maxPrice = n;
+    }
+    return true;
+  }
+  if (DATE_COMPARE_KEYS.has(key)) {
+    const prefix = normalizeDatePrefix(value);
+    if (!prefix) return false;
+    out.comparisons.push({ field: 'date', op, value: prefix });
+    return true;
+  }
+  return false;
 }
 
 function fieldValues(card: QueryableCard, key: FieldKey): string[] {
@@ -134,6 +274,49 @@ function fieldValues(card: QueryableCard, key: FieldKey): string[] {
       return card.releaseDate ? [card.releaseDate.slice(0, 4)] : [];
     case 'num':
       return card.number ? [card.number] : [];
+  }
+}
+
+function numCompare(a: number, op: CompareOp, b: number): boolean {
+  switch (op) {
+    case '>':
+      return a > b;
+    case '>=':
+      return a >= b;
+    case '<':
+      return a < b;
+    case '<=':
+      return a <= b;
+    case '=':
+      return a === b;
+  }
+}
+
+/** Does the card satisfy one numeric/date comparison? Unknown values never match (excluded). */
+function matchComparison(card: QueryableCard, c: Comparison): boolean {
+  if (c.field === 'hp') {
+    if (card.hp == null) return false;
+    return numCompare(card.hp, c.op, parseFloat(c.value));
+  }
+  if (c.field === 'stage') {
+    if (card.evolutionStage < 0) return false;
+    return numCompare(card.evolutionStage, c.op, parseFloat(c.value));
+  }
+  // date — lexical compare against the normalized prefix (see normalizeDatePrefix). `>`/`>=`
+  // both mean "in or after that period" (so date>2023 includes all of 2023), matching intent.
+  const d = card.releaseDate;
+  if (!d) return false;
+  const p = c.value;
+  switch (c.op) {
+    case '=':
+      return d.startsWith(p);
+    case '>':
+    case '>=':
+      return d >= p;
+    case '<':
+      return d < p;
+    case '<=':
+      return d <= p + '￿'; // any date within the period sorts before this sentinel
   }
 }
 
@@ -188,6 +371,9 @@ export function scoreCard(
   for (const { key, value } of q.fields) {
     if (!fieldValues(card, key).some((v) => v.toLowerCase().includes(value))) return 0;
   }
+  for (const c of q.comparisons) {
+    if (!matchComparison(card, c)) return 0;
+  }
   if (q.minPrice !== null || q.maxPrice !== null) {
     const price = priceOf(card.id);
     if (q.minPrice !== null && price < q.minPrice) return 0;
@@ -231,22 +417,52 @@ export function runQuery<T extends QueryableCard>(
   ).slice(0, limit);
 }
 
-/** Order results per the query's sort (stable for equal keys; relevance = input order). */
+/**
+ * Stable sort by a nullable key, with unknown (null) keys always sunk to the bottom
+ * regardless of direction — so `sort:hp` and `sort:hp:asc` both leave HP-less cards last.
+ */
+function sortByKey<T>(
+  cards: T[],
+  keyOf: (c: T) => number | string | null,
+  dir: SortDir,
+  compare: (a: number | string, b: number | string) => number,
+): T[] {
+  const known: T[] = [];
+  const unknown: T[] = [];
+  for (const c of cards) (keyOf(c) == null ? unknown : known).push(c);
+  const mul = dir === 'asc' ? 1 : -1;
+  known.sort((a, b) => mul * compare(keyOf(a)!, keyOf(b)!));
+  return [...known, ...unknown];
+}
+
+/** Order results per the query's sort field + direction (relevance = input order). */
 export function sortCards<T extends QueryableCard>(
   cards: T[],
   q: ParsedQuery,
   priceOf: (id: string) => number,
 ): T[] {
-  if (q.sort === 'value') {
-    return [...cards].sort((a, b) => priceOf(b.id) - priceOf(a.id));
+  const mul = q.sortDir === 'asc' ? 1 : -1;
+  switch (q.sort) {
+    case 'value':
+      return [...cards].sort((a, b) => mul * (priceOf(a.id) - priceOf(b.id)));
+    case 'name':
+      return [...cards].sort((a, b) => mul * a.name.localeCompare(b.name));
+    case 'date':
+      return sortByKey(cards, (c) => c.releaseDate || null, q.sortDir, (a, b) =>
+        String(a).localeCompare(String(b)),
+      );
+    case 'hp':
+      return sortByKey(cards, (c) => c.hp, q.sortDir, (a, b) => (a as number) - (b as number));
+    case 'stage':
+      return sortByKey(
+        cards,
+        (c) => (c.evolutionStage >= 0 ? c.evolutionStage : null),
+        q.sortDir,
+        (a, b) => (a as number) - (b as number),
+      );
+    default:
+      return cards; // relevance
   }
-  if (q.sort === 'newest') {
-    return [...cards].sort((a, b) => (b.releaseDate || '').localeCompare(a.releaseDate || ''));
-  }
-  if (q.sort === 'name') {
-    return [...cards].sort((a, b) => a.name.localeCompare(b.name));
-  }
-  return cards;
 }
 
 /** Display fields a bare word is attributed to, in tally order (name first). */
@@ -295,6 +511,7 @@ export function describeQuery(q: ParsedQuery, matched: QueryableCard[] = []): st
     parts.push(label && label !== 'name' ? `${label}=${quoteIfSpaced(w)}` : `"${w}"`);
   }
   for (const f of q.fields) parts.push(`${f.key}=${quoteIfSpaced(f.value)}`);
+  for (const c of q.comparisons) parts.push(`${c.field}${c.op}${c.value}`);
   if (q.minPrice !== null && q.maxPrice !== null) {
     parts.push(`(${usd(q.minPrice)} ≤ value ≤ ${usd(q.maxPrice)})`);
   } else if (q.minPrice !== null) {
@@ -302,12 +519,12 @@ export function describeQuery(q: ParsedQuery, matched: QueryableCard[] = []): st
   } else if (q.maxPrice !== null) {
     parts.push(`(value ≤ ${usd(q.maxPrice)})`);
   }
-  if (q.sort !== 'relevance') parts.push(`sort=${q.sort}`);
+  if (q.sort !== 'relevance') parts.push(`sort=${q.sort}${q.sortDir === 'asc' ? '↑' : '↓'}`);
   return parts.join(' & ');
 }
 
 /** Placeholder/help line advertising the grammar (shared by both apps' search boxes). */
-export const QUERY_HINT = 'try: arita rarity:holo type:fire >$100 sort:value';
+export const QUERY_HINT = 'try: charizard hp>200 date>2023 sort:value';
 
 /**
  * The search user manual — data, not UI, so every app renders the same manual
@@ -334,25 +551,30 @@ export const QUERY_MANUAL: ManualSection[] = [
       ['set:base', 'set name'],
       ['series:sword', 'series name'],
       ['type:fire', 'energy type or card type (Pokemon / Trainer / …)'],
-      ['stage:basic', 'evolution stage (Basic, Stage1, VMAX, …)'],
-      ['year:1999', 'release year'],
+      ['stage:basic', 'evolution stage by name (Basic, Stage1, VMAX, …)'],
       ['num:4', 'collector number (alias: number:)'],
     ],
   },
   {
-    title: 'Filter by value',
+    title: 'Compare numbers & dates',
     rows: [
-      ['>$100', 'worth at least $100 (also >=)'],
-      ['<$5', 'worth at most $5 (also <=)'],
-      ['>0 <100', 'combine for a range'],
+      ['>$100', 'value at least $100 (also <$5, >=, <=, or value>100)'],
+      ['hp>200', 'printed HP — also hp<=60, hp:120 (exactly)'],
+      ['stage>1', 'evolved forms (Basic = 1, Stage 1 = 2, …); stage:basic matches by name'],
+      ['date>2023', 'released in 2023 or later (release_date: works too)'],
+      ['date>=06-2024', 'partial dates ok: 2023, 06-2024, or 2024-06-15'],
+      ['year:1999', 'exact release year'],
     ],
   },
   {
     title: 'Sort',
     rows: [
-      ['sort:value', 'priciest first (tiles show values)'],
-      ['sort:newest', 'newest release first'],
-      ['sort:name', 'alphabetical'],
+      ['sort:value', 'priciest first (tiles show values) — add :asc for cheapest'],
+      ['sort:newest', 'newest release first (sort:oldest for oldest)'],
+      ['sort:hp', 'highest HP first'],
+      ['sort:stage', 'Basic → most evolved'],
+      ['sort:name', 'alphabetical (sort:name:desc for Z→A)'],
+      ['…:asc / …:desc', 'add to any sort to flip its direction'],
     ],
   },
   {

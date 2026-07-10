@@ -88,6 +88,9 @@ class LocalCatalog {
                 illustrator: raw_c.illustrator ?? '',
                 types: raw_c.types ?? [],
                 stage: raw_c.stage ?? '',
+                hp: typeof raw_c.hp === 'number' ? raw_c.hp : null,
+                // 0-indexed → 1-indexed (Basic = 1); -1 when the pipeline had no evolution data.
+                evolutionStage: typeof raw_c.evolution_stage_index === 'number' ? raw_c.evolution_stage_index + 1 : -1,
                 imageSmall: raw_c.image_small,
                 imageMedium: raw_c.image_medium,
                 imageSubstituted: raw_c.imageSubstituted,

@@ -100,11 +100,15 @@ export {
   runQuery,
   scoreCard,
   sortCards,
+  type CompareField,
+  type CompareOp,
+  type Comparison,
   type FieldKey,
   type ManualSection,
   type ParsedQuery,
   type QueryableCard,
   type QuerySort,
+  type SortDir,
 } from './query';
 
 export {

@@ -30,6 +30,10 @@ export interface CatalogCard {
   illustrator: string;
   types: string[]; // TCG energy types, e.g. ["Fire"]
   stage: string; // Basic | Stage1 | Stage2 | VMAX | …
+  hp: number | null; // printed HP, or null when the card has none / it's unknown
+  /** Evolution stage, 1-indexed (1 = Basic, 2 = Stage 1, …); -1 when unknown. Bumped from
+   *  the pipeline's 0-indexed `evolution_stage_index` so `stage>1` reads as "evolved". */
+  evolutionStage: number;
   // size tiers (245px / 640px webp), when generated for this card
   imageSmall?: string;
   imageMedium?: string;
@@ -123,6 +127,8 @@ export interface RawCard {
   illustrator?: string;
   types?: string[];
   stage?: string;
+  hp?: number | null; // printed HP (kept in the browse catalog for hp: queries)
+  evolution_stage_index?: number | null; // 0-indexed evolution stage (0 = Basic); null = unknown
   image_small?: string; // 245px webp tier (data server)
   image_medium?: string; // 640px webp tier (data server)
   imageSubstituted?: boolean; // image borrowed from a clean twin (may differ; see CatalogCard)
@@ -241,6 +247,10 @@ class LocalCatalog implements Catalog {
         illustrator: raw_c.illustrator ?? '',
         types: raw_c.types ?? [],
         stage: raw_c.stage ?? '',
+        hp: typeof raw_c.hp === 'number' ? raw_c.hp : null,
+        // 0-indexed → 1-indexed (Basic = 1); -1 when the pipeline had no evolution data.
+        evolutionStage:
+          typeof raw_c.evolution_stage_index === 'number' ? raw_c.evolution_stage_index + 1 : -1,
         imageSmall: raw_c.image_small,
         imageMedium: raw_c.image_medium,
         imageSubstituted: raw_c.imageSubstituted,
