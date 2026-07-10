@@ -34,7 +34,16 @@ import {
   View,
 } from 'react-native';
 
-import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery } from './query';
+import {
+  describeQuery,
+  parseQuery,
+  QUERY_HINT,
+  QUERY_MANUAL,
+  runQuery,
+  sortCards,
+  type QuerySort,
+  type SortDir,
+} from './query';
 import { browseState, subscribeBrowseCommand } from './state';
 import { CardActionModal, MultiCardActionModal } from './CardActionModal';
 import { SeriesAnalytics, SetAnalytics } from './analytics';
@@ -101,6 +110,47 @@ function distinctSorted(cards: CatalogCard[], pick: (c: CatalogCard) => string[]
   return [...new Set(cards.flatMap(pick).filter(Boolean))].sort();
 }
 
+/** Gapless HP buckets (from the corpus HP distribution) — categorical chips for the HP facet. */
+const HP_BUCKETS: { label: string; max: number }[] = [
+  { label: '≤ 60', max: 60 },
+  { label: '70–100', max: 100 },
+  { label: '110–150', max: 150 },
+  { label: '160–200', max: 200 },
+  { label: '210+', max: Infinity },
+];
+function hpBucket(hp: number): string {
+  return (HP_BUCKETS.find((b) => hp <= b.max) ?? HP_BUCKETS[HP_BUCKETS.length - 1]).label;
+}
+
+/** Evolution-stage chip labels, indexed by the 1-indexed evolutionStage (Basic = 1). */
+const EVO_LABELS = ['Basic', 'Stage 1', 'Stage 2', 'Stage 3+'];
+function evoLabel(stage: number): string {
+  return EVO_LABELS[Math.min(stage - 1, EVO_LABELS.length - 1)] ?? EVO_LABELS[0];
+}
+/** Keep facet chips in a fixed order (not alphabetized), dropping labels absent from `cards`. */
+function orderedPresent(labels: string[], cards: CatalogCard[], labelOf: (c: CatalogCard) => string | null): string[] {
+  const present = new Set(cards.map(labelOf).filter((v): v is string => v != null));
+  return labels.filter((l) => present.has(l));
+}
+
+/** UI sort control: the fields the sort chips offer + each field's natural default direction. */
+const SORT_OPTIONS: { field: QuerySort; label: string }[] = [
+  { field: 'relevance', label: 'Relevance' },
+  { field: 'value', label: 'Value' },
+  { field: 'date', label: 'Date' },
+  { field: 'hp', label: 'HP' },
+  { field: 'stage', label: 'Evolution' },
+  { field: 'name', label: 'Name' },
+];
+const SORT_DEFAULT_DIR: Record<QuerySort, SortDir> = {
+  relevance: 'desc',
+  value: 'desc',
+  date: 'desc',
+  name: 'asc',
+  hp: 'desc',
+  stage: 'asc',
+};
+
 /**
  * The facets we can populate from today's catalog. Filtering is AND across entries and OR
  * within a single entry's selected values (see `applyFacets`).
@@ -166,6 +216,23 @@ const FACETS: Facet[] = [
     label: 'Size',
     valuesOf: (c) => [c.kind === 'jumbo' ? 'Jumbo' : 'Standard'],
     available: (cards) => distinctSorted(cards, (c) => [c.kind === 'jumbo' ? 'Jumbo' : 'Standard']),
+  },
+  {
+    // Printed HP, bucketed into categorical chips (the query grammar's hp>N is finer-grained).
+    key: 'hp',
+    label: 'HP',
+    valuesOf: (c) => (c.hp == null ? [] : [hpBucket(c.hp)]),
+    available: (cards) =>
+      orderedPresent(HP_BUCKETS.map((b) => b.label), cards, (c) => (c.hp == null ? null : hpBucket(c.hp))),
+  },
+  {
+    // Evolution stage, driven by evolution_stage_index (Basic / Stage 1 / Stage 2), NOT the TCG
+    // `stage` string. The grammar's stage>N filters this same 1-indexed value.
+    key: 'evolution',
+    label: 'Evolution',
+    valuesOf: (c) => (c.evolutionStage > 0 ? [evoLabel(c.evolutionStage)] : []),
+    available: (cards) =>
+      orderedPresent(EVO_LABELS, cards, (c) => (c.evolutionStage > 0 ? evoLabel(c.evolutionStage) : null)),
   },
 ];
 
@@ -295,6 +362,10 @@ export function CatalogBrowser({
   const [seriesId, setSeriesId] = useState<string | null>(browseState.seriesId);
   const [setId, setSetId] = useState<string | null>(browseState.setId);
   const [selection, setSelection] = useState<FacetSelection>(browseState.selection);
+  // UI sort control: null → follow the search box's `sort:` (else relevance).
+  const [sortSel, setSortSel] = useState<{ field: QuerySort; dir: SortDir } | null>(
+    browseState.sortSel,
+  );
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // "Find similar" mode: results of the data server's embedding RPC for one card.
@@ -310,10 +381,11 @@ export function CatalogBrowser({
       seriesId,
       setId,
       selection,
+      sortSel,
       similarTo,
       similarCards,
     });
-  }, [cardQuery, seriesId, setId, selection, similarTo, similarCards]);
+  }, [cardQuery, seriesId, setId, selection, sortSel, similarTo, similarCards]);
   // Tapping a card opens the action sheet (app-supplied actions + built-ins)
   // instead of silently replacing the pocket's occupant.
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
@@ -394,17 +466,30 @@ export function CatalogBrowser({
 
   // The parsed search-box query (grammar: words, key:value fields, price bounds, sort).
   const parsed = useMemo(() => parseQuery(q), [q]);
+  // Effective sort: the UI sort control wins; otherwise the search box's `sort:` (or relevance).
+  const effSort = useMemo<{ field: QuerySort; dir: SortDir }>(() => {
+    if (sortSel) return sortSel;
+    if (parsed.sort !== 'relevance') return { field: parsed.sort, dir: parsed.sortDir };
+    return { field: 'relevance', dir: 'desc' };
+  }, [sortSel, parsed.sort, parsed.sortDir]);
+  // The query actually run/described/labelled, with the effective sort folded in.
+  const effParsed = useMemo(
+    () => ({ ...parsed, sort: effSort.field, sortDir: effSort.dir }),
+    [parsed, effSort],
+  );
 
   // Cards currently in view, before facet filtering: ranked full-corpus search results
   // (bare words match name/artist/set/series/rarity/type/stage — name hits rank first),
   // similar-mode results, or the set's cards.
   const viewCards = useMemo<CatalogCard[]>(() => {
-    if (searching) return runQuery(catalog.listAll(), parsed, priceOf, SEARCH_LIMIT);
-    if (similarTo) return similarCards;
-    if (setId) return catalog.listCards(setId);
-    return [];
+    if (searching) return runQuery(catalog.listAll(), effParsed, priceOf, SEARCH_LIMIT);
+    // Set cards / similar results: keep their natural order (collector number / best-match) until
+    // the UI sort control asks for something else, then re-sort by the chosen field.
+    const base = similarTo ? similarCards : setId ? catalog.listCards(setId) : [];
+    if (effSort.field === 'relevance' || base.length === 0) return base;
+    return sortCards(base, effParsed, priceOf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, searching, parsed, setId, similarTo, similarCards, priceSummary]);
+  }, [catalog, searching, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary]);
 
   // Ids currently in view (search results / set cards) — keeps facet options and the V-UNION
   // groups relevant to what's actually on screen.
@@ -612,6 +697,18 @@ export function CatalogBrowser({
       return { ...prev, [key]: next };
     });
 
+  // Sort chips: tap a field to sort by it; tap the active field again (or the ↑/↓ button) to
+  // flip its direction. Relevance has no direction.
+  const pickSort = (field: QuerySort) => {
+    if (field === effSort.field && field !== 'relevance') {
+      setSortSel({ field, dir: effSort.dir === 'asc' ? 'desc' : 'asc' });
+    } else {
+      setSortSel({ field, dir: field === 'relevance' ? 'desc' : SORT_DEFAULT_DIR[field] });
+    }
+  };
+  const toggleSortDir = () =>
+    setSortSel({ field: effSort.field, dir: effSort.dir === 'asc' ? 'desc' : 'asc' });
+
   const currentSeries = seriesId ? catalog.getSeries(seriesId) : undefined;
   const currentSet = setId ? catalog.getSet(setId) : undefined;
   // The card already in the pocket that opened this picker (if any) — offered as
@@ -732,7 +829,7 @@ export function CatalogBrowser({
         onPress={() => (isSelecting() ? toggleSelected(c.id) : setActionCard(c))}
         multiSelected={selectedIds.includes(c.id)}
         // value replaces the name line when sorting by value (keeps row geometry fixed)
-        label={parsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name}
+        label={effParsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name}
         // headline value under the name, only when pricing is surfaced
         value={analytics ? value : undefined}
         // app-injected inline quick action (＋add / quick-place), if any
@@ -797,7 +894,7 @@ export function CatalogBrowser({
               {filteredCards.length === viewCards.length
                 ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
                 : `${filteredCards.length} of ${viewCards.length}`}
-              {viewCards.length >= SEARCH_LIMIT ? '+' : ''} · {describeQuery(parsed, viewCards)}
+              {viewCards.length >= SEARCH_LIMIT ? '+' : ''} · {describeQuery(effParsed, viewCards)}
             </Text>
             <Pressable onPress={() => onChangeQuery('')} hitSlop={8}>
               <Text style={styles.clear}>Clear</Text>
@@ -877,6 +974,9 @@ export function CatalogBrowser({
             onToggleValue={toggleFacetValue}
             onClear={clearFilters}
           />
+        ) : null}
+        {isCardLevel && !analyticsView ? (
+          <SortBar styles={styles} field={effSort.field} dir={effSort.dir} onPick={pickSort} onToggleDir={toggleSortDir} />
         ) : null}
         {isCardLevel && canMultiSelect && !analyticsView ? (
           <View style={styles.selectRow}>
@@ -1200,6 +1300,53 @@ function Breadcrumb({ styles, crumbs }: { styles: Styles; crumbs: Crumb[] }) {
   );
 }
 
+/**
+ * Compact sort control: a "Sort" label, a horizontal row of single-select field chips, and a
+ * ↑/↓ direction toggle (hidden for Relevance, which has no direction). Mirrors the FacetBar chip
+ * look. The chips drive the SAME sort the search box's `sort:` grammar sets.
+ */
+function SortBar({
+  styles,
+  field,
+  dir,
+  onPick,
+  onToggleDir,
+}: {
+  styles: Styles;
+  field: QuerySort;
+  dir: SortDir;
+  onPick: (field: QuerySort) => void;
+  onToggleDir: () => void;
+}) {
+  return (
+    <View style={styles.facetGroup}>
+      <Text style={styles.facetLabel}>Sort</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.sortScroll}
+        contentContainerStyle={styles.chipRow}
+        keyboardShouldPersistTaps="handled">
+        {SORT_OPTIONS.map((o) => {
+          const on = o.field === field;
+          return (
+            <Pressable key={o.field} onPress={() => onPick(o.field)} style={[styles.chip, on && styles.chipOn]}>
+              <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>
+                {o.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      {field !== 'relevance' ? (
+        <Pressable onPress={onToggleDir} style={styles.sortDir} accessibilityLabel="Toggle sort direction">
+          <Text style={styles.sortDirText}>{dir === 'asc' ? '↑' : '↓'}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 interface FacetOption {
   facet: Facet;
   values: string[];
@@ -1391,6 +1538,17 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     chipOn: { backgroundColor: t.accent, borderColor: t.accent },
     chipText: { fontSize: 12, fontWeight: '600', color: t.subtext },
     chipTextOn: { color: t.accentText },
+    // sort control (field chips + a ↑/↓ direction toggle)
+    sortScroll: { flexShrink: 1 },
+    sortDir: {
+      width: 30,
+      alignItems: 'center',
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: t.accent,
+    },
+    sortDirText: { fontSize: 14, fontWeight: '800', color: t.accent },
     // list
     column: { gap: GRID_GAP, justifyContent: 'flex-start' },
     listContent: { paddingBottom: 16 },

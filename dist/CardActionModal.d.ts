@@ -1,5 +1,5 @@
 import type { CardAction } from './actions';
-import type { CatalogCard } from './catalog';
+import { type CatalogCard } from './catalog';
 import { type BrowseTheme } from './theme';
 interface CardActionModalProps {
     card: CatalogCard;

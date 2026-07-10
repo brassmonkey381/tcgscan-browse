@@ -7,12 +7,18 @@
  * persisted to disk): a fresh app load starts clean.
  */
 import type { CatalogCard } from './catalog';
+import type { QuerySort, SortDir } from './query';
 export interface BrowseState {
     cardQuery: string;
     seriesId: string | null;
     setId: string | null;
     /** Facet chip selection: facet key -> selected values. */
     selection: Record<string, string[]>;
+    /** Sort chosen via the UI sort control; null follows the search box's `sort:` (or relevance). */
+    sortSel: {
+        field: QuerySort;
+        dir: SortDir;
+    } | null;
     /** The source card(s) a similarity search was run on: their ids + a short label. */
     similarTo: {
         ids: string[];

@@ -34,6 +34,11 @@ export interface CatalogCard {
   /** Evolution stage, 1-indexed (1 = Basic, 2 = Stage 1, …); -1 when unknown. Bumped from
    *  the pipeline's 0-indexed `evolution_stage_index` so `stage>1` reads as "evolved". */
   evolutionStage: number;
+  /** Authoritative "evolves from" species (scraped per-card); '' for basics / unknown. */
+  evolvesFrom: string;
+  /** The ordered evolution-family species names (lowercase, DFS order); [] when unknown.
+   *  Paired with evolutionStage to surface an "evolves to" example (see evolutionNeighbors). */
+  evolutionLine: string[];
   // size tiers (245px / 640px webp), when generated for this card
   imageSmall?: string;
   imageMedium?: string;
@@ -129,6 +134,8 @@ export interface RawCard {
   stage?: string;
   hp?: number | null; // printed HP (kept in the browse catalog for hp: queries)
   evolution_stage_index?: number | null; // 0-indexed evolution stage (0 = Basic); null = unknown
+  evolves_from?: string; // authoritative "evolves from" species (scrape)
+  evolution_line?: string[]; // ordered family species names (lowercase, DFS order)
   image_small?: string; // 245px webp tier (data server)
   image_medium?: string; // 640px webp tier (data server)
   imageSubstituted?: boolean; // image borrowed from a clean twin (may differ; see CatalogCard)
@@ -183,6 +190,30 @@ export function formatSetDate(iso: string): string {
   if (!iso) return '';
   const [y, m] = iso.split('-');
   return `${MONTHS[parseInt(m, 10) - 1] ?? ''} ${y}`.trim();
+}
+
+/** "charmeleon" / "mr-mime" -> "Charmeleon" / "Mr Mime". */
+function titleCaseSpecies(s: string): string {
+  return s
+    .split(/[-\s]+/)
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/**
+ * Best-effort "evolves from / to" for a card. `from` uses the authoritative scraped
+ * `evolvesFrom` (falling back to the prior line member); `to` is the NEXT species in the
+ * ordered evolution line — an *example* for branching families (Eevee lists several). Both
+ * '' when unknown. Driven by evolutionStage (from evolution_stage_index) + evolutionLine.
+ */
+export function evolutionNeighbors(card: CatalogCard): { from: string; to: string } {
+  const line = card.evolutionLine;
+  const idx = card.evolutionStage - 1; // 0-based position along a linear line
+  const from =
+    card.evolvesFrom || (idx >= 1 && line[idx - 1] ? titleCaseSpecies(line[idx - 1]) : '');
+  const to = idx >= 0 && line[idx + 1] ? titleCaseSpecies(line[idx + 1]) : '';
+  return { from, to };
 }
 
 /** A series' active-years label from its first/last set, e.g. "2016–2018" or "2016". */
@@ -251,6 +282,8 @@ class LocalCatalog implements Catalog {
         // 0-indexed → 1-indexed (Basic = 1); -1 when the pipeline had no evolution data.
         evolutionStage:
           typeof raw_c.evolution_stage_index === 'number' ? raw_c.evolution_stage_index + 1 : -1,
+        evolvesFrom: raw_c.evolves_from ?? '',
+        evolutionLine: raw_c.evolution_line ?? [],
         imageSmall: raw_c.image_small,
         imageMedium: raw_c.image_medium,
         imageSubstituted: raw_c.imageSubstituted,

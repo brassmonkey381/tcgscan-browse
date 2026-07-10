@@ -29,6 +29,7 @@ export {
 } from './images';
 
 export {
+  evolutionNeighbors,
   formatSetDate,
   getCatalog,
   getLoadedCatalog,

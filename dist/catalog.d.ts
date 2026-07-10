@@ -21,6 +21,11 @@ export interface CatalogCard {
     /** Evolution stage, 1-indexed (1 = Basic, 2 = Stage 1, …); -1 when unknown. Bumped from
      *  the pipeline's 0-indexed `evolution_stage_index` so `stage>1` reads as "evolved". */
     evolutionStage: number;
+    /** Authoritative "evolves from" species (scraped per-card); '' for basics / unknown. */
+    evolvesFrom: string;
+    /** The ordered evolution-family species names (lowercase, DFS order); [] when unknown.
+     *  Paired with evolutionStage to surface an "evolves to" example (see evolutionNeighbors). */
+    evolutionLine: string[];
     imageSmall?: string;
     imageMedium?: string;
     /** The displayed image is a CLEAN twin borrowed for an overlay-marked reprint
@@ -108,6 +113,8 @@ export interface RawCard {
     stage?: string;
     hp?: number | null;
     evolution_stage_index?: number | null;
+    evolves_from?: string;
+    evolution_line?: string[];
     image_small?: string;
     image_medium?: string;
     imageSubstituted?: boolean;
@@ -140,6 +147,16 @@ export interface RawCatalog {
 }
 /** yyyy-mm-dd -> "Mar 2022" (or "" for empty). */
 export declare function formatSetDate(iso: string): string;
+/**
+ * Best-effort "evolves from / to" for a card. `from` uses the authoritative scraped
+ * `evolvesFrom` (falling back to the prior line member); `to` is the NEXT species in the
+ * ordered evolution line — an *example* for branching families (Eevee lists several). Both
+ * '' when unknown. Driven by evolutionStage (from evolution_stage_index) + evolutionLine.
+ */
+export declare function evolutionNeighbors(card: CatalogCard): {
+    from: string;
+    to: string;
+};
 /** A series' active-years label from its first/last set, e.g. "2016–2018" or "2016". */
 export declare function seriesDateRange(s: {
     firstDate: string;

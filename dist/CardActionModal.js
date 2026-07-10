@@ -12,6 +12,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { Image } from 'expo-image';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { resolveLabel } from './actions';
+import { evolutionNeighbors } from './catalog';
 import { cardThumbUrl } from './config';
 import { formatUsd } from './prices';
 import { lightTheme } from './theme';
@@ -25,9 +26,17 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
         card.illustrator ? `Illus. ${card.illustrator}` : '',
         value > 0 ? `Value ${formatUsd(value)}` : '',
     ].filter(Boolean);
+    // Evolution neighbours (from the authoritative evolves_from + the ordered evolution line).
+    const evo = evolutionNeighbors(card);
+    const evoLine = [
+        evo.from ? `↑ Evolves from ${evo.from}` : '',
+        evo.to ? `↓ Evolves to ${evo.to}` : '',
+    ]
+        .filter(Boolean)
+        .join('   ');
     // Primary first, then the rest — order within each group preserved.
     const ordered = [...actions].sort((a, b) => Number(b.kind === 'primary') - Number(a.kind === 'primary'));
-    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsxs(Pressable, { style: styles.sheet, onPress: () => { }, children: [_jsx(View, { style: styles.imageWrap, children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 120 })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "no image" }) })) }), _jsx(Text, { style: styles.name, numberOfLines: 2, children: card.name }), facts.map((f) => (_jsx(Text, { style: styles.fact, numberOfLines: 1, children: f }, f))), card.imageSubstituted ? (_jsx(Text, { style: styles.caveat, children: "This image may differ slightly from the real card \u2014 it could carry a stamp, overlay, or signature we missed." })) : null, _jsxs(View, { style: styles.actions, children: [ordered.map((action) => {
+    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsxs(Pressable, { style: styles.sheet, onPress: () => { }, children: [_jsx(View, { style: styles.imageWrap, children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 120 })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "no image" }) })) }), _jsx(Text, { style: styles.name, numberOfLines: 2, children: card.name }), facts.map((f) => (_jsx(Text, { style: styles.fact, numberOfLines: 1, children: f }, f))), evoLine ? (_jsx(Text, { style: styles.evo, numberOfLines: 1, children: evoLine })) : null, card.imageSubstituted ? (_jsx(Text, { style: styles.caveat, children: "This image may differ slightly from the real card \u2014 it could carry a stamp, overlay, or signature we missed." })) : null, _jsxs(View, { style: styles.actions, children: [ordered.map((action) => {
                                 const primary = action.kind === 'primary';
                                 const destructive = action.kind === 'destructive';
                                 return (_jsx(Pressable, { style: [styles.action, primary && styles.actionPrimary], 
@@ -98,6 +107,7 @@ function makeStyles(t) {
         imageFallbackText: { color: t.faint, fontSize: 12 },
         name: { fontSize: 16, fontWeight: '700', color: t.text },
         fact: { fontSize: 12, color: t.subtext },
+        evo: { fontSize: 12, fontWeight: '600', color: t.link, marginTop: 2 },
         caveat: { fontSize: 11, color: t.faint, fontStyle: 'italic', marginTop: 4, lineHeight: 15 },
         actions: { marginTop: 10, gap: 6 },
         action: {

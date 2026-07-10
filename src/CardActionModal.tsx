@@ -13,7 +13,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import type { CardAction } from './actions';
 import { resolveLabel } from './actions';
-import type { CatalogCard } from './catalog';
+import { evolutionNeighbors, type CatalogCard } from './catalog';
 import { cardThumbUrl } from './config';
 import { formatUsd } from './prices';
 import { lightTheme, type BrowseTheme } from './theme';
@@ -38,6 +38,14 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
     card.illustrator ? `Illus. ${card.illustrator}` : '',
     value > 0 ? `Value ${formatUsd(value)}` : '',
   ].filter(Boolean);
+  // Evolution neighbours (from the authoritative evolves_from + the ordered evolution line).
+  const evo = evolutionNeighbors(card);
+  const evoLine = [
+    evo.from ? `↑ Evolves from ${evo.from}` : '',
+    evo.to ? `↓ Evolves to ${evo.to}` : '',
+  ]
+    .filter(Boolean)
+    .join('   ');
 
   // Primary first, then the rest — order within each group preserved.
   const ordered = [...actions].sort((a, b) => Number(b.kind === 'primary') - Number(a.kind === 'primary'));
@@ -64,6 +72,11 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
               {f}
             </Text>
           ))}
+          {evoLine ? (
+            <Text style={styles.evo} numberOfLines={1}>
+              {evoLine}
+            </Text>
+          ) : null}
           {card.imageSubstituted ? (
             <Text style={styles.caveat}>
               This image may differ slightly from the real card — it could carry a stamp,
@@ -226,6 +239,7 @@ function makeStyles(t: BrowseTheme) {
     imageFallbackText: { color: t.faint, fontSize: 12 },
     name: { fontSize: 16, fontWeight: '700', color: t.text },
     fact: { fontSize: 12, color: t.subtext },
+    evo: { fontSize: 12, fontWeight: '600', color: t.link, marginTop: 2 },
     caveat: { fontSize: 11, color: t.faint, fontStyle: 'italic', marginTop: 4, lineHeight: 15 },
     actions: { marginTop: 10, gap: 6 },
     action: {

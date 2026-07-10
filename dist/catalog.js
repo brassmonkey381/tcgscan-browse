@@ -31,6 +31,27 @@ export function formatSetDate(iso) {
     const [y, m] = iso.split('-');
     return `${MONTHS[parseInt(m, 10) - 1] ?? ''} ${y}`.trim();
 }
+/** "charmeleon" / "mr-mime" -> "Charmeleon" / "Mr Mime". */
+function titleCaseSpecies(s) {
+    return s
+        .split(/[-\s]+/)
+        .filter(Boolean)
+        .map((w) => w[0].toUpperCase() + w.slice(1))
+        .join(' ');
+}
+/**
+ * Best-effort "evolves from / to" for a card. `from` uses the authoritative scraped
+ * `evolvesFrom` (falling back to the prior line member); `to` is the NEXT species in the
+ * ordered evolution line — an *example* for branching families (Eevee lists several). Both
+ * '' when unknown. Driven by evolutionStage (from evolution_stage_index) + evolutionLine.
+ */
+export function evolutionNeighbors(card) {
+    const line = card.evolutionLine;
+    const idx = card.evolutionStage - 1; // 0-based position along a linear line
+    const from = card.evolvesFrom || (idx >= 1 && line[idx - 1] ? titleCaseSpecies(line[idx - 1]) : '');
+    const to = idx >= 0 && line[idx + 1] ? titleCaseSpecies(line[idx + 1]) : '';
+    return { from, to };
+}
 /** A series' active-years label from its first/last set, e.g. "2016–2018" or "2016". */
 export function seriesDateRange(s) {
     const y1 = s.firstDate.slice(0, 4);
@@ -91,6 +112,8 @@ class LocalCatalog {
                 hp: typeof raw_c.hp === 'number' ? raw_c.hp : null,
                 // 0-indexed → 1-indexed (Basic = 1); -1 when the pipeline had no evolution data.
                 evolutionStage: typeof raw_c.evolution_stage_index === 'number' ? raw_c.evolution_stage_index + 1 : -1,
+                evolvesFrom: raw_c.evolves_from ?? '',
+                evolutionLine: raw_c.evolution_line ?? [],
                 imageSmall: raw_c.image_small,
                 imageMedium: raw_c.image_medium,
                 imageSubstituted: raw_c.imageSubstituted,

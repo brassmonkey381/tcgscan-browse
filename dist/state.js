@@ -3,6 +3,7 @@ export const browseState = {
     seriesId: null,
     setId: null,
     selection: {},
+    sortSel: null,
     similarTo: null,
     similarCards: [],
 };
