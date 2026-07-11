@@ -33,91 +33,89 @@ query string ──parseQuery()──▶ ParsedQuery ──▶ searchCards(parse
 
 ## The RPC: `search_cards`
 
-Must reproduce `scoreCard`/`runQuery` semantics exactly:
+> **Grammar has grown since this doc's first draft** (kit v0.5.11–v0.5.14). The RPC must
+> now reproduce the FULL current `src/query.ts`: hp/stage/date comparisons, sort
+> **direction**, the entity/container split with **name-word suppression**, and the new
+> sort fields. A ready-to-review migration lives at
+> `tcgscan-data/supabase/migrations/20260710_12_search_cards.sql` (**draft, not applied**).
 
-- **Bare words** (AND): each word scores `name LIKE 'w%'` → +5, else `name LIKE '%w%'`
-  → +3, else `haystack LIKE '%w%'` → +1, else the row is rejected. Base score 1.
-  Haystack = `name, illustrator, set_name, series, rarity, stage, number, types[],
-  card_type[]` (matches `lowered().rest`).
+Must reproduce `scoreCard`/`runQuery`/`sortCards` semantics exactly:
+
+- **Bare words** (AND): each word scores `starts_with(name,w)` → +5, else `name contains w`
+  → +3, else an **entity** field contains w → +1, else a **container** field contains w AND
+  w is not a "name-word" → +1, else the row is rejected. Base score 1.
+  - **entity** = illustrator, rarity, stage, number, types[], card_type[] (the card's own identity).
+  - **container** = set_name, series.
+  - **name-word suppression** (`classifyNameWords`): a word that matches **≥ 3 card names** is
+    "really a name" → its container (set/series) matches DON'T count. Keeps "pikachu" from
+    dragging in every card of a "Pikachu"-named set, while "jungle"/"sword" still find sets.
+    In SQL: a per-word `select count(*) from cards where name contains w >= 3` CTE.
 - **Field filters** `key:value` (substring, lowercased), rejected if unmatched:
   `artist/illustrator`→illustrator, `rarity`→rarity, `set`→set_name, `series`→series,
-  `type`→types ∪ card_type, `stage`→stage, `year`→left(release_date,4), `num`→number.
+  `type`→types ∪ card_type, `stage`→stage (string), `year`→left(release_date,4), `num`→number.
+- **Comparisons** (AND; unknown value never matches): `hp <op> N`; `stage <op> N` (1-indexed =
+  `evolution_stage_index + 1`); `date <op> PREFIX` where the client sends a normalized
+  `yyyy[-mm[-dd]]` prefix and `>`/`>=` mean "in or after" (lexical compare on `release_date::text`;
+  `<=` uses a `chr(65535)` upper sentinel, matching the client). op ∈ `> >= < <= =`.
 - **Price** from `price_latest.cur` (null → 0, matching `priceOf`): `>=min`, `<=max`.
-- **Sort:** `relevance` = score desc; `value` = cur desc; `newest` = release_date desc;
-  `name` = name asc. Always append `id` as the final tiebreaker (stable paging).
+- **Sort field + direction:** `relevance` = score desc (dir ignored); `value`/`date`/`name`/`hp`/
+  `stage` each honor `asc`/`desc`; unknown keys (null hp/date/stage-idx) sink **last regardless of
+  direction**. Final tiebreaker: `id`.
+  - **Parity note:** the client's `relevance` sort currently breaks ties by input order, the RPC by
+    `id`. P1 aligns them by tiebreaking the client relevance sort on `id` too, so warm == cold.
 
-### Signature
+### Signature (current — see the draft migration for the full body)
 
 ```sql
 create function search_cards(
   p_words      text[]  default '{}',
   p_fields     jsonb   default '[]',   -- [{"key":"rarity","value":"holo"}, …]
+  p_compares   jsonb   default '[]',   -- [{"field":"hp","op":">","value":"200"}, …]
   p_min_price  numeric default null,
   p_max_price  numeric default null,
   p_sort       text    default 'relevance',
-  p_limit      int     default 40,
+  p_dir        text    default 'desc',
+  p_limit      int     default 60,
   p_offset     int     default 0       -- Phase 1: offset paging (see cursor note)
 ) returns table (
   id text, name text, number text, rarity text, card_type text[],
-  set_id bigint, illustrator text, types text[], stage text, jumbo bool,
-  cur numeric, score int, total_count bigint
+  set_id integer, set_name text, series text, release_date date,
+  illustrator text, types text[], stage text, hp integer,
+  evolution_stage_index integer, evolves_from text, evolution_line text[],
+  jumbo boolean, cur numeric, score integer, total_count bigint
 ) language sql stable;
 ```
 
-### Body sketch
+Return cols carry enough to render a `CardTile` AND fill the action sheet (incl. the
+evolves-from/to bits) without the card being in the in-memory catalog.
 
-```sql
-with matched as (
-  select c.id, c.name, c.number, c.rarity, c.card_type, c.set_id,
-         c.illustrator, c.types, c.stage, c.jumbo,
-         coalesce(pl.cur, 0) as cur,
-         (1 + (select coalesce(sum(case
-                 when lower(c.name) like w||'%'        then 5
-                 when lower(c.name) like '%'||w||'%'   then 3
-                 when c.search_text like '%'||w||'%'   then 1 else 0 end),0)
-               from unnest(p_words) w))::int as score
-  from cards c
-  left join price_latest pl on pl.product_id = c.id
-  where (select bool_and(c.search_text like '%'||w||'%') from unnest(p_words) w)   -- AND words
-    and (select bool_and(                                                          -- AND fields
-          case f->>'key'
-            when 'rarity' then lower(c.rarity) like '%'||(f->>'value')||'%'
-            when 'set'    then lower(c.set_name) like '%'||(f->>'value')||'%'
-            when 'series' then lower(c.series) like '%'||(f->>'value')||'%'
-            when 'artist' then lower(c.illustrator) like '%'||(f->>'value')||'%'
-            when 'stage'  then lower(c.stage) like '%'||(f->>'value')||'%'
-            when 'num'    then lower(c.number) like '%'||(f->>'value')||'%'
-            when 'year'   then left(c.release_date::text,4) like '%'||(f->>'value')||'%'
-            when 'type'   then exists (select 1 from unnest(c.types||c.card_type) t
-                                       where lower(t) like '%'||(f->>'value')||'%')
-            else true end
-        ) from jsonb_array_elements(p_fields) f)
-    and (p_min_price is null or coalesce(pl.cur,0) >= p_min_price)
-    and (p_max_price is null or coalesce(pl.cur,0) <= p_max_price)
-)
-select *, count(*) over() as total_count
-from matched
-order by case when p_sort='relevance' then score end desc nulls last,
-         case when p_sort='value'     then cur   end desc nulls last,
-         case when p_sort='newest'    then release_date end desc nulls last,
-         case when p_sort='name'      then name  end asc  nulls last,
-         id
-limit p_limit offset p_offset;
-```
+### Indexes / perf
 
-- `search_text` is a **generated column** on `cards`:
-  `lower(name||' '||coalesce(illustrator,'')||' '||coalesce(set_name,'')||' '||…)`.
+A generated `cards.search_text` (lower name+entity+container) with a **trigram GIN** index
+prefilters candidates to rows containing every word — a superset (container-only hits for
+name-words are dropped by the exact scoring), so only the survivors get scored, not all ~28k
+rows. Plus btree on `release_date`, `hp`, `evolution_stage_index`, `price_latest(product_id,cur)`,
+and a trigram GIN on `lower(name)` for the name-word count probe.
+
+### Body
+
+The full, current body — words + name-word suppression + fields + hp/stage/date comparisons +
+directional sort + `total_count` window — lives in the draft migration
+`tcgscan-data/supabase/migrations/20260710_12_search_cards.sql`. Key structure:
+`words` CTE (per-word `is_name_word`) → `candidates` (trigram prefilter) → `scored`
+(exact per-word tiers + `words_ok`) → `filtered` (fields/compares/price) → directional order-by.
+
+- `search_text` is a **generated column** on `cards` (`lower(name+entity+container)`).
 - `total_count` (window) gives the real "N results" for `describeQuery` on every page.
+- `starts_with(name,w)` / `position(w in …)` mirror JS `startsWith`/`includes` (literal, no LIKE
+  wildcard surprises); field/compare CASE arms are `coalesce(…, false)` so a null never leaks a
+  match. No pipeline change: `publish_catalog` already upserts every column the RPC reads.
 
 ### Indexes / migration (tcgscan-data)
 
-- `create extension if not exists pg_trgm;`
-- generated `cards.search_text` + `create index … using gin (search_text gin_trgm_ops);`
-- btree: `price_latest(product_id, cur)`, `cards(release_date)`, `cards(rarity)`, and
-  trigram on `name` for the prefix/contains ranking probes.
-- `grant execute on function search_cards … to anon;` (cards are public-read).
-
-No pipeline change: `publish_catalog` already upserts every column the RPC reads.
+In the draft migration: `pg_trgm`; generated `cards.search_text` + `gin (search_text gin_trgm_ops)`;
+`gin (lower(name) gin_trgm_ops)` (name-word probe); btree on `release_date`, `hp`,
+`evolution_stage_index`, `price_latest(product_id, cur)`; `grant execute … to anon, authenticated`.
 
 ### Pagination: offset now, keyset later
 
