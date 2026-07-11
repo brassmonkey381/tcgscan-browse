@@ -68,8 +68,9 @@ import { formatUsd, usePriceSummary } from './prices';
 import { findSimilar, findSimilarToMany, similarAvailable } from './similar';
 import { resolveTheme, type BrowseTheme } from './theme';
 
-/** Cap flat search results so a broad query can't build an unbounded grid. */
-const SEARCH_LIMIT = 200;
+/** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
+ *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
+const PAGE_SIZE = 90;
 /** Dense grid tuning: aim each card tile at ~this width, then pack as many columns as fit. */
 const TARGET_TILE_W = 72;
 const GRID_GAP = 6;
@@ -482,7 +483,7 @@ export function CatalogBrowser({
   // (bare words match name/artist/set/series/rarity/type/stage — name hits rank first),
   // similar-mode results, or the set's cards.
   const viewCards = useMemo<CatalogCard[]>(() => {
-    if (searching) return runQuery(catalog.listAll(), effParsed, priceOf, SEARCH_LIMIT);
+    if (searching) return runQuery(catalog.listAll(), effParsed, priceOf, Infinity);
     // Set cards / similar results: keep their natural order (collector number / best-match) until
     // the UI sort control asks for something else, then re-sort by the chosen field.
     const base = similarTo ? similarCards : setId ? catalog.listCards(setId) : [];
@@ -567,6 +568,13 @@ export function CatalogBrowser({
   // search change), off the render path. Guarded so it fires at most once per view key.
   const prefetchedKey = useRef<string | null>(null);
   const viewKey = `${level}:${setId ?? ''}:${q}:${JSON.stringify(selection)}`;
+  // Infinite scroll: reveal a page of rows, grow on end-reached. Reset to the top when the
+  // view (level/search/filters) or the sort changes.
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [viewKey, effSort.field, effSort.dir]);
+  const visibleData = useMemo(() => data.slice(0, visibleCount), [data, visibleCount]);
   useEffect(() => {
     if (!isCardLevel) return;
     if (prefetchedKey.current === viewKey) return;
@@ -894,7 +902,8 @@ export function CatalogBrowser({
               {filteredCards.length === viewCards.length
                 ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
                 : `${filteredCards.length} of ${viewCards.length}`}
-              {viewCards.length >= SEARCH_LIMIT ? '+' : ''} · {describeQuery(effParsed, viewCards)}
+              {' · '}
+              {describeQuery(effParsed, viewCards)}
             </Text>
             <Pressable onPress={() => onChangeQuery('')} hitSlop={8}>
               <Text style={styles.clear}>Clear</Text>
@@ -1023,7 +1032,8 @@ export function CatalogBrowser({
         // consistent (FlatList can't change numColumns in place).
         key={`lvl-${level}-c${cols}`}
         style={styles.list}
-        data={data}
+        // Render a growing window of the (uncapped) results — reveal more as you scroll.
+        data={visibleData}
         keyExtractor={keyFor}
         renderItem={renderItem}
         numColumns={cols}
@@ -1032,6 +1042,10 @@ export function CatalogBrowser({
         getItemLayout={getItemLayout}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        onEndReachedThreshold={0.8}
+        onEndReached={() =>
+          setVisibleCount((n) => (n < data.length ? Math.min(n + PAGE_SIZE, data.length) : n))
+        }
         initialNumToRender={cols * 6}
         maxToRenderPerBatch={cols * 4}
         windowSize={9}

@@ -320,30 +320,54 @@ function matchComparison(card: QueryableCard, c: Comparison): boolean {
   }
 }
 
-/** Per-card lowercased search text, cached (cards are stable objects). */
-const loweredCache = new WeakMap<QueryableCard, { name: string; rest: string[] }>();
+/**
+ * Per-card lowercased search text, cached (cards are stable objects). Split into `entity`
+ * fields (the card's own identity — illustrator, rarity, type, …) and `container` fields
+ * (its set + series). A bare word matches entities freely, but container matches are
+ * suppressed for words that are really card names (see `classifyNameWords`) — otherwise
+ * searching "pikachu" drags in every card of a "Pikachu"-named set (Magikarp, Fletchling…).
+ */
+const loweredCache = new WeakMap<
+  QueryableCard,
+  { name: string; entity: string[]; container: string[] }
+>();
 
-function lowered(card: QueryableCard): { name: string; rest: string[] } {
+function lowered(card: QueryableCard): { name: string; entity: string[]; container: string[] } {
   let entry = loweredCache.get(card);
   if (!entry) {
     entry = {
       name: card.name.toLowerCase(),
-      rest: [
-        card.illustrator,
-        card.setName,
-        card.seriesId,
-        card.rarity,
-        card.stage,
-        card.number,
-        ...card.types,
-        ...card.cardType,
-      ]
+      entity: [card.illustrator, card.rarity, card.stage, card.number, ...card.types, ...card.cardType]
         .filter(Boolean)
         .map((v) => v.toLowerCase()),
+      container: [card.setName, card.seriesId].filter(Boolean).map((v) => v.toLowerCase()),
     };
     loweredCache.set(card, entry);
   }
   return entry;
+}
+
+/** A bare word matching this many card NAMES is treated as a name — its set/series (container)
+ *  matches are then ignored, so a Pokémon search doesn't pull in a same-named set's other cards. */
+const NAME_WORD_MIN = 3;
+
+/**
+ * The subset of `words` that behave like card names (match ≥ NAME_WORD_MIN names in `cards`).
+ * For these, container (set/series) matches don't count. Words that name few/no cards — e.g.
+ * "jungle", "sword" — aren't flagged, so typing a set/series name still finds its cards.
+ */
+function classifyNameWords(cards: QueryableCard[], words: string[]): Set<string> {
+  const out = new Set<string>();
+  for (const w of words) {
+    let count = 0;
+    for (const card of cards) {
+      if (lowered(card).name.includes(w) && ++count >= NAME_WORD_MIN) {
+        out.add(w);
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -356,13 +380,18 @@ export function scoreCard(
   card: QueryableCard,
   q: ParsedQuery,
   priceOf: (id: string) => number,
+  opts?: { nameWords?: Set<string> },
 ): number {
-  const { name, rest } = lowered(card);
+  const { name, entity, container } = lowered(card);
+  const nameWords = opts?.nameWords;
   let score = 1;
   for (const w of q.words) {
     if (name.includes(w)) {
       score += name.startsWith(w) ? 5 : 3;
-    } else if (rest.some((v) => v.includes(w))) {
+    } else if (entity.some((v) => v.includes(w))) {
+      score += 1;
+    } else if (container.some((v) => v.includes(w)) && !nameWords?.has(w)) {
+      // Set/series hit — counts unless the word is really a card name (then it's noise).
       score += 1;
     } else {
       return 0; // every bare word must match somewhere
@@ -401,9 +430,11 @@ export function runQuery<T extends QueryableCard>(
   priceOf: (id: string) => number,
   limit = 200,
 ): T[] {
+  // Flag which bare words are really card names, so their set/series matches don't pollute.
+  const nameWords = classifyNameWords(cards, q.words);
   const scored: { card: T; score: number }[] = [];
   for (const card of cards) {
-    const s = scoreCard(card, q, priceOf);
+    const s = scoreCard(card, q, priceOf, { nameWords });
     if (s > 0) scored.push({ card, score: s });
   }
   if (q.sort === 'relevance') {

@@ -35,8 +35,9 @@ import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
 import { findSimilar, findSimilarToMany, similarAvailable } from './similar';
 import { resolveTheme } from './theme';
-/** Cap flat search results so a broad query can't build an unbounded grid. */
-const SEARCH_LIMIT = 200;
+/** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
+ *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
+const PAGE_SIZE = 90;
 /** Dense grid tuning: aim each card tile at ~this width, then pack as many columns as fit. */
 const TARGET_TILE_W = 72;
 const GRID_GAP = 6;
@@ -315,7 +316,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // similar-mode results, or the set's cards.
     const viewCards = useMemo(() => {
         if (searching)
-            return runQuery(catalog.listAll(), effParsed, priceOf, SEARCH_LIMIT);
+            return runQuery(catalog.listAll(), effParsed, priceOf, Infinity);
         // Set cards / similar results: keep their natural order (collector number / best-match) until
         // the UI sort control asks for something else, then re-sort by the chosen field.
         const base = similarTo ? similarCards : setId ? catalog.listCards(setId) : [];
@@ -387,6 +388,13 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // search change), off the render path. Guarded so it fires at most once per view key.
     const prefetchedKey = useRef(null);
     const viewKey = `${level}:${setId ?? ''}:${q}:${JSON.stringify(selection)}`;
+    // Infinite scroll: reveal a page of rows, grow on end-reached. Reset to the top when the
+    // view (level/search/filters) or the sort changes.
+    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+    useEffect(() => {
+        setVisibleCount(PAGE_SIZE);
+    }, [viewKey, effSort.field, effSort.dir]);
+    const visibleData = useMemo(() => data.slice(0, visibleCount), [data, visibleCount]);
     useEffect(() => {
         if (!isCardLevel)
             return;
@@ -653,7 +661,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                         similarAvailable() &&
                         !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [filteredCards.length === viewCards.length
                                         ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
-                                        : `${filteredCards.length} of ${viewCards.length}`, viewCards.length >= SEARCH_LIMIT ? '+' : '', " \u00B7 ", describeQuery(effParsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarCards.length > 0
+                                        : `${filteredCards.length} of ${viewCards.length}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarCards.length > 0
                                             ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}:`
                                             : 'Finding similar cards…' }), _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.similarThumbs, keyboardShouldPersistTaps: "handled", children: similarTo.ids.map((sid) => {
                                     const src = catalog.getCard(sid);
@@ -669,7 +677,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : (_jsx(FlatList
             // Remount when the level or column count changes so numColumns/getItemLayout stay
             // consistent (FlatList can't change numColumns in place).
-            , { style: styles.list, data: data, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching
+            , { style: styles.list, 
+                // Render a growing window of the (uncapped) results — reveal more as you scroll.
+                data: visibleData, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", onEndReachedThreshold: 0.8, onEndReached: () => setVisibleCount((n) => (n < data.length ? Math.min(n + PAGE_SIZE, data.length) : n)), initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching
                         ? `No cards match “${q}”.`
                         : level === 'similar'
                             ? similarCards.length === 0 && similarTo

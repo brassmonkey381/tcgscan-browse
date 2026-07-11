@@ -71,7 +71,9 @@ export declare function parseQuery(raw: string): ParsedQuery;
  * Sword & Shield cards), every word must land somewhere (AND), and name hits
  * outrank other-field hits so "charizard" still puts Charizards first.
  */
-export declare function scoreCard(card: QueryableCard, q: ParsedQuery, priceOf: (id: string) => number): number;
+export declare function scoreCard(card: QueryableCard, q: ParsedQuery, priceOf: (id: string) => number, opts?: {
+    nameWords?: Set<string>;
+}): number;
 /** Does `card` satisfy the query? (scoreCard > 0.) */
 export declare function matchCard(card: QueryableCard, q: ParsedQuery, priceOf: (id: string) => number): boolean;
 /**
