@@ -34,7 +34,7 @@ import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
 import { findSimilar, findSimilarToMany, similarAvailable } from './similar';
-import { searchCards, serverSearchAvailable } from './search';
+import { searchCards, searchFacets, serverSearchAvailable } from './search';
 import { resolveTheme } from './theme';
 /** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
  *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
@@ -94,6 +94,21 @@ const SORT_DEFAULT_DIR = {
     hp: 'desc',
     stage: 'asc',
 };
+/** Display order for cold-mode facet values (server returns them unordered). */
+function orderFacetValues(key, values) {
+    const uniq = [...new Set(values)];
+    if (key === 'hp') {
+        const order = HP_BUCKETS.map((b) => b.label);
+        return uniq.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    }
+    if (key === 'evolution')
+        return uniq.sort((a, b) => EVO_LABELS.indexOf(a) - EVO_LABELS.indexOf(b));
+    if (key === 'size')
+        return uniq.sort((a, b) => (a === 'Standard' ? -1 : b === 'Standard' ? 1 : 0));
+    if (key === 'year')
+        return uniq.sort().reverse(); // newest first, like the warm facet
+    return uniq.sort();
+}
 /** tqdm-style one-liner for the load badge: "☁ Server search · full browse 45% · 3.2/8.8 MB · 4s left". */
 function loadLabel(s, coldSearch) {
     if (s.status === 'error')
@@ -239,6 +254,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const [serverPrice, setServerPrice] = useState({});
     const [serverTotal, setServerTotal] = useState(0);
     const [serverLoading, setServerLoading] = useState(false);
+    // Cold facet bar: facet key → values for the current query (search_facets, exclude-self).
+    const [serverFacets, setServerFacets] = useState({});
     const serverOffset = useRef(0);
     const serverToken = useRef(0);
     // Write every change back so the next mount resumes here.
@@ -358,12 +375,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         return sortCards(base, effParsed, priceOf);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [catalog, searching, serverCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary]);
-    // Cold search: (re)fetch page 0 when the query/sort changes; the token guard drops stale
-    // responses. A page's `total` + prices land in state for the header/tiles.
+    // Cold search: (re)fetch page 0 when the query/sort/facet selection changes; the token guard
+    // drops stale responses. A page's `total` + prices land in state for the header/tiles.
     const fetchServerPage = useCallback(async (offset, replace) => {
         const token = ++serverToken.current;
         setServerLoading(true);
-        const page = await searchCards(effParsed, { limit: PAGE_SIZE, offset });
+        const page = await searchCards(effParsed, { limit: PAGE_SIZE, offset, facets: selection });
         if (serverToken.current !== token)
             return; // a newer request superseded this one
         serverOffset.current = offset + page.cards.length;
@@ -371,15 +388,26 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         setServerPrice((prev) => (replace ? page.priceById : { ...prev, ...page.priceById }));
         setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
         setServerLoading(false);
-    }, [effParsed]);
+    }, [effParsed, selection]);
     useEffect(() => {
         if (!coldSearch || !searching) {
             setServerCards([]);
             setServerTotal(0);
+            setServerFacets({});
             serverOffset.current = 0;
             return;
         }
         fetchServerPage(0, true);
+        // Facet options for the same query (exclude-self server-side) — drives the cold facet bar.
+        let stale = false;
+        searchFacets(effParsed, selection).then((f) => {
+            if (!stale)
+                setServerFacets(f);
+        });
+        return () => {
+            stale = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [coldSearch, searching, fetchServerPage]);
     // Ids currently in view (search results / set cards) — keeps facet options and the V-UNION
     // groups relevant to what's actually on screen.
@@ -389,10 +417,21 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // Facet options narrow to the searched/filtered subset: each facet's values are the ones
     // present after the OTHER facets' selections are applied (exclude self, so you can still
     // change this facet). Standard faceted search — one pass per facet, not recursive. Facets
-    // with <2 options in the subset drop out. Cold (server search): hidden — the full set isn't
-    // local to enumerate over (P1; a search_facets RPC would restore it).
-    const facetOptions = useMemo(() => isCardLevel && catalog
-        ? FACETS.map((f) => {
+    // with <2 options in the subset drop out. Cold (server search): the same options come from
+    // the search_facets RPC (exclude-self computed server-side); V-UNION stays warm-only.
+    const facetOptions = useMemo(() => {
+        if (!isCardLevel)
+            return [];
+        if (!catalog) {
+            if (!coldSearch || !searching)
+                return [];
+            return FACETS.map((f) => {
+                const selected = selection[f.key] ?? [];
+                const values = orderFacetValues(f.key, [...(serverFacets[f.key] ?? []), ...selected]);
+                return { facet: f, values };
+            }).filter((o) => o.values.length >= 2 || (selection[o.facet.key]?.length ?? 0) > 0);
+        }
+        return FACETS.map((f) => {
             const subset = applyFacets(viewCards, { ...selection, [f.key]: [] });
             const selected = selection[f.key] ?? [];
             // Currently-selected values ALWAYS stay visible (even if absent from the subset), so a
@@ -402,8 +441,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 values.push(VUNION_SIZE);
             }
             return { facet: f, values };
-        }).filter((o) => o.values.length >= 2 || (selection[o.facet.key]?.length ?? 0) > 0)
-        : [], [isCardLevel, catalog, viewCards, selection, hasVUnionInView]);
+        }).filter((o) => o.values.length >= 2 || (selection[o.facet.key]?.length ?? 0) > 0);
+    }, [isCardLevel, catalog, coldSearch, searching, serverFacets, viewCards, selection, hasVUnionInView]);
     // Cold: no facets, so the view is the server results as-is.
     const filteredCards = useMemo(() => (catalog ? applyFacets(viewCards, selection) : viewCards), [catalog, viewCards, selection]);
     const activeFilterCount = useMemo(() => Object.values(selection).reduce((n, vals) => n + vals.length, 0), [selection]);

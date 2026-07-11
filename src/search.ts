@@ -78,13 +78,28 @@ function rowToCard(r: SearchRow): CatalogCard {
   };
 }
 
+/** Facet chip selection, facet key -> selected values (the kit's FacetSelection shape). */
+export type ServerFacetSelection = Record<string, string[]>;
+
+/** Drop empty entries so `{}` (no selection) skips the facet filter entirely server-side. */
+function packFacets(facets?: ServerFacetSelection): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(facets ?? {})) if (v.length > 0) out[k] = v;
+  return out;
+}
+
 /**
  * Run `parsed` against the server, one page at a time. `offset`/`limit` drive infinite scroll
- * (the caller accumulates pages). Returns tile-ready cards + their prices + the real total.
+ * (the caller accumulates pages); `facets` are exact-match chip selections (AND across facets,
+ * OR within). Returns tile-ready cards + their prices + the real total.
  */
 export async function searchCards(
   parsed: ParsedQuery,
-  { limit = 60, offset = 0 }: { limit?: number; offset?: number } = {},
+  {
+    limit = 60,
+    offset = 0,
+    facets,
+  }: { limit?: number; offset?: number; facets?: ServerFacetSelection } = {},
 ): Promise<SearchPage> {
   const empty: SearchPage = { cards: [], priceById: {}, total: 0 };
   if (!serverSearchAvailable()) return empty;
@@ -96,6 +111,7 @@ export async function searchCards(
         p_words: parsed.words,
         p_fields: parsed.fields.map((f) => ({ key: f.key, value: f.value })),
         p_compares: parsed.comparisons.map((c) => ({ field: c.field, op: c.op, value: c.value })),
+        p_facets: packFacets(facets),
         p_min_price: parsed.minPrice,
         p_max_price: parsed.maxPrice,
         p_sort: parsed.sort,
@@ -113,5 +129,41 @@ export async function searchCards(
     return { cards, priceById, total: Number(rows[0].total_count) || cards.length };
   } catch {
     return empty; // offline / not configured — the caller falls back to client runQuery
+  }
+}
+
+/**
+ * Facet values (+counts) for the query's match set — restores the facet bar in COLD mode.
+ * Exclude-self per facet (server-side), mirroring the warm facetOptions. Returns facet key →
+ * values in server order (the kit re-orders for display). Fails soft (empty map).
+ */
+export async function searchFacets(
+  parsed: ParsedQuery,
+  facets?: ServerFacetSelection,
+): Promise<Record<string, string[]>> {
+  if (!serverSearchAvailable()) return {};
+  try {
+    const res = await fetch(`${getApiUrl()}/rpc/search_facets`, {
+      method: 'POST',
+      headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        p_words: parsed.words,
+        p_fields: parsed.fields.map((f) => ({ key: f.key, value: f.value })),
+        p_compares: parsed.comparisons.map((c) => ({ field: c.field, op: c.op, value: c.value })),
+        p_facets: packFacets(facets),
+        p_min_price: parsed.minPrice,
+        p_max_price: parsed.maxPrice,
+      }),
+    });
+    if (!res.ok) return {};
+    const rows = (await res.json()) as { facet: string; value: string | null; n: number }[];
+    const out: Record<string, string[]> = {};
+    for (const r of rows) {
+      if (!r.value) continue;
+      (out[r.facet] ??= []).push(r.value);
+    }
+    return out;
+  } catch {
+    return {};
   }
 }

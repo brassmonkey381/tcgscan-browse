@@ -15,7 +15,7 @@ export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, } from '
 export { resolveActions, resolveLabel, } from './actions';
 export { lightTheme, resolveTheme, RARITY_PALETTE } from './theme';
 export { findSimilar, similarAvailable } from './similar';
-export { searchCards, serverSearchAvailable } from './search';
+export { searchCards, searchFacets, serverSearchAvailable, } from './search';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, } from './query';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, } from './state';
 export { CatalogBrowser } from './CatalogBrowser';

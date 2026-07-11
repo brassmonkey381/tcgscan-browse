@@ -23,11 +23,21 @@ export interface SearchPage {
 }
 /** True when the app is configured to reach the data server's REST API. */
 export declare function serverSearchAvailable(): boolean;
+/** Facet chip selection, facet key -> selected values (the kit's FacetSelection shape). */
+export type ServerFacetSelection = Record<string, string[]>;
 /**
  * Run `parsed` against the server, one page at a time. `offset`/`limit` drive infinite scroll
- * (the caller accumulates pages). Returns tile-ready cards + their prices + the real total.
+ * (the caller accumulates pages); `facets` are exact-match chip selections (AND across facets,
+ * OR within). Returns tile-ready cards + their prices + the real total.
  */
-export declare function searchCards(parsed: ParsedQuery, { limit, offset }?: {
+export declare function searchCards(parsed: ParsedQuery, { limit, offset, facets, }?: {
     limit?: number;
     offset?: number;
+    facets?: ServerFacetSelection;
 }): Promise<SearchPage>;
+/**
+ * Facet values (+counts) for the query's match set — restores the facet bar in COLD mode.
+ * Exclude-self per facet (server-side), mirroring the warm facetOptions. Returns facet key →
+ * values in server order (the kit re-orders for display). Fails soft (empty map).
+ */
+export declare function searchFacets(parsed: ParsedQuery, facets?: ServerFacetSelection): Promise<Record<string, string[]>>;
