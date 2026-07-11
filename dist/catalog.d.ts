@@ -163,6 +163,28 @@ export declare function seriesDateRange(s: {
     releaseDate: string;
 }): string;
 /**
+ * Where the shared catalog is in its lifecycle:
+ *  - 'idle'        nothing started
+ *  - 'downloading' fetching catalog.json (off-thread)
+ *  - 'parsing'     JSON parsed; building the in-memory index in chunks (`progress` = 0→1)
+ *  - 'ready'       fully in memory — on-device search/`getCard` available
+ *  - 'error'       load failed (a later mount retries)
+ * On-device (client) search is available exactly when status === 'ready'.
+ */
+export type CatalogStatus = 'idle' | 'downloading' | 'parsing' | 'ready' | 'error';
+/** The current catalog load phase + build progress (0→1). Synchronous snapshot. */
+export declare function getCatalogStatus(): {
+    status: CatalogStatus;
+    progress: number;
+};
+/** Subscribe to load-phase/progress changes (fires on every phase + build-chunk tick). */
+export declare function subscribeCatalogStatus(callback: () => void): () => void;
+/** React helper: re-render on catalog load-phase/progress changes. Returns the snapshot. */
+export declare function useCatalogStatus(): {
+    status: CatalogStatus;
+    progress: number;
+};
+/**
  * Subscribe to catalog-loaded notifications. The callback fires once, when the shared
  * catalog finishes loading (i.e. when `getLoadedCatalog()` flips from null to the catalog).
  * Lets components reactively pick up the catalog *without* forcing the fetch themselves.

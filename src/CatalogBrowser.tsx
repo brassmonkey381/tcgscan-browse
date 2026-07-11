@@ -56,6 +56,7 @@ import {
 import {
   formatSetDate,
   seriesDateRange,
+  useCatalogStatus,
   type Catalog,
   type CatalogCard,
   type CatalogSeries,
@@ -349,6 +350,8 @@ export function CatalogBrowser({
   // Hydrate the content-hashed image manifest and repaint tiles when it lands —
   // card images resolve by id (cardThumbUrl), not from URLs in the catalog.
   useImageManifest();
+  // Catalog load phase — drives the search-source badge (on-device vs, later, server search).
+  const catalogStatus = useCatalogStatus();
 
   // Hydrate from the session browse state so reopening the picker restores the
   // last search/drill-down/similar view (one search often feeds several pockets).
@@ -884,6 +887,27 @@ export function CatalogBrowser({
             <Text style={[styles.helpBtnText, helpOpen && styles.helpBtnTextOn]}>?</Text>
           </Pressable>
         </View>
+        {/* Search-source badge: on-device (catalog in memory, instant) vs still loading. The
+            seam where a "☁ Server search" mode will surface once the RPC path lands. */}
+        {isCardLevel ? (
+          <View style={styles.modeBadge}>
+            <View
+              style={[
+                styles.modeDot,
+                catalogStatus.status === 'ready' ? styles.modeDotReady : styles.modeDotLoading,
+              ]}
+            />
+            <Text style={styles.modeText} numberOfLines={1}>
+              {catalogStatus.status === 'ready'
+                ? '⚡ On-device search — instant'
+                : catalogStatus.status === 'parsing'
+                  ? `Loading catalog… ${Math.round(catalogStatus.progress * 100)}%`
+                  : catalogStatus.status === 'error'
+                    ? 'Catalog failed to load — pull to retry'
+                    : 'Loading catalog…'}
+            </Text>
+          </View>
+        ) : null}
         {helpOpen ? <SearchManual styles={styles} onClose={() => setHelpOpen(false)} /> : null}
         {occupant &&
         similarAvailable() &&
@@ -1469,6 +1493,12 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     searchFlex: { flex: 1 },
+    // search-source badge (on-device / loading / — later — server)
+    modeBadge: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    modeDot: { width: 7, height: 7, borderRadius: 4 },
+    modeDotReady: { backgroundColor: t.accent },
+    modeDotLoading: { backgroundColor: t.faint },
+    modeText: { fontSize: 11, color: t.faint, flexShrink: 1 },
     pocketSimilar: {
       borderWidth: 1,
       borderColor: t.accent,

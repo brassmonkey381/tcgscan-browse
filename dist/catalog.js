@@ -7,7 +7,12 @@
  * Shared by michi-maker and tcgscan-app; app-specific view-model adapters
  * (e.g. michi's catalogCardToDemoCard) stay in the apps.
  */
+import { useEffect, useState } from 'react';
 import { getBrowseUrl } from './config';
+/** Cards processed per build batch before yielding to the event loop (keeps the UI responsive). */
+const BUILD_CHUNK = 4000;
+/** Yield a macrotask so pending input/paint can run between build batches. */
+const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve, 0));
 /**
  * A card's footprint kind. The oversized flag (`jumbo: bool`) is the real signal in
  * today's slim catalog; `raw.kind` is a legacy string kept only so an older fat catalog
@@ -67,7 +72,7 @@ function byReleaseDesc(a, b) {
     return (b.releaseDate || '').localeCompare(a.releaseDate || '') || a.name.localeCompare(b.name);
 }
 class LocalCatalog {
-    constructor(raw) {
+    constructor() {
         this.cards = new Map();
         this.cardsBySet = new Map();
         this.sets = new Map();
@@ -78,6 +83,18 @@ class LocalCatalog {
         // Parallel search index: card names pre-lowercased once so name search doesn't
         // re-lowercase ~28k strings on every keystroke.
         this.searchIndex = [];
+    }
+    /**
+     * Build the catalog off the main thread's critical path: the ~28k-card loop is chunked
+     * with `await`s so it never runs as one long task that freezes the UI (the cold-start
+     * jank). `onProgress` reports build fraction (0→1) so a loader can show real progress.
+     */
+    static async build(raw, onProgress) {
+        const self = new LocalCatalog();
+        await self.hydrate(raw, onProgress);
+        return self;
+    }
+    async hydrate(raw, onProgress) {
         // Set-level attributes (name/code/series) are stored ONCE per set, not stamped
         // onto every card — the normalized catalog drops the per-card copies. Build a
         // lookup so each card can derive them from its set_id. `raw_c.set_name ?? …`
@@ -90,7 +107,11 @@ class LocalCatalog {
                 series: raw_s.series ?? '',
             });
         }
-        for (const raw_c of Object.values(raw.cards)) {
+        // Chunk the heavy card loop, yielding to the event loop between batches so the JS
+        // thread stays responsive (input, paint, the search box) while the catalog builds.
+        const rawCards = Object.values(raw.cards);
+        for (let i = 0; i < rawCards.length; i++) {
+            const raw_c = rawCards[i];
             const setId = String(raw_c.set_id ?? '');
             const meta = setMeta.get(setId);
             const card = {
@@ -127,7 +148,12 @@ class LocalCatalog {
             if (!bucket)
                 this.cardsBySet.set(card.setId, (bucket = []));
             bucket.push(card);
+            if ((i + 1) % BUILD_CHUNK === 0) {
+                onProgress?.((i + 1) / rawCards.length);
+                await yieldToEventLoop();
+            }
         }
+        onProgress?.(1);
         // V-UNION groups: keep only well-formed groups whose four piece ids all resolve.
         for (const g of raw.vunionGroups ?? []) {
             const pieces = g.pieces ?? [];
@@ -295,11 +321,38 @@ async function loadCatalogFrom(base) {
     const res = await fetch(`${base}/catalog.json`);
     if (!res.ok)
         throw new Error(`Failed to load catalog.json (${res.status})`);
-    return new LocalCatalog((await res.json()));
+    setCatalogStatus('parsing', 0);
+    const raw = (await res.json());
+    return LocalCatalog.build(raw, (fraction) => setCatalogStatus('parsing', fraction));
 }
 let cache = null;
 let loaded = null;
 const subscribers = new Set();
+let catalogStatus = 'idle';
+let catalogProgress = 0; // 0→1 during 'parsing'
+const statusListeners = new Set();
+function setCatalogStatus(status, progress) {
+    catalogStatus = status;
+    catalogProgress = progress;
+    statusListeners.forEach((cb) => cb());
+}
+/** The current catalog load phase + build progress (0→1). Synchronous snapshot. */
+export function getCatalogStatus() {
+    return { status: catalogStatus, progress: catalogProgress };
+}
+/** Subscribe to load-phase/progress changes (fires on every phase + build-chunk tick). */
+export function subscribeCatalogStatus(callback) {
+    statusListeners.add(callback);
+    return () => {
+        statusListeners.delete(callback);
+    };
+}
+/** React helper: re-render on catalog load-phase/progress changes. Returns the snapshot. */
+export function useCatalogStatus() {
+    const [, bump] = useState(0);
+    useEffect(() => subscribeCatalogStatus(() => bump((v) => v + 1)), []);
+    return getCatalogStatus();
+}
 /**
  * Subscribe to catalog-loaded notifications. The callback fires once, when the shared
  * catalog finishes loading (i.e. when `getLoadedCatalog()` flips from null to the catalog).
@@ -318,14 +371,17 @@ export function subscribeCatalog(callback) {
  */
 export function loadCatalog() {
     if (!cache) {
+        setCatalogStatus('downloading', 0);
         cache = loadCatalogFrom(getBrowseUrl())
             .then((c) => {
             loaded = c; // publish a synchronous snapshot for non-async callers (see getLoadedCatalog)
+            setCatalogStatus('ready', 1);
             subscribers.forEach((cb) => cb());
             return c;
         })
             .catch((e) => {
             cache = null; // don't poison the cache — let a later mount retry the fetch
+            setCatalogStatus('error', 0);
             throw e;
         });
     }

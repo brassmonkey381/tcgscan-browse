@@ -29,7 +29,7 @@ import { browseState, subscribeBrowseCommand } from './state';
 import { CardActionModal, MultiCardActionModal } from './CardActionModal';
 import { SeriesAnalytics, SetAnalytics } from './analytics';
 import { resolveActions, } from './actions';
-import { formatSetDate, seriesDateRange, } from './catalog';
+import { formatSetDate, seriesDateRange, useCatalogStatus, } from './catalog';
 import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
@@ -196,6 +196,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // Hydrate the content-hashed image manifest and repaint tiles when it lands —
     // card images resolve by id (cardThumbUrl), not from URLs in the catalog.
     useImageManifest();
+    // Catalog load phase — drives the search-source badge (on-device vs, later, server search).
+    const catalogStatus = useCatalogStatus();
     // Hydrate from the session browse state so reopening the picker restores the
     // last search/drill-down/similar view (one search often feeds several pockets).
     const [cardQuery, setCardQuery] = useState(browseState.cardQuery);
@@ -657,7 +659,16 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         const row = Math.floor(index / cols);
         return { length: rowHeight, offset: rowHeight * row, index };
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${catalog.cardCount.toLocaleString()} cards — ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${catalog.cardCount.toLocaleString()} cards — ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), isCardLevel ? (_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [
+                                    styles.modeDot,
+                                    catalogStatus.status === 'ready' ? styles.modeDotReady : styles.modeDotLoading,
+                                ] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: catalogStatus.status === 'ready'
+                                    ? '⚡ On-device search — instant'
+                                    : catalogStatus.status === 'parsing'
+                                        ? `Loading catalog… ${Math.round(catalogStatus.progress * 100)}%`
+                                        : catalogStatus.status === 'error'
+                                            ? 'Catalog failed to load — pull to retry'
+                                            : 'Loading catalog…' })] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
                         !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [filteredCards.length === viewCards.length
                                         ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
@@ -785,6 +796,12 @@ function makeStyles(t, taxTileHeight) {
         },
         searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
         searchFlex: { flex: 1 },
+        // search-source badge (on-device / loading / — later — server)
+        modeBadge: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+        modeDot: { width: 7, height: 7, borderRadius: 4 },
+        modeDotReady: { backgroundColor: t.accent },
+        modeDotLoading: { backgroundColor: t.faint },
+        modeText: { fontSize: 11, color: t.faint, flexShrink: 1 },
         pocketSimilar: {
             borderWidth: 1,
             borderColor: t.accent,
