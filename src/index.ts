@@ -18,6 +18,7 @@ export {
   cdnImageUrl,
   productUrl,
   type BrowseConfig,
+  type CatalogSource,
 } from './config';
 
 export {

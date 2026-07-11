@@ -8,7 +8,7 @@
  * (e.g. michi's catalogCardToDemoCard) stay in the apps.
  */
 import { useEffect, useState } from 'react';
-import { getBrowseUrl } from './config';
+import { getBrowseUrl, getCatalogSource } from './config';
 /** Cards processed per build batch before yielding to the event loop (keeps the UI responsive). */
 const BUILD_CHUNK = 4000;
 /** Yield a macrotask so pending input/paint can run between build batches. */
@@ -325,6 +325,21 @@ const FALLBACK_TOTAL_BYTES = 9000000;
 /** Download is the bulk of the wait on a slow link; give it 90% of the bar, the build 10%. */
 const DOWNLOAD_FRACTION = 0.9;
 async function loadCatalogFrom(base) {
+    // Gated path: the app supplies the catalog (fetched + decrypted + decoded); we just build it.
+    // Its onProgress drives the download portion of the load bar (see DATA-PROTECTION-PLAN.md).
+    const source = getCatalogSource();
+    if (source) {
+        setCatalogStatus('downloading', 0);
+        const raw = await source((received, total) => {
+            const t = total > 0 ? total : FALLBACK_TOTAL_BYTES;
+            setCatalogStatus('downloading', DOWNLOAD_FRACTION * Math.min(received / t, 1), {
+                received,
+                total: t,
+                eta: -1,
+            });
+        });
+        return LocalCatalog.build(raw, (f) => setCatalogStatus('parsing', DOWNLOAD_FRACTION + (1 - DOWNLOAD_FRACTION) * f));
+    }
     const res = await fetch(`${base}/catalog.json`);
     if (!res.ok)
         throw new Error(`Failed to load catalog.json (${res.status})`);

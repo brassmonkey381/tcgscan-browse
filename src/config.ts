@@ -8,7 +8,19 @@
  * lazily, so configure-at-import is always early enough.
  */
 
+import type { RawCatalog } from './catalog';
 import { imageManifestReady, manifestUrl, setManifestCache, type ManifestCache } from './images';
+
+/**
+ * App-supplied catalog loader — the seam for a GATED/ENCRYPTED catalog (see
+ * docs/DATA-PROTECTION-PLAN.md). When set, the kit calls this instead of fetching the public
+ * `catalog.json`; the app owns auth + decryption + decoding and returns the parsed `RawCatalog`.
+ * Report download progress via `onProgress` so the load bar still animates. Omit for the default
+ * public-bucket fetch (back-compat).
+ */
+export type CatalogSource = (
+  onProgress?: (received: number, total: number) => void,
+) => Promise<RawCatalog>;
 
 export interface BrowseConfig {
   /**
@@ -33,14 +45,21 @@ export interface BrowseConfig {
    * See hydrateImageManifest / cardThumbUrl.
    */
   cache?: ManifestCache;
+  /**
+   * Gated/encrypted catalog loader (see CatalogSource / DATA-PROTECTION-PLAN.md). When set, the
+   * kit uses it to obtain the catalog instead of fetching the public `catalog.json`. Omit for the
+   * default public fetch.
+   */
+  catalogSource?: CatalogSource;
 }
 
-const config: Required<Omit<BrowseConfig, 'cache'>> = {
+const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource'>> = {
   browseUrl: '/browse',
   imgBase: '',
   apiUrl: '',
   apiKey: '',
 };
+let catalogSource: CatalogSource | null = null;
 
 /** Set the data-server origins. Call once from the app before any browse use. */
 export function configureBrowse(next: BrowseConfig): void {
@@ -48,7 +67,13 @@ export function configureBrowse(next: BrowseConfig): void {
   config.imgBase = next.imgBase;
   config.apiUrl = next.apiUrl ?? deriveApiUrl(next.browseUrl);
   config.apiKey = next.apiKey ?? '';
+  catalogSource = next.catalogSource ?? null;
   setManifestCache(next.cache ?? null);
+}
+
+/** The app-supplied gated catalog loader, or null for the default public fetch. */
+export function getCatalogSource(): CatalogSource | null {
+  return catalogSource;
 }
 
 /** `https://<ref>.supabase.co/storage/...` -> `https://<ref>.supabase.co/rest/v1`. */

@@ -7,7 +7,16 @@
  * apps' src/lib/catalogConfig.ts). Every fetch in this package reads the config
  * lazily, so configure-at-import is always early enough.
  */
+import type { RawCatalog } from './catalog';
 import { type ManifestCache } from './images';
+/**
+ * App-supplied catalog loader — the seam for a GATED/ENCRYPTED catalog (see
+ * docs/DATA-PROTECTION-PLAN.md). When set, the kit calls this instead of fetching the public
+ * `catalog.json`; the app owns auth + decryption + decoding and returns the parsed `RawCatalog`.
+ * Report download progress via `onProgress` so the load bar still animates. Omit for the default
+ * public-bucket fetch (back-compat).
+ */
+export type CatalogSource = (onProgress?: (received: number, total: number) => void) => Promise<RawCatalog>;
 export interface BrowseConfig {
     /**
      * Base URL for catalog.json / prices-summary.json / alternates.json.
@@ -31,9 +40,17 @@ export interface BrowseConfig {
      * See hydrateImageManifest / cardThumbUrl.
      */
     cache?: ManifestCache;
+    /**
+     * Gated/encrypted catalog loader (see CatalogSource / DATA-PROTECTION-PLAN.md). When set, the
+     * kit uses it to obtain the catalog instead of fetching the public `catalog.json`. Omit for the
+     * default public fetch.
+     */
+    catalogSource?: CatalogSource;
 }
 /** Set the data-server origins. Call once from the app before any browse use. */
 export declare function configureBrowse(next: BrowseConfig): void;
+/** The app-supplied gated catalog loader, or null for the default public fetch. */
+export declare function getCatalogSource(): CatalogSource | null;
 export declare function getBrowseUrl(): string;
 export declare function getImgBase(): string;
 export declare function getApiUrl(): string;

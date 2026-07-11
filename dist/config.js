@@ -14,13 +14,19 @@ const config = {
     apiUrl: '',
     apiKey: '',
 };
+let catalogSource = null;
 /** Set the data-server origins. Call once from the app before any browse use. */
 export function configureBrowse(next) {
     config.browseUrl = next.browseUrl;
     config.imgBase = next.imgBase;
     config.apiUrl = next.apiUrl ?? deriveApiUrl(next.browseUrl);
     config.apiKey = next.apiKey ?? '';
+    catalogSource = next.catalogSource ?? null;
     setManifestCache(next.cache ?? null);
+}
+/** The app-supplied gated catalog loader, or null for the default public fetch. */
+export function getCatalogSource() {
+    return catalogSource;
 }
 /** `https://<ref>.supabase.co/storage/...` -> `https://<ref>.supabase.co/rest/v1`. */
 function deriveApiUrl(browseUrl) {
