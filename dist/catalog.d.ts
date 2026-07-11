@@ -172,18 +172,24 @@ export declare function seriesDateRange(s: {
  * On-device (client) search is available exactly when status === 'ready'.
  */
 export type CatalogStatus = 'idle' | 'downloading' | 'parsing' | 'ready' | 'error';
-/** The current catalog load phase + build progress (0→1). Synchronous snapshot. */
-export declare function getCatalogStatus(): {
+/** A tqdm-style snapshot of the load: phase, overall fraction, bytes, and a rough ETA. */
+export interface CatalogLoadStatus {
     status: CatalogStatus;
+    /** 0→1 across the WHOLE load (download is ~90%, the in-memory build the last ~10%). */
     progress: number;
-};
-/** Subscribe to load-phase/progress changes (fires on every phase + build-chunk tick). */
+    /** Decoded bytes downloaded so far (0 until the streaming download starts). */
+    receivedBytes: number;
+    /** Estimated decoded total (0 when unknown — e.g. no Content-Length / native fallback). */
+    totalBytes: number;
+    /** Rough seconds remaining for the download, or -1 when not estimable. */
+    etaSeconds: number;
+}
+/** The current catalog load snapshot (phase, fraction, bytes, ETA). Synchronous. */
+export declare function getCatalogStatus(): CatalogLoadStatus;
+/** Subscribe to load-phase/progress changes (fires on every phase + download/build tick). */
 export declare function subscribeCatalogStatus(callback: () => void): () => void;
-/** React helper: re-render on catalog load-phase/progress changes. Returns the snapshot. */
-export declare function useCatalogStatus(): {
-    status: CatalogStatus;
-    progress: number;
-};
+/** React helper: re-render on catalog load changes. Returns the snapshot. */
+export declare function useCatalogStatus(): CatalogLoadStatus;
 /**
  * Subscribe to catalog-loaded notifications. The callback fires once, when the shared
  * catalog finishes loading (i.e. when `getLoadedCatalog()` flips from null to the catalog).

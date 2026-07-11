@@ -42,6 +42,7 @@ export {
   useCatalogStatus,
   type Catalog,
   type CatalogStatus,
+  type CatalogLoadStatus,
   type CatalogCard,
   type CatalogSeries,
   type CatalogSet,

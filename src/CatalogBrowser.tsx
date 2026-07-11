@@ -59,6 +59,7 @@ import {
   useCatalogStatus,
   type Catalog,
   type CatalogCard,
+  type CatalogLoadStatus,
   type CatalogSeries,
   type CatalogSet,
   type VUnionGroup,
@@ -153,6 +154,20 @@ const SORT_DEFAULT_DIR: Record<QuerySort, SortDir> = {
   hp: 'desc',
   stage: 'asc',
 };
+
+/** tqdm-style one-liner for the load badge: "☁ Server search · full browse 45% · 3.2/8.8 MB · 4s left". */
+function loadLabel(s: CatalogLoadStatus, coldSearch: boolean): string {
+  if (s.status === 'error') return 'Catalog failed to load — pull to retry';
+  const prefix = coldSearch ? '☁ Server search · full browse' : 'Loading cards';
+  const pct = Math.round(s.progress * 100);
+  const mb = (n: number) => (n / 1e6).toFixed(1);
+  const bytes =
+    s.status === 'downloading' && s.receivedBytes > 0
+      ? ` · ${mb(s.receivedBytes)}/${mb(s.totalBytes)} MB`
+      : '';
+  const eta = s.etaSeconds > 0 ? ` · ${s.etaSeconds}s left` : '';
+  return `${prefix} ${pct}%${bytes}${eta}`;
+}
 
 /**
  * The facets we can populate from today's catalog. Filtering is AND across entries and OR
@@ -961,23 +976,22 @@ export function CatalogBrowser({
           </Pressable>
         </View>
         {/* Search-source badge: ⚡ on-device (catalog in memory) once warm, else ☁ server search
-            (instant, while the full catalog downloads/parses in the background). */}
+            with a tqdm-style download bar (% · MB · ETA) while the catalog loads. */}
         {isCardLevel || !warm ? (
-          <View style={styles.modeBadge}>
-            <View style={[styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading]} />
-            <Text style={styles.modeText} numberOfLines={1}>
-              {warm
-                ? '⚡ On-device search — instant'
-                : coldSearch
-                  ? catalogStatus.status === 'parsing'
-                    ? `☁ Server search · full browse loading ${Math.round(catalogStatus.progress * 100)}%`
-                    : '☁ Server search · loading full browse…'
-                  : catalogStatus.status === 'parsing'
-                    ? `Loading catalog… ${Math.round(catalogStatus.progress * 100)}%`
-                    : catalogStatus.status === 'error'
-                      ? 'Catalog failed to load — pull to retry'
-                      : 'Loading catalog…'}
-            </Text>
+          <View>
+            <View style={styles.modeBadge}>
+              <View style={[styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading]} />
+              <Text style={styles.modeText} numberOfLines={1}>
+                {warm ? '⚡ On-device search — instant' : loadLabel(catalogStatus, coldSearch)}
+              </Text>
+            </View>
+            {!warm && catalogStatus.status !== 'error' ? (
+              <View style={styles.progressTrack}>
+                <View
+                  style={[styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }]}
+                />
+              </View>
+            ) : null}
           </View>
         ) : null}
         {helpOpen ? <SearchManual styles={styles} onClose={() => setHelpOpen(false)} /> : null}
@@ -1577,6 +1591,15 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     modeDotReady: { backgroundColor: t.accent },
     modeDotLoading: { backgroundColor: t.faint },
     modeText: { fontSize: 11, color: t.faint, flexShrink: 1 },
+    // tqdm-style catalog-load bar under the badge
+    progressTrack: {
+      height: 3,
+      marginTop: 3,
+      borderRadius: 2,
+      backgroundColor: t.imagePlaceholder,
+      overflow: 'hidden',
+    },
+    progressFill: { height: '100%', borderRadius: 2, backgroundColor: t.accent },
     pocketSimilar: {
       borderWidth: 1,
       borderColor: t.accent,

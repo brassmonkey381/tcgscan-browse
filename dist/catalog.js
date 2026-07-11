@@ -317,10 +317,55 @@ function matchByName(items, text, query, limit, rankText) {
     }
     return [...starts, ...contains].slice(0, limit);
 }
+/** catalog.json compresses ~12× (brotli) — used to estimate the decoded total from the
+ *  compressed Content-Length so download progress is roughly accurate. */
+const BROTLI_RATIO = 12;
+/** Fallback decoded-size estimate when there's no Content-Length (chunked/compressed). */
+const FALLBACK_TOTAL_BYTES = 9000000;
+/** Download is the bulk of the wait on a slow link; give it 90% of the bar, the build 10%. */
+const DOWNLOAD_FRACTION = 0.9;
 async function loadCatalogFrom(base) {
     const res = await fetch(`${base}/catalog.json`);
     if (!res.ok)
         throw new Error(`Failed to load catalog.json (${res.status})`);
+    // Stream the body for real download progress (the slow part on cellular). `res.body` is a
+    // ReadableStream on web; React Native fetch has no streaming — fall back to res.json() there.
+    const reader = res.body?.getReader?.();
+    if (reader && typeof TextDecoder !== 'undefined') {
+        // Content-Length is the COMPRESSED size; the reader yields DECODED bytes, so estimate the
+        // decoded total via the typical compression ratio (keeps the % + ETA roughly honest).
+        const compressed = Number(res.headers.get('content-length')) || 0;
+        let total = compressed ? compressed * BROTLI_RATIO : FALLBACK_TOTAL_BYTES;
+        const decoder = new TextDecoder();
+        const started = Date.now();
+        let received = 0;
+        let text = '';
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done)
+                break;
+            received += value.length;
+            text += decoder.decode(value, { stream: true });
+            if (received > total)
+                total = Math.ceil(received / 0.99); // grow past a low estimate
+            const elapsed = (Date.now() - started) / 1000;
+            const rate = elapsed > 0 ? received / elapsed : 0;
+            const eta = rate > 0 ? Math.max(0, Math.round((total - received) / rate)) : -1;
+            setCatalogStatus('downloading', DOWNLOAD_FRACTION * Math.min(received / total, 1), {
+                received,
+                total,
+                eta,
+            });
+        }
+        text += decoder.decode();
+        const raw = JSON.parse(text);
+        return LocalCatalog.build(raw, (f) => setCatalogStatus('parsing', DOWNLOAD_FRACTION + (1 - DOWNLOAD_FRACTION) * f, {
+            received,
+            total,
+            eta: 0,
+        }));
+    }
+    // Native / no streaming: one JSON parse, then the chunked build reports its own progress.
     setCatalogStatus('parsing', 0);
     const raw = (await res.json());
     return LocalCatalog.build(raw, (fraction) => setCatalogStatus('parsing', fraction));
@@ -329,25 +374,37 @@ let cache = null;
 let loaded = null;
 const subscribers = new Set();
 let catalogStatus = 'idle';
-let catalogProgress = 0; // 0→1 during 'parsing'
+let catalogProgress = 0;
+let catalogReceived = 0;
+let catalogTotal = 0;
+let catalogEta = -1;
 const statusListeners = new Set();
-function setCatalogStatus(status, progress) {
+function setCatalogStatus(status, progress, bytes) {
     catalogStatus = status;
     catalogProgress = progress;
+    catalogReceived = bytes?.received ?? 0;
+    catalogTotal = bytes?.total ?? 0;
+    catalogEta = bytes?.eta ?? -1;
     statusListeners.forEach((cb) => cb());
 }
-/** The current catalog load phase + build progress (0→1). Synchronous snapshot. */
+/** The current catalog load snapshot (phase, fraction, bytes, ETA). Synchronous. */
 export function getCatalogStatus() {
-    return { status: catalogStatus, progress: catalogProgress };
+    return {
+        status: catalogStatus,
+        progress: catalogProgress,
+        receivedBytes: catalogReceived,
+        totalBytes: catalogTotal,
+        etaSeconds: catalogEta,
+    };
 }
-/** Subscribe to load-phase/progress changes (fires on every phase + build-chunk tick). */
+/** Subscribe to load-phase/progress changes (fires on every phase + download/build tick). */
 export function subscribeCatalogStatus(callback) {
     statusListeners.add(callback);
     return () => {
         statusListeners.delete(callback);
     };
 }
-/** React helper: re-render on catalog load-phase/progress changes. Returns the snapshot. */
+/** React helper: re-render on catalog load changes. Returns the snapshot. */
 export function useCatalogStatus() {
     const [, bump] = useState(0);
     useEffect(() => subscribeCatalogStatus(() => bump((v) => v + 1)), []);
