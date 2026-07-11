@@ -1,7 +1,12 @@
 # Plan: protecting the catalog while keeping offline + a no-signup trial
 
-Status: **spec + P1 in progress** · Repos: `tcgscan-browse` (kit seam), `tcgscan-data`
-(encrypt + watermark the catalog), apps (tier by auth, decrypt, cache).
+Status: **P1 (kit seam, v0.5.17) + P3 (encrypt + gate, 2026-07-11) SHIPPED · P2 (watermark)
+parked** · Repos: `tcgscan-browse` (kit seam), `tcgscan-data` (catalog.enc + catalog_keys +
+the `catalog-key` edge function — note the CROSS-PROJECT JWT validation: app sessions live on
+the app project, so the function verifies the app JWT itself), `poke-michi`
+(`src/lib/catalogSource.ts`, gated with public fallback).
+Remaining protective flip: retire the public catalog.json + set REQUIRE_REGISTERED (edge fn
+const) + an encrypted-at-rest offline cache + a native gated path.
 
 ## Goal & honest threat model
 
