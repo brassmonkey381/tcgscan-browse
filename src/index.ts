@@ -96,6 +96,8 @@ export { lightTheme, resolveTheme, RARITY_PALETTE, type BrowseTheme } from './th
 
 export { findSimilar, similarAvailable, type SimilarHit } from './similar';
 
+export { searchCards, serverSearchAvailable, type SearchPage } from './search';
+
 export {
   describeQuery,
   matchCard,

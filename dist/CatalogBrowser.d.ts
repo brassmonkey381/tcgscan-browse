@@ -3,7 +3,13 @@ import { type CardAction, type CardActionsFactory } from './actions';
 import { type Catalog, type CatalogCard } from './catalog';
 import { type BrowseTheme } from './theme';
 interface CatalogBrowserProps {
-    catalog: Catalog;
+    /**
+     * The in-memory catalog. Pass `undefined`/`null` while it's still loading to get the COLD
+     * path: text search runs against the data server's `search_cards` RPC (instant, no catalog),
+     * and the drill-down / facets / similar surface once the catalog resolves (the consumer just
+     * passes it through from `useCatalog`). When set, everything is on-device as before.
+     */
+    catalog?: Catalog | null;
     /** The card currently placed in the pocket (for the selected highlight), if any. */
     selectedCardId?: string;
     /**

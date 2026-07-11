@@ -22,7 +22,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
  */
 import { Image } from 'expo-image';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, sortCards, } from './query';
 import { browseState, subscribeBrowseCommand } from './state';
@@ -34,6 +34,7 @@ import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
 import { findSimilar, findSimilarToMany, similarAvailable } from './similar';
+import { searchCards, serverSearchAvailable } from './search';
 import { resolveTheme } from './theme';
 /** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
  *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
@@ -217,6 +218,16 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // "Find similar" mode: results of the data server's embedding RPC for one card.
     const [similarTo, setSimilarTo] = useState(browseState.similarTo);
     const [similarCards, setSimilarCards] = useState(browseState.similarCards);
+    // Cold path (catalog not loaded yet): text search runs against the server's search_cards RPC.
+    // We accumulate pages, guarding against out-of-order responses with a monotonic request token.
+    const warm = Boolean(catalog);
+    const coldSearch = !warm && serverSearchAvailable();
+    const [serverCards, setServerCards] = useState([]);
+    const [serverPrice, setServerPrice] = useState({});
+    const [serverTotal, setServerTotal] = useState(0);
+    const [serverLoading, setServerLoading] = useState(false);
+    const serverOffset = useRef(0);
+    const serverToken = useRef(0);
     // Write every change back so the next mount resumes here.
     useEffect(() => {
         Object.assign(browseState, {
@@ -277,8 +288,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         setAnalyticsTab('cards');
     }, [seriesId, setId]);
     // Headline card values (load-once) — powers >$N queries, sort:value, and value labels.
+    // Warm: the price summary. Cold: the `cur` the RPC returned with each hit.
     const priceSummary = usePriceSummary();
-    const priceOf = (id) => priceSummary?.[id]?.cur ?? 0;
+    const priceOf = (id) => (warm ? (priceSummary?.[id]?.cur ?? 0) : (serverPrice[id] ?? 0));
     // Measured content width → dense column count. 0 until the first layout pass.
     const [containerWidth, setContainerWidth] = useState(0);
     const onLayout = (e) => {
@@ -289,18 +301,21 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const clearFilters = () => setSelection({});
     const q = cardQueryDebounced.trim();
     const searching = q.length > 0;
+    // Cold (no catalog): only the flat search grid exists — drill-down/similar need the catalog.
     const level = searching
         ? 'search'
-        : similarTo
-            ? 'similar'
-            : setId
-                ? 'cards'
-                : seriesId
-                    ? 'sets'
-                    : 'series';
+        : !warm
+            ? 'coldidle'
+            : similarTo
+                ? 'similar'
+                : setId
+                    ? 'cards'
+                    : seriesId
+                        ? 'sets'
+                        : 'series';
     const isCardLevel = level === 'cards' || level === 'search' || level === 'similar';
-    const series = useMemo(() => catalog.listSeries(), [catalog]);
-    const sets = useMemo(() => (seriesId ? catalog.listSets(seriesId) : []), [catalog, seriesId]);
+    const series = useMemo(() => catalog?.listSeries() ?? [], [catalog]);
+    const sets = useMemo(() => (catalog && seriesId ? catalog.listSets(seriesId) : []), [catalog, seriesId]);
     // The parsed search-box query (grammar: words, key:value fields, price bounds, sort).
     const parsed = useMemo(() => parseQuery(q), [q]);
     // Effective sort: the UI sort control wins; otherwise the search box's `sort:` (or relevance).
@@ -317,6 +332,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // (bare words match name/artist/set/series/rarity/type/stage — name hits rank first),
     // similar-mode results, or the set's cards.
     const viewCards = useMemo(() => {
+        // Cold: the accumulated server-search pages (empty until a query is typed).
+        if (!catalog)
+            return searching ? serverCards : [];
         if (searching)
             return runQuery(catalog.listAll(), effParsed, priceOf, Infinity);
         // Set cards / similar results: keep their natural order (collector number / best-match) until
@@ -326,17 +344,41 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             return base;
         return sortCards(base, effParsed, priceOf);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [catalog, searching, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary]);
+    }, [catalog, searching, serverCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary]);
+    // Cold search: (re)fetch page 0 when the query/sort changes; the token guard drops stale
+    // responses. A page's `total` + prices land in state for the header/tiles.
+    const fetchServerPage = useCallback(async (offset, replace) => {
+        const token = ++serverToken.current;
+        setServerLoading(true);
+        const page = await searchCards(effParsed, { limit: PAGE_SIZE, offset });
+        if (serverToken.current !== token)
+            return; // a newer request superseded this one
+        serverOffset.current = offset + page.cards.length;
+        setServerTotal(page.total);
+        setServerPrice((prev) => (replace ? page.priceById : { ...prev, ...page.priceById }));
+        setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
+        setServerLoading(false);
+    }, [effParsed]);
+    useEffect(() => {
+        if (!coldSearch || !searching) {
+            setServerCards([]);
+            setServerTotal(0);
+            serverOffset.current = 0;
+            return;
+        }
+        fetchServerPage(0, true);
+    }, [coldSearch, searching, fetchServerPage]);
     // Ids currently in view (search results / set cards) — keeps facet options and the V-UNION
     // groups relevant to what's actually on screen.
     const inView = useMemo(() => new Set(viewCards.map((c) => c.id)), [viewCards]);
     // Offer the Size=V-UNION option only when a group's pieces are actually in view.
-    const hasVUnionInView = useMemo(() => catalog.vunionGroups().some((g) => g.pieces.some((pid) => inView.has(pid))), [catalog, inView]);
+    const hasVUnionInView = useMemo(() => (catalog?.vunionGroups() ?? []).some((g) => g.pieces.some((pid) => inView.has(pid))), [catalog, inView]);
     // Facet options narrow to the searched/filtered subset: each facet's values are the ones
     // present after the OTHER facets' selections are applied (exclude self, so you can still
     // change this facet). Standard faceted search — one pass per facet, not recursive. Facets
-    // with <2 options in the subset drop out.
-    const facetOptions = useMemo(() => isCardLevel
+    // with <2 options in the subset drop out. Cold (server search): hidden — the full set isn't
+    // local to enumerate over (P1; a search_facets RPC would restore it).
+    const facetOptions = useMemo(() => isCardLevel && catalog
         ? FACETS.map((f) => {
             const subset = applyFacets(viewCards, { ...selection, [f.key]: [] });
             const selected = selection[f.key] ?? [];
@@ -348,8 +390,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             }
             return { facet: f, values };
         }).filter((o) => o.values.length >= 2 || (selection[o.facet.key]?.length ?? 0) > 0)
-        : [], [isCardLevel, viewCards, selection, hasVUnionInView]);
-    const filteredCards = useMemo(() => applyFacets(viewCards, selection), [viewCards, selection]);
+        : [], [isCardLevel, catalog, viewCards, selection, hasVUnionInView]);
+    // Cold: no facets, so the view is the server results as-is.
+    const filteredCards = useMemo(() => (catalog ? applyFacets(viewCards, selection) : viewCards), [catalog, viewCards, selection]);
     const activeFilterCount = useMemo(() => Object.values(selection).reduce((n, vals) => n + vals.length, 0), [selection]);
     // Dense grid geometry from the measured width. Falls back to a sane default pre-layout.
     const { numColumns, tileW, taxCols, taxTileW } = useMemo(() => {
@@ -368,14 +411,14 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const rowHeight = isCardLevel ? cardRowHeight : taxTileHeight + ROW_GAP;
     // Size=V-UNION surfaces assembled group tiles (no per-card signal exists for them). Shown
     // ahead of any plain cards the rest of the Size selection matches (Standard/Jumbo).
-    const showVUnionGroups = isCardLevel && (selection.size ?? []).includes(VUNION_SIZE);
+    const showVUnionGroups = isCardLevel && catalog && (selection.size ?? []).includes(VUNION_SIZE);
     const data = useMemo(() => {
         if (level === 'series')
             return series.map((s) => ({ kind: 'series', series: s }));
         if (level === 'sets')
             return sets.map((s) => ({ kind: 'set', set: s }));
         const cards = filteredCards.map((c) => ({ kind: 'card', card: c }));
-        if (!showVUnionGroups)
+        if (!showVUnionGroups || !catalog)
             return cards;
         // Only groups relevant to the CURRENT view: a group qualifies when one of its piece cards is
         // in the searched/set cards. So "charizard" + V-UNION returns nothing (no Charizard V-UNION),
@@ -396,7 +439,19 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     useEffect(() => {
         setVisibleCount(PAGE_SIZE);
     }, [viewKey, effSort.field, effSort.dir]);
-    const visibleData = useMemo(() => data.slice(0, visibleCount), [data, visibleCount]);
+    // Warm paginates client-side (slice a growing window). Cold paginates on the server, so show
+    // every page fetched so far.
+    const visibleData = useMemo(() => (catalog ? data.slice(0, visibleCount) : data), [catalog, data, visibleCount]);
+    // End-reached: grow the client window (warm) or fetch the next server page (cold).
+    const onEndReached = () => {
+        if (!catalog) {
+            if (coldSearch && !serverLoading && serverCards.length < serverTotal) {
+                fetchServerPage(serverOffset.current, false);
+            }
+            return;
+        }
+        setVisibleCount((n) => (n < data.length ? Math.min(n + PAGE_SIZE, data.length) : n));
+    };
     useEffect(() => {
         if (!isCardLevel)
             return;
@@ -456,7 +511,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         setSimilarCards([]);
         findSimilar(card.id, 24).then((hits) => {
             const cards = hits
-                .map((h) => catalog.getCard(h.id))
+                .map((h) => catalog?.getCard(h.id))
                 .filter((c) => Boolean(c));
             setSimilarCards(cards);
         });
@@ -471,7 +526,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         setSimilarCards([]);
         findSimilarToMany(ids, 24).then((hits) => {
             const cards = hits
-                .map((h) => catalog.getCard(h.id))
+                .map((h) => catalog?.getCard(h.id))
                 .filter((c) => Boolean(c));
             setSimilarCards(cards);
         });
@@ -497,7 +552,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 openSimilarMany(cmd.cardIds);
                 return;
             }
-            const card = catalog.getCard(cmd.cardId);
+            const card = catalog?.getCard(cmd.cardId);
             if (!card)
                 return;
             if (cmd.type === 'similar')
@@ -535,11 +590,11 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         }
     };
     const toggleSortDir = () => setSortSel({ field: effSort.field, dir: effSort.dir === 'asc' ? 'desc' : 'asc' });
-    const currentSeries = seriesId ? catalog.getSeries(seriesId) : undefined;
-    const currentSet = setId ? catalog.getSet(setId) : undefined;
+    const currentSeries = catalog && seriesId ? catalog.getSeries(seriesId) : undefined;
+    const currentSet = catalog && setId ? catalog.getSet(setId) : undefined;
     // The card already in the pocket that opened this picker (if any) — offered as
     // a one-tap "find similar to what's here" jump.
-    const occupant = selectedCardId ? catalog.getCard(selectedCardId) : undefined;
+    const occupant = catalog && selectedCardId ? catalog.getCard(selectedCardId) : undefined;
     const openCard = onOpenCard ?? onPickCard ?? (() => { });
     /** The package-intrinsic actions for a card, bound to this browser's state. */
     const builtinsFor = (card) => ({
@@ -659,23 +714,26 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         const row = Math.floor(index / cols);
         return { length: rowHeight, offset: rowHeight * row, index };
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${catalog.cardCount.toLocaleString()} cards — ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), isCardLevel ? (_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [
-                                    styles.modeDot,
-                                    catalogStatus.status === 'ready' ? styles.modeDotReady : styles.modeDotLoading,
-                                ] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: catalogStatus.status === 'ready'
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${catalog ? catalog.cardCount.toLocaleString() + ' ' : ''}cards — ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), isCardLevel || !warm ? (_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm
                                     ? '⚡ On-device search — instant'
-                                    : catalogStatus.status === 'parsing'
-                                        ? `Loading catalog… ${Math.round(catalogStatus.progress * 100)}%`
-                                        : catalogStatus.status === 'error'
-                                            ? 'Catalog failed to load — pull to retry'
-                                            : 'Loading catalog…' })] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+                                    : coldSearch
+                                        ? catalogStatus.status === 'parsing'
+                                            ? `☁ Server search · full browse loading ${Math.round(catalogStatus.progress * 100)}%`
+                                            : '☁ Server search · loading full browse…'
+                                        : catalogStatus.status === 'parsing'
+                                            ? `Loading catalog… ${Math.round(catalogStatus.progress * 100)}%`
+                                            : catalogStatus.status === 'error'
+                                                ? 'Catalog failed to load — pull to retry'
+                                                : 'Loading catalog…' })] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
-                        !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [filteredCards.length === viewCards.length
-                                        ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
-                                        : `${filteredCards.length} of ${viewCards.length}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarCards.length > 0
+                        !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [warm
+                                        ? filteredCards.length === viewCards.length
+                                            ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
+                                            : `${filteredCards.length} of ${viewCards.length}`
+                                        : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarCards.length > 0
                                             ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}:`
                                             : 'Finding similar cards…' }), _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.similarThumbs, keyboardShouldPersistTaps: "handled", children: similarTo.ids.map((sid) => {
-                                    const src = catalog.getCard(sid);
+                                    const src = catalog?.getCard(sid);
                                     const uri = cardThumbUrl(sid, 245);
                                     return (_jsx(Pressable, { style: styles.similarThumb, onPress: () => src && setActionCard(src), children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: sid, transition: 80 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: src?.name?.slice(0, 1) ?? '?' }) })) }, sid));
                                 }) })] })) : seriesId ? (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs })) : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), analyticsScope ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
@@ -685,21 +743,27 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                         }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
                                         setMultiSelectMode(false);
                                         clearSelection();
-                                    }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : (_jsx(FlatList
+                                    }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: catalog && analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : catalog && analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : (_jsx(FlatList
             // Remount when the level or column count changes so numColumns/getItemLayout stay
             // consistent (FlatList can't change numColumns in place).
             , { style: styles.list, 
                 // Render a growing window of the (uncapped) results — reveal more as you scroll.
-                data: visibleData, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", onEndReachedThreshold: 0.8, onEndReached: () => setVisibleCount((n) => (n < data.length ? Math.min(n + PAGE_SIZE, data.length) : n)), initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching
-                        ? `No cards match “${q}”.`
-                        : level === 'similar'
-                            ? similarCards.length === 0 && similarTo
-                                ? 'Searching…'
-                                : 'No similar cards found.'
-                            : level === 'cards'
-                                ? 'No cards in this set.'
-                                : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedIds
-                    .map((id) => catalog.getCard(id))
+                data: visibleData, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", onEndReachedThreshold: 0.8, onEndReached: onEndReached, initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching
+                        ? !warm && serverLoading
+                            ? 'Searching…'
+                            : `No cards match “${q}”.`
+                        : level === 'coldidle'
+                            ? coldSearch
+                                ? 'Type to search all cards — the full browse loads in a moment.'
+                                : 'Loading cards…'
+                            : level === 'similar'
+                                ? similarCards.length === 0 && similarTo
+                                    ? 'Searching…'
+                                    : 'No similar cards found.'
+                                : level === 'cards'
+                                    ? 'No cards in this set.'
+                                    : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedIds
+                    .map((id) => catalog?.getCard(id))
                     .filter((c) => Boolean(c)), onAddAll: onPickCards ? () => onPickCards(selectedIds) : undefined, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onClose: () => {
                     setMultiOpen(false);
                     setMultiSelectMode(false);

@@ -15,6 +15,7 @@ export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, type Val
 export { resolveActions, resolveLabel, type BrowserBuiltins, type CardAction, type CardActionsFactory, } from './actions';
 export { lightTheme, resolveTheme, RARITY_PALETTE, type BrowseTheme } from './theme';
 export { findSimilar, similarAvailable, type SimilarHit } from './similar';
+export { searchCards, serverSearchAvailable, type SearchPage } from './search';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, type CompareField, type CompareOp, type Comparison, type FieldKey, type ManualSection, type ParsedQuery, type QueryableCard, type QuerySort, type SortDir, } from './query';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, } from './state';
 export { CatalogBrowser } from './CatalogBrowser';

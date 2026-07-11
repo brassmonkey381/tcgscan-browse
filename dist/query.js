@@ -370,7 +370,8 @@ export function runQuery(cards, q, priceOf, limit = 200) {
             scored.push({ card, score: s });
     }
     if (q.sort === 'relevance') {
-        scored.sort((a, b) => b.score - a.score);
+        // Tiebreak by id so this matches the server's `search_cards` ordering exactly (warm == cold).
+        scored.sort((a, b) => b.score - a.score || a.card.id.localeCompare(b.card.id));
         return scored.slice(0, limit).map((s) => s.card);
     }
     return sortCards(scored.map((s) => s.card), q, priceOf).slice(0, limit);
@@ -378,6 +379,7 @@ export function runQuery(cards, q, priceOf, limit = 200) {
 /**
  * Stable sort by a nullable key, with unknown (null) keys always sunk to the bottom
  * regardless of direction — so `sort:hp` and `sort:hp:asc` both leave HP-less cards last.
+ * Equal keys (and the unknown bucket) tiebreak by id, matching the server's trailing `id`.
  */
 function sortByKey(cards, keyOf, dir, compare) {
     const known = [];
@@ -385,7 +387,8 @@ function sortByKey(cards, keyOf, dir, compare) {
     for (const c of cards)
         (keyOf(c) == null ? unknown : known).push(c);
     const mul = dir === 'asc' ? 1 : -1;
-    known.sort((a, b) => mul * compare(keyOf(a), keyOf(b)));
+    known.sort((a, b) => mul * compare(keyOf(a), keyOf(b)) || a.id.localeCompare(b.id));
+    unknown.sort((a, b) => a.id.localeCompare(b.id));
     return [...known, ...unknown];
 }
 /** Order results per the query's sort field + direction (relevance = input order). */
@@ -393,9 +396,9 @@ export function sortCards(cards, q, priceOf) {
     const mul = q.sortDir === 'asc' ? 1 : -1;
     switch (q.sort) {
         case 'value':
-            return [...cards].sort((a, b) => mul * (priceOf(a.id) - priceOf(b.id)));
+            return [...cards].sort((a, b) => mul * (priceOf(a.id) - priceOf(b.id)) || a.id.localeCompare(b.id));
         case 'name':
-            return [...cards].sort((a, b) => mul * a.name.localeCompare(b.name));
+            return [...cards].sort((a, b) => mul * a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
         case 'date':
             return sortByKey(cards, (c) => c.releaseDate || null, q.sortDir, (a, b) => String(a).localeCompare(String(b)));
         case 'hp':
