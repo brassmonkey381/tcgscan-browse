@@ -15,7 +15,7 @@
  * network in the background. Because the URLs are immutable, a cached copy is
  * always safe to paint first; the refresh only adds/updates changed ids.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 
 import { getBrowseUrl } from './config';
 
@@ -125,11 +125,13 @@ export function hydrateImageManifest(): Promise<void> {
  * whether a manifest is currently loaded.
  */
 export function useImageManifest(): boolean {
-  const [, bump] = useState(0);
   useEffect(() => {
-    const unsub = subscribeImageManifest(() => bump((v) => v + 1));
     hydrateImageManifest();
-    return unsub;
   }, []);
-  return imageManifestReady();
+  // useSyncExternalStore (not subscribe-in-effect + manual bump): the manifest can publish in
+  // the window BETWEEN a component's first render and its effect subscribing — with a manual
+  // bump that publish is missed and the component stays "not ready" forever (covers stuck on
+  // fallback paths until reload). uSES re-reads the snapshot at subscription time, closing the
+  // race. Server snapshot: never ready during SSR.
+  return useSyncExternalStore(subscribeImageManifest, imageManifestReady, () => false);
 }
