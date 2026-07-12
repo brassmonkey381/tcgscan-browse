@@ -107,6 +107,15 @@ export {
 } from './search';
 
 export {
+  loadSealed,
+  loadSealedPrices,
+  useSealed,
+  type SealedCatalog,
+  type SealedProduct,
+  type SealedSet,
+} from './sealed';
+
+export {
   describeQuery,
   matchCard,
   parseQuery,

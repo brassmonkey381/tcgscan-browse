@@ -16,6 +16,7 @@ export { resolveActions, resolveLabel, type BrowserBuiltins, type CardAction, ty
 export { lightTheme, resolveTheme, RARITY_PALETTE, type BrowseTheme } from './theme';
 export { findSimilar, similarAvailable, type SimilarHit } from './similar';
 export { searchCards, searchFacets, serverSearchAvailable, type SearchPage, type ServerFacetSelection, } from './search';
+export { loadSealed, loadSealedPrices, useSealed, type SealedCatalog, type SealedProduct, type SealedSet, } from './sealed';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, type CompareField, type CompareOp, type Comparison, type FieldKey, type ManualSection, type ParsedQuery, type QueryableCard, type QuerySort, type SortDir, } from './query';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, } from './state';
 export { CatalogBrowser } from './CatalogBrowser';

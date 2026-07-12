@@ -170,7 +170,11 @@ function orderFacetValues(key: string, values: string[]): string[] {
 
 /** tqdm-style one-liner for the load badge: "☁ Server search · full browse 45% · 3.2/8.8 MB · 4s left". */
 function loadLabel(s: CatalogLoadStatus, coldSearch: boolean): string {
-  if (s.status === 'error') return 'Catalog failed to load — pull to retry';
+  // No load in flight (e.g. guests: the app never requests the catalog) — server search IS the
+  // mode, don't imply a download is coming.
+  if (s.status === 'idle') return coldSearch ? '☁ Server search — instant' : 'Loading cards…';
+  if (s.status === 'error')
+    return coldSearch ? '☁ Server search — instant' : 'Catalog failed to load — pull to retry';
   const prefix = coldSearch ? '☁ Server search · full browse' : 'Loading cards';
   const pct = Math.round(s.progress * 100);
   const mb = (n: number) => (n / 1e6).toFixed(1);
@@ -1198,7 +1202,7 @@ export function CatalogBrowser({
                 : `No cards match “${q}”.`
               : level === 'coldidle'
                 ? coldSearch
-                  ? 'Type to search all cards — the full browse loads in a moment.'
+                  ? 'Type to search all cards.'
                   : 'Loading cards…'
                 : level === 'similar'
                   ? similarCards.length === 0 && similarTo
