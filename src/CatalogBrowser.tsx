@@ -67,7 +67,7 @@ import {
 import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
-import { findSimilar, findSimilarToMany, similarAvailable } from './similar';
+import { findSimilar, findSimilarToMany, findSimilarWeighted, similarAvailable, type SimilarStep } from './similar';
 import {
   fetchCardsByIds,
   fetchSetCards,
@@ -423,6 +423,8 @@ export function CatalogBrowser({
     browseState.similarTo,
   );
   const [similarCards, setSimilarCards] = useState<CatalogCard[]>(browseState.similarCards);
+  // The ongoing similarity session (seed + every more/less refinement) — see similar.ts.
+  const [similarSteps, setSimilarSteps] = useState<SimilarStep[]>(browseState.similarSteps);
 
   // Cold path (catalog not loaded yet): text search runs against the server's search_cards RPC.
   // We accumulate pages, guarding against out-of-order responses with a monotonic request token.
@@ -483,8 +485,9 @@ export function CatalogBrowser({
       sortSel,
       similarTo,
       similarCards,
+      similarSteps,
     });
-  }, [cardQuery, seriesId, setId, selection, sortSel, similarTo, similarCards]);
+  }, [cardQuery, seriesId, setId, selection, sortSel, similarTo, similarCards, similarSteps]);
   // Tapping a card opens the action sheet (app-supplied actions + built-ins)
   // instead of silently replacing the pocket's occupant.
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
@@ -765,7 +768,15 @@ export function CatalogBrowser({
   const clearSimilar = () => {
     setSimilarTo(null);
     setSimilarCards([]);
+    setSimilarSteps([]);
   };
+  // "· refined +2 −1" summary for the similar-mode header (counts of more/less steps).
+  const moreCount = similarSteps.filter((st) => st.kind === 'more').length;
+  const lessCount = similarSteps.filter((st) => st.kind === 'less').length;
+  const refineNote =
+    moreCount || lessCount
+      ? ` · refined${moreCount ? ` +${moreCount}` : ''}${lessCount ? ` −${lessCount}` : ''}`
+      : '';
   const openSeries = (id: string) => {
     clearFilters();
     clearSimilar();
@@ -803,6 +814,7 @@ export function CatalogBrowser({
     clearFilters();
     setSimilarTo({ ids: [card.id], name: card.name });
     setSimilarCards([]);
+    setSimilarSteps([{ kind: 'seed', ids: [card.id] }]);
     findSimilar(card.id, 24).then(async (hits) => {
       setSimilarCards(await resolveIds(hits.map((h) => h.id)));
     });
@@ -816,7 +828,20 @@ export function CatalogBrowser({
     clearFilters();
     setSimilarTo({ ids: [...ids], name: `${ids.length} cards` });
     setSimilarCards([]);
+    setSimilarSteps([{ kind: 'seed', ids: [...ids] }]);
     findSimilarToMany(ids, 24).then(async (hits) => {
+      setSimilarCards(await resolveIds(hits.map((h) => h.id)));
+    });
+  };
+
+  /** "More / less like this" — extend the ONGOING similarity session and re-rank against the
+   *  weighted (Rocchio) history: seed 1.0, each more-group +0.8, each less-group −0.5, split
+   *  across group members (see similar.ts refineWeights). Seed chips stay; the grid re-ranks. */
+  const refineSimilar = (kind: 'more' | 'less', ids: string[]) => {
+    const steps: SimilarStep[] = [...similarSteps, { kind, ids }];
+    setSimilarSteps(steps);
+    setSimilarCards([]);
+    findSimilarWeighted(steps, 24).then(async (hits) => {
       setSimilarCards(await resolveIds(hits.map((h) => h.id)));
     });
   };
@@ -904,6 +929,29 @@ export function CatalogBrowser({
           },
         }
       : undefined,
+    // Refinements exist only while similarity results are on screen — they extend the session.
+    moreLikeThis:
+      similarAvailable() && similarTo
+        ? {
+            key: 'more-like-this',
+            label: '⊕ More like this',
+            onPress: (c) => {
+              setActionCard(null);
+              refineSimilar('more', [c.id]);
+            },
+          }
+        : undefined,
+    lessLikeThis:
+      similarAvailable() && similarTo
+        ? {
+            key: 'less-like-this',
+            label: '⊖ Less like this',
+            onPress: (c) => {
+              setActionCard(null);
+              refineSimilar('less', [c.id]);
+            },
+          }
+        : undefined,
     viewSet: card.setId
       ? {
           key: 'view-set',
@@ -947,6 +995,8 @@ export function CatalogBrowser({
       : [];
     const list = [
       ...placeDefault,
+      builtins.moreLikeThis,
+      builtins.lessLikeThis,
       builtins.findSimilar,
       builtins.viewSet,
       builtins.viewIllustrator,
@@ -1103,7 +1153,7 @@ export function CatalogBrowser({
             <View style={styles.metaRow}>
               <Text style={styles.meta} numberOfLines={1}>
                 {similarCards.length > 0
-                  ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}:`
+                  ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}${refineNote}:`
                   : 'Finding similar cards…'}
               </Text>
               <Pressable onPress={clearSimilar} hitSlop={8}>
@@ -1279,6 +1329,12 @@ export function CatalogBrowser({
             .filter((c): c is CatalogCard => Boolean(c))}
           onAddAll={onPickCards ? () => onPickCards(selectedIds) : undefined}
           onFindSimilarAll={similarAvailable() ? () => openSimilarMany(selectedIds) : undefined}
+          onMoreLikeAll={
+            similarAvailable() && similarTo ? () => refineSimilar('more', selectedIds) : undefined
+          }
+          onLessLikeAll={
+            similarAvailable() && similarTo ? () => refineSimilar('less', selectedIds) : undefined
+          }
           onClose={() => {
             setMultiOpen(false);
             setMultiSelectMode(false);

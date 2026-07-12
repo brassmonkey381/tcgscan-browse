@@ -33,7 +33,7 @@ import { formatSetDate, seriesDateRange, useCatalogStatus, } from './catalog';
 import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
-import { findSimilar, findSimilarToMany, similarAvailable } from './similar';
+import { findSimilar, findSimilarToMany, findSimilarWeighted, similarAvailable } from './similar';
 import { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, } from './search';
 import { useTaxonomy } from './taxonomy';
 import { resolveTheme } from './theme';
@@ -251,6 +251,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // "Find similar" mode: results of the data server's embedding RPC for one card.
     const [similarTo, setSimilarTo] = useState(browseState.similarTo);
     const [similarCards, setSimilarCards] = useState(browseState.similarCards);
+    // The ongoing similarity session (seed + every more/less refinement) — see similar.ts.
+    const [similarSteps, setSimilarSteps] = useState(browseState.similarSteps);
     // Cold path (catalog not loaded yet): text search runs against the server's search_cards RPC.
     // We accumulate pages, guarding against out-of-order responses with a monotonic request token.
     const warm = Boolean(catalog);
@@ -306,8 +308,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             sortSel,
             similarTo,
             similarCards,
+            similarSteps,
         });
-    }, [cardQuery, seriesId, setId, selection, sortSel, similarTo, similarCards]);
+    }, [cardQuery, seriesId, setId, selection, sortSel, similarTo, similarCards, similarSteps]);
     // Tapping a card opens the action sheet (app-supplied actions + built-ins)
     // instead of silently replacing the pocket's occupant.
     const [actionCard, setActionCard] = useState(null);
@@ -569,7 +572,14 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const clearSimilar = () => {
         setSimilarTo(null);
         setSimilarCards([]);
+        setSimilarSteps([]);
     };
+    // "· refined +2 −1" summary for the similar-mode header (counts of more/less steps).
+    const moreCount = similarSteps.filter((st) => st.kind === 'more').length;
+    const lessCount = similarSteps.filter((st) => st.kind === 'less').length;
+    const refineNote = moreCount || lessCount
+        ? ` · refined${moreCount ? ` +${moreCount}` : ''}${lessCount ? ` −${lessCount}` : ''}`
+        : '';
     const openSeries = (id) => {
         clearFilters();
         clearSimilar();
@@ -608,6 +618,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         clearFilters();
         setSimilarTo({ ids: [card.id], name: card.name });
         setSimilarCards([]);
+        setSimilarSteps([{ kind: 'seed', ids: [card.id] }]);
         findSimilar(card.id, 24).then(async (hits) => {
             setSimilarCards(await resolveIds(hits.map((h) => h.id)));
         });
@@ -620,7 +631,19 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         clearFilters();
         setSimilarTo({ ids: [...ids], name: `${ids.length} cards` });
         setSimilarCards([]);
+        setSimilarSteps([{ kind: 'seed', ids: [...ids] }]);
         findSimilarToMany(ids, 24).then(async (hits) => {
+            setSimilarCards(await resolveIds(hits.map((h) => h.id)));
+        });
+    };
+    /** "More / less like this" — extend the ONGOING similarity session and re-rank against the
+     *  weighted (Rocchio) history: seed 1.0, each more-group +0.8, each less-group −0.5, split
+     *  across group members (see similar.ts refineWeights). Seed chips stay; the grid re-ranks. */
+    const refineSimilar = (kind, ids) => {
+        const steps = [...similarSteps, { kind, ids }];
+        setSimilarSteps(steps);
+        setSimilarCards([]);
+        findSimilarWeighted(steps, 24).then(async (hits) => {
             setSimilarCards(await resolveIds(hits.map((h) => h.id)));
         });
     };
@@ -701,6 +724,27 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 },
             }
             : undefined,
+        // Refinements exist only while similarity results are on screen — they extend the session.
+        moreLikeThis: similarAvailable() && similarTo
+            ? {
+                key: 'more-like-this',
+                label: '⊕ More like this',
+                onPress: (c) => {
+                    setActionCard(null);
+                    refineSimilar('more', [c.id]);
+                },
+            }
+            : undefined,
+        lessLikeThis: similarAvailable() && similarTo
+            ? {
+                key: 'less-like-this',
+                label: '⊖ Less like this',
+                onPress: (c) => {
+                    setActionCard(null);
+                    refineSimilar('less', [c.id]);
+                },
+            }
+            : undefined,
         viewSet: card.setId
             ? {
                 key: 'view-set',
@@ -743,6 +787,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             : [];
         const list = [
             ...placeDefault,
+            builtins.moreLikeThis,
+            builtins.lessLikeThis,
             builtins.findSimilar,
             builtins.viewSet,
             builtins.viewIllustrator,
@@ -814,7 +860,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                             ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
                                             : `${filteredCards.length} of ${viewCards.length}`
                                         : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarCards.length > 0
-                                            ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}:`
+                                            ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}${refineNote}:`
                                             : 'Finding similar cards…' }), _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.similarThumbs, keyboardShouldPersistTaps: "handled", children: similarTo.ids.map((sid) => {
                                     const src = findCard(sid);
                                     const uri = cardThumbUrl(sid, 245);
@@ -849,7 +895,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                         : 'No cards in this set.'
                                     : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedIds
                     .map((id) => findCard(id))
-                    .filter((c) => Boolean(c)), onAddAll: onPickCards ? () => onPickCards(selectedIds) : undefined, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onClose: () => {
+                    .filter((c) => Boolean(c)), onAddAll: onPickCards ? () => onPickCards(selectedIds) : undefined, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
                     setMultiOpen(false);
                     setMultiSelectMode(false);
                     clearSelection();

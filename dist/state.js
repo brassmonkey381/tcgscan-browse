@@ -6,6 +6,7 @@ export const browseState = {
     sortSel: null,
     similarTo: null,
     similarCards: [],
+    similarSteps: [],
 };
 const commandListeners = new Set();
 let pendingCommand = null;

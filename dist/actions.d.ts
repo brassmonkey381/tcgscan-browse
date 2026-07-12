@@ -32,6 +32,11 @@ export interface CardAction {
  */
 export interface BrowserBuiltins {
     findSimilar?: CardAction;
+    /** Refine the ONGOING similarity session toward this card (present only while the browser
+     *  is showing similarity results) — Rocchio over the whole more/less history. */
+    moreLikeThis?: CardAction;
+    /** Refine the ongoing similarity session away from this card (similar mode only). */
+    lessLikeThis?: CardAction;
     viewSet?: CardAction;
     /** Search the catalog for every card by this card's illustrator (undefined when
      *  the card has no illustrator). */

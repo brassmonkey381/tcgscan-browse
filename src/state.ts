@@ -8,6 +8,7 @@
  */
 import type { CatalogCard } from './catalog';
 import type { QuerySort, SortDir } from './query';
+import type { SimilarStep } from './similar';
 
 export interface BrowseState {
   cardQuery: string;
@@ -20,6 +21,12 @@ export interface BrowseState {
   /** The source card(s) a similarity search was run on: their ids + a short label. */
   similarTo: { ids: string[]; name: string } | null;
   similarCards: CatalogCard[];
+  /**
+   * The ongoing similarity session — the seed search plus every "more / less like this"
+   * refinement since, in order. Feeds `find_similar_weighted` (Rocchio over the history);
+   * reset whenever a fresh similarity search starts or similar mode is left.
+   */
+  similarSteps: SimilarStep[];
 }
 
 export const browseState: BrowseState = {
@@ -30,6 +37,7 @@ export const browseState: BrowseState = {
   sortSel: null,
   similarTo: null,
   similarCards: [],
+  similarSteps: [],
 };
 
 /**

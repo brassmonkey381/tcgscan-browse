@@ -60,7 +60,7 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
  * overflow), then offers the batch actions. Buttons are hidden when their handler is absent
  * (e.g. no "Find similar to all" when the data server isn't configured).
  */
-export function MultiCardActionModal({ cards, onAddAll, onFindSimilarAll, onClose, theme = lightTheme, }) {
+export function MultiCardActionModal({ cards, onAddAll, onFindSimilarAll, onMoreLikeAll, onLessLikeAll, onClose, theme = lightTheme, }) {
     const styles = makeStyles(theme);
     return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsxs(Pressable, { style: styles.sheet, onPress: () => { }, children: [_jsx(View, { style: styles.imageWrap, children: _jsx(ScrollView, { contentContainerStyle: styles.multiGrid, children: cards.map((c) => {
                                 const uri = cardThumbUrl(c.id, 245);
@@ -68,7 +68,13 @@ export function MultiCardActionModal({ cards, onAddAll, onFindSimilarAll, onClos
                             }) }) }), _jsxs(Text, { style: styles.name, numberOfLines: 1, children: [cards.length, " cards selected"] }), _jsxs(View, { style: styles.actions, children: [onAddAll ? (_jsx(Pressable, { style: [styles.action, styles.actionPrimary], onPress: () => {
                                     onClose();
                                     onAddAll();
-                                }, children: _jsx(Text, { style: [styles.actionText, styles.actionPrimaryText], numberOfLines: 1, children: "Add all to a binder" }) })) : null, onFindSimilarAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
+                                }, children: _jsx(Text, { style: [styles.actionText, styles.actionPrimaryText], numberOfLines: 1, children: "Add all to a binder" }) })) : null, onMoreLikeAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
+                                    onClose();
+                                    onMoreLikeAll();
+                                }, children: _jsx(Text, { style: styles.actionText, numberOfLines: 1, children: "\u2295 More like these" }) })) : null, onLessLikeAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
+                                    onClose();
+                                    onLessLikeAll();
+                                }, children: _jsx(Text, { style: styles.actionText, numberOfLines: 1, children: "\u2296 Less like these" }) })) : null, onFindSimilarAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
                                     onClose();
                                     onFindSimilarAll();
                                 }, children: _jsx(Text, { style: styles.actionText, numberOfLines: 1, children: "\u2248 Find similar to all" }) })) : null, _jsx(Pressable, { style: styles.action, onPress: onClose, children: _jsx(Text, { style: styles.actionCancelText, children: "Cancel" }) })] })] }) }) }));

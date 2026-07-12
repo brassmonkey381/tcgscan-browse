@@ -132,6 +132,8 @@ export function MultiCardActionModal({
   cards,
   onAddAll,
   onFindSimilarAll,
+  onMoreLikeAll,
+  onLessLikeAll,
   onClose,
   theme = lightTheme,
 }: {
@@ -140,6 +142,10 @@ export function MultiCardActionModal({
   onAddAll?: () => void;
   /** "Find similar to all" (kit-supplied embedding search). Omit to hide the button. */
   onFindSimilarAll?: () => void;
+  /** Refine the ongoing similarity session toward this group (similar mode only). */
+  onMoreLikeAll?: () => void;
+  /** Refine the ongoing similarity session away from this group (similar mode only). */
+  onLessLikeAll?: () => void;
   onClose: () => void;
   theme?: BrowseTheme;
 }) {
@@ -180,6 +186,30 @@ export function MultiCardActionModal({
                 }}>
                 <Text style={[styles.actionText, styles.actionPrimaryText]} numberOfLines={1}>
                   Add all to a binder
+                </Text>
+              </Pressable>
+            ) : null}
+            {onMoreLikeAll ? (
+              <Pressable
+                style={styles.action}
+                onPress={() => {
+                  onClose();
+                  onMoreLikeAll();
+                }}>
+                <Text style={styles.actionText} numberOfLines={1}>
+                  ⊕ More like these
+                </Text>
+              </Pressable>
+            ) : null}
+            {onLessLikeAll ? (
+              <Pressable
+                style={styles.action}
+                onPress={() => {
+                  onClose();
+                  onLessLikeAll();
+                }}>
+                <Text style={styles.actionText} numberOfLines={1}>
+                  ⊖ Less like these
                 </Text>
               </Pressable>
             ) : null}

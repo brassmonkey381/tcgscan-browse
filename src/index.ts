@@ -96,7 +96,15 @@ export {
 
 export { lightTheme, resolveTheme, RARITY_PALETTE, type BrowseTheme } from './theme';
 
-export { findSimilar, similarAvailable, type SimilarHit } from './similar';
+export {
+  findSimilar,
+  findSimilarToMany,
+  findSimilarWeighted,
+  refineWeights,
+  similarAvailable,
+  type SimilarHit,
+  type SimilarStep,
+} from './similar';
 
 export {
   fetchCardsByIds,

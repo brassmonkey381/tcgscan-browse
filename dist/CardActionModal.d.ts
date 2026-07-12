@@ -17,12 +17,16 @@ export declare function CardActionModal({ card, actions, value, onClose, theme }
  * overflow), then offers the batch actions. Buttons are hidden when their handler is absent
  * (e.g. no "Find similar to all" when the data server isn't configured).
  */
-export declare function MultiCardActionModal({ cards, onAddAll, onFindSimilarAll, onClose, theme, }: {
+export declare function MultiCardActionModal({ cards, onAddAll, onFindSimilarAll, onMoreLikeAll, onLessLikeAll, onClose, theme, }: {
     cards: CatalogCard[];
     /** "Add all to a binder" (app-supplied). Omit to hide the button. */
     onAddAll?: () => void;
     /** "Find similar to all" (kit-supplied embedding search). Omit to hide the button. */
     onFindSimilarAll?: () => void;
+    /** Refine the ongoing similarity session toward this group (similar mode only). */
+    onMoreLikeAll?: () => void;
+    /** Refine the ongoing similarity session away from this group (similar mode only). */
+    onLessLikeAll?: () => void;
     onClose: () => void;
     theme?: BrowseTheme;
 }): import("react").JSX.Element;
