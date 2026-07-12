@@ -24,7 +24,7 @@ function cardKind(raw) {
     return raw.kind === 'jumbo' || raw.kind === 'vunion' ? raw.kind : 'standard';
 }
 /** Sort key for collector numbers: "12/102" -> 12, "SWSH045" -> 45, "" -> ∞. */
-function numberKey(n) {
+export function numberKey(n) {
     const m = n.match(/\d+/);
     return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
 }

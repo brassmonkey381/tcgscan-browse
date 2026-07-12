@@ -1,3 +1,16 @@
+/**
+ * Server-side card search — the data server's `search_cards` RPC (see
+ * tcgscan-data/supabase/migrations/20260710_12_search_cards.sql). It reproduces the client
+ * `runQuery`/`scoreCard`/`sortCards` semantics EXACTLY, so the COLD path (catalog not yet in
+ * memory) returns the same result set + order as the warm on-device path — the browser can
+ * search in ~one round-trip while the ~28k-card catalog is still downloading/parsing.
+ *
+ * The client keeps `parseQuery` as the single grammar source of truth and sends STRUCTURED
+ * params; no grammar is reimplemented here. Rows come back tile-ready (mapped to CatalogCard,
+ * with the price carried separately), so a hit renders + opens its action sheet WITHOUT the
+ * card being in the in-memory catalog. Fails soft (empty) — server search is an enhancement.
+ */
+import { numberKey } from './catalog';
 import { getApiKey, getApiUrl } from './config';
 /** True when the app is configured to reach the data server's REST API. */
 export function serverSearchAvailable() {
@@ -74,6 +87,57 @@ export async function searchCards(parsed, { limit = 60, offset = 0, facets, } = 
     }
     catch {
         return empty; // offline / not configured — the caller falls back to client runQuery
+    }
+}
+/** The card columns the direct PostgREST fetchers select (matches SearchRow minus cur/score). */
+const CARD_COLS = 'id,name,number,rarity,card_type,set_id,set_name,series,release_date,' +
+    'illustrator,types,stage,hp,evolution_stage_index,evolves_from,evolution_line,jumbo';
+/** Per-set card cache for the cold drill-down (setId -> fetched, sorted cards). */
+const setCardsCache = new Map();
+/**
+ * A set's browse-visible cards, straight from PostgREST (no catalog needed) — powers the
+ * cold-mode Series → Set → Card drill-down. Sorted like the warm listCards (collector number,
+ * then name); cached per set for the session. Fails soft (empty).
+ */
+export async function fetchSetCards(setId) {
+    if (!serverSearchAvailable() || !setId)
+        return [];
+    const hit = setCardsCache.get(setId);
+    if (hit)
+        return hit;
+    try {
+        const res = await fetch(`${getApiUrl()}/cards?select=${CARD_COLS}&set_id=eq.${encodeURIComponent(setId)}&browse_visible=is.true&limit=1000`, { headers: { apikey: getApiKey() } });
+        if (!res.ok)
+            return [];
+        const cards = (await res.json())
+            .map(rowToCard)
+            .sort((a, b) => numberKey(a.number) - numberKey(b.number) || a.name.localeCompare(b.name));
+        setCardsCache.set(setId, cards);
+        return cards;
+    }
+    catch {
+        return [];
+    }
+}
+/**
+ * Resolve specific card ids to tile-ready cards without the catalog (cold-mode similar
+ * results, multi-select thumbs, …). Order follows the input ids. Fails soft (drops misses).
+ */
+export async function fetchCardsByIds(ids) {
+    if (!serverSearchAvailable() || ids.length === 0)
+        return [];
+    try {
+        const list = ids.map(encodeURIComponent).join(',');
+        const res = await fetch(`${getApiUrl()}/cards?select=${CARD_COLS}&id=in.(${list})`, {
+            headers: { apikey: getApiKey() },
+        });
+        if (!res.ok)
+            return [];
+        const byId = new Map((await res.json()).map((r) => [String(r.id), rowToCard(r)]));
+        return ids.map((id) => byId.get(id)).filter((c) => Boolean(c));
+    }
+    catch {
+        return [];
     }
 }
 /**

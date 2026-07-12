@@ -185,7 +185,7 @@ function cardKind(raw: RawCard): CardKind {
 }
 
 /** Sort key for collector numbers: "12/102" -> 12, "SWSH045" -> 45, "" -> ∞. */
-function numberKey(n: string): number {
+export function numberKey(n: string): number {
   const m = n.match(/\d+/);
   return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
 }

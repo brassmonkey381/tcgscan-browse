@@ -99,12 +99,16 @@ export { lightTheme, resolveTheme, RARITY_PALETTE, type BrowseTheme } from './th
 export { findSimilar, similarAvailable, type SimilarHit } from './similar';
 
 export {
+  fetchCardsByIds,
+  fetchSetCards,
   searchCards,
   searchFacets,
   serverSearchAvailable,
   type SearchPage,
   type ServerFacetSelection,
 } from './search';
+
+export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
 
 export {
   loadSealed,

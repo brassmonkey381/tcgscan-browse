@@ -10,7 +10,7 @@
  * with the price carried separately), so a hit renders + opens its action sheet WITHOUT the
  * card being in the in-memory catalog. Fails soft (empty) — server search is an enhancement.
  */
-import type { CardKind, CatalogCard } from './catalog';
+import { numberKey, type CardKind, type CatalogCard } from './catalog';
 import { getApiKey, getApiUrl } from './config';
 import type { ParsedQuery } from './query';
 
@@ -129,6 +129,58 @@ export async function searchCards(
     return { cards, priceById, total: Number(rows[0].total_count) || cards.length };
   } catch {
     return empty; // offline / not configured — the caller falls back to client runQuery
+  }
+}
+
+/** The card columns the direct PostgREST fetchers select (matches SearchRow minus cur/score). */
+const CARD_COLS =
+  'id,name,number,rarity,card_type,set_id,set_name,series,release_date,' +
+  'illustrator,types,stage,hp,evolution_stage_index,evolves_from,evolution_line,jumbo';
+
+/** Per-set card cache for the cold drill-down (setId -> fetched, sorted cards). */
+const setCardsCache = new Map<string, CatalogCard[]>();
+
+/**
+ * A set's browse-visible cards, straight from PostgREST (no catalog needed) — powers the
+ * cold-mode Series → Set → Card drill-down. Sorted like the warm listCards (collector number,
+ * then name); cached per set for the session. Fails soft (empty).
+ */
+export async function fetchSetCards(setId: string): Promise<CatalogCard[]> {
+  if (!serverSearchAvailable() || !setId) return [];
+  const hit = setCardsCache.get(setId);
+  if (hit) return hit;
+  try {
+    const res = await fetch(
+      `${getApiUrl()}/cards?select=${CARD_COLS}&set_id=eq.${encodeURIComponent(setId)}&browse_visible=is.true&limit=1000`,
+      { headers: { apikey: getApiKey() } },
+    );
+    if (!res.ok) return [];
+    const cards = ((await res.json()) as SearchRow[])
+      .map(rowToCard)
+      .sort((a, b) => numberKey(a.number) - numberKey(b.number) || a.name.localeCompare(b.name));
+    setCardsCache.set(setId, cards);
+    return cards;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Resolve specific card ids to tile-ready cards without the catalog (cold-mode similar
+ * results, multi-select thumbs, …). Order follows the input ids. Fails soft (drops misses).
+ */
+export async function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]> {
+  if (!serverSearchAvailable() || ids.length === 0) return [];
+  try {
+    const list = ids.map(encodeURIComponent).join(',');
+    const res = await fetch(`${getApiUrl()}/cards?select=${CARD_COLS}&id=in.(${list})`, {
+      headers: { apikey: getApiKey() },
+    });
+    if (!res.ok) return [];
+    const byId = new Map(((await res.json()) as SearchRow[]).map((r) => [String(r.id), rowToCard(r)]));
+    return ids.map((id) => byId.get(id)).filter((c): c is CatalogCard => Boolean(c));
+  } catch {
+    return [];
   }
 }
 

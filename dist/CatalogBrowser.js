@@ -34,7 +34,8 @@ import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
 import { findSimilar, findSimilarToMany, similarAvailable } from './similar';
-import { searchCards, searchFacets, serverSearchAvailable } from './search';
+import { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, } from './search';
+import { useTaxonomy } from './taxonomy';
 import { resolveTheme } from './theme';
 /** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
  *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
@@ -262,6 +263,39 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const [serverFacets, setServerFacets] = useState({});
     const serverOffset = useRef(0);
     const serverToken = useRef(0);
+    // Cold drill-down: the tiny public taxonomy stands in for the catalog's series/sets, and a
+    // set's cards are fetched from the server on drill (cached per set in the search module).
+    const taxonomy = useTaxonomy(coldSearch);
+    const tax = catalog ?? taxonomy;
+    const [coldSetCards, setColdSetCards] = useState([]);
+    const [coldSetLoading, setColdSetLoading] = useState(false);
+    useEffect(() => {
+        if (catalog || !setId || !coldSearch) {
+            setColdSetCards([]);
+            return;
+        }
+        let stale = false;
+        setColdSetLoading(true);
+        fetchSetCards(setId).then((cards) => {
+            if (stale)
+                return;
+            setColdSetCards(cards);
+            setColdSetLoading(false);
+        });
+        return () => {
+            stale = true;
+        };
+    }, [catalog, coldSearch, setId]);
+    /** Resolve ids to cards: catalog when warm, a server fetch when cold. */
+    const resolveIds = useCallback(async (ids) => {
+        if (catalog) {
+            return ids.map((id) => catalog.getCard(id)).filter((c) => Boolean(c));
+        }
+        return fetchCardsByIds(ids);
+    }, [catalog]);
+    /** Best-effort synchronous lookup for thumbs/sheets: catalog, else the current view. */
+    const findCard = (id) => catalog?.getCard(id) ?? viewCardsRef.current.find((c) => c.id === id);
+    const viewCardsRef = useRef([]);
     // Write every change back so the next mount resumes here.
     useEffect(() => {
         Object.assign(browseState, {
@@ -324,7 +358,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // Headline card values (load-once) — powers >$N queries, sort:value, and value labels.
     // Warm: the price summary. Cold: the `cur` the RPC returned with each hit.
     const priceSummary = usePriceSummary();
-    const priceOf = (id) => (warm ? (priceSummary?.[id]?.cur ?? 0) : (serverPrice[id] ?? 0));
+    // The public price summary serves both tiers; cold search hits also carry their own `cur`.
+    const priceOf = (id) => priceSummary?.[id]?.cur ?? serverPrice[id] ?? 0;
     // Measured content width → dense column count. 0 until the first layout pass.
     const [containerWidth, setContainerWidth] = useState(0);
     const onLayout = (e) => {
@@ -335,21 +370,23 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const clearFilters = () => setSelection({});
     const q = cardQueryDebounced.trim();
     const searching = q.length > 0;
-    // Cold (no catalog): only the flat search grid exists — drill-down/similar need the catalog.
+    // Cold (no catalog): search + similar are server-backed, and the drill-down runs off the
+    // tiny public taxonomy (per-set cards fetched on drill). 'coldidle' only while the taxonomy
+    // itself is still loading / unavailable.
     const level = searching
         ? 'search'
-        : !warm
-            ? 'coldidle'
-            : similarTo
-                ? 'similar'
+        : similarTo
+            ? 'similar'
+            : !tax
+                ? 'coldidle'
                 : setId
                     ? 'cards'
                     : seriesId
                         ? 'sets'
                         : 'series';
     const isCardLevel = level === 'cards' || level === 'search' || level === 'similar';
-    const series = useMemo(() => catalog?.listSeries() ?? [], [catalog]);
-    const sets = useMemo(() => (catalog && seriesId ? catalog.listSets(seriesId) : []), [catalog, seriesId]);
+    const series = useMemo(() => tax?.listSeries() ?? [], [tax]);
+    const sets = useMemo(() => (tax && seriesId ? tax.listSets(seriesId) : []), [tax, seriesId]);
     // The parsed search-box query (grammar: words, key:value fields, price bounds, sort).
     const parsed = useMemo(() => parseQuery(q), [q]);
     // Effective sort: the UI sort control wins; otherwise the search box's `sort:` (or relevance).
@@ -366,19 +403,21 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // (bare words match name/artist/set/series/rarity/type/stage — name hits rank first),
     // similar-mode results, or the set's cards.
     const viewCards = useMemo(() => {
-        // Cold: the accumulated server-search pages (empty until a query is typed).
-        if (!catalog)
-            return searching ? serverCards : [];
-        if (searching)
+        // Cold search: the accumulated server-search pages.
+        if (!catalog && searching)
+            return serverCards;
+        if (catalog && searching)
             return runQuery(catalog.listAll(), effParsed, priceOf, Infinity);
-        // Set cards / similar results: keep their natural order (collector number / best-match) until
-        // the UI sort control asks for something else, then re-sort by the chosen field.
-        const base = similarTo ? similarCards : setId ? catalog.listCards(setId) : [];
+        // Set cards / similar results (warm from the catalog, cold from the per-set fetch): keep
+        // their natural order (collector number / best-match) until the UI sort control asks for
+        // something else, then re-sort by the chosen field.
+        const base = similarTo ? similarCards : setId ? (catalog ? catalog.listCards(setId) : coldSetCards) : [];
         if (effSort.field === 'relevance' || base.length === 0)
             return base;
         return sortCards(base, effParsed, priceOf);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [catalog, searching, serverCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary]);
+    }, [catalog, searching, serverCards, coldSetCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary]);
+    viewCardsRef.current = viewCards;
     // Cold search: (re)fetch page 0 when the query/sort/facet selection changes; the token guard
     // drops stale responses. A page's `total` + prices land in state for the header/tiles.
     const fetchServerPage = useCallback(async (offset, replace) => {
@@ -423,11 +462,15 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // change this facet). Standard faceted search — one pass per facet, not recursive. Facets
     // with <2 options in the subset drop out. Cold (server search): the same options come from
     // the search_facets RPC (exclude-self computed server-side); V-UNION stays warm-only.
+    // Whether the current view is a COMPLETE local card list (warm anything, or a cold set /
+    // similar view). Then facets + filtering run client-side over it, exactly like warm; only
+    // cold SEARCH (server-paginated, not fully local) uses the server-computed facet values.
+    const localView = Boolean(catalog) || !searching;
     const facetOptions = useMemo(() => {
         if (!isCardLevel)
             return [];
-        if (!catalog) {
-            if (!coldSearch || !searching)
+        if (!localView) {
+            if (!coldSearch)
                 return [];
             return FACETS.map((f) => {
                 const selected = selection[f.key] ?? [];
@@ -446,9 +489,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             }
             return { facet: f, values };
         }).filter((o) => o.values.length >= 2 || (selection[o.facet.key]?.length ?? 0) > 0);
-    }, [isCardLevel, catalog, coldSearch, searching, serverFacets, viewCards, selection, hasVUnionInView]);
-    // Cold: no facets, so the view is the server results as-is.
-    const filteredCards = useMemo(() => (catalog ? applyFacets(viewCards, selection) : viewCards), [catalog, viewCards, selection]);
+    }, [isCardLevel, localView, coldSearch, serverFacets, viewCards, selection, hasVUnionInView]);
+    // Local views filter client-side; cold search results arrive already facet-filtered.
+    const filteredCards = useMemo(() => (localView ? applyFacets(viewCards, selection) : viewCards), [localView, viewCards, selection]);
     const activeFilterCount = useMemo(() => Object.values(selection).reduce((n, vals) => n + vals.length, 0), [selection]);
     // Dense grid geometry from the measured width. Falls back to a sane default pre-layout.
     const { numColumns, tileW, taxCols, taxTileW } = useMemo(() => {
@@ -495,12 +538,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     useEffect(() => {
         setVisibleCount(PAGE_SIZE);
     }, [viewKey, effSort.field, effSort.dir]);
-    // Warm paginates client-side (slice a growing window). Cold paginates on the server, so show
-    // every page fetched so far.
-    const visibleData = useMemo(() => (catalog ? data.slice(0, visibleCount) : data), [catalog, data, visibleCount]);
-    // End-reached: grow the client window (warm) or fetch the next server page (cold).
+    // Local views paginate client-side (slice a growing window). Cold SEARCH paginates on the
+    // server, so show every page fetched so far.
+    const visibleData = useMemo(() => (localView ? data.slice(0, visibleCount) : data), [localView, data, visibleCount]);
+    // End-reached: grow the client window (local views) or fetch the next server page.
     const onEndReached = () => {
-        if (!catalog) {
+        if (!localView) {
             if (coldSearch && !serverLoading && serverCards.length < serverTotal) {
                 fetchServerPage(serverOffset.current, false);
             }
@@ -565,11 +608,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         clearFilters();
         setSimilarTo({ ids: [card.id], name: card.name });
         setSimilarCards([]);
-        findSimilar(card.id, 24).then((hits) => {
-            const cards = hits
-                .map((h) => catalog?.getCard(h.id))
-                .filter((c) => Boolean(c));
-            setSimilarCards(cards);
+        findSimilar(card.id, 24).then(async (hits) => {
+            setSimilarCards(await resolveIds(hits.map((h) => h.id)));
         });
     };
     /** "Find similar to all" — embedding search on the AVERAGE of the selected cards' vectors
@@ -580,11 +620,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         clearFilters();
         setSimilarTo({ ids: [...ids], name: `${ids.length} cards` });
         setSimilarCards([]);
-        findSimilarToMany(ids, 24).then((hits) => {
-            const cards = hits
-                .map((h) => catalog?.getCard(h.id))
-                .filter((c) => Boolean(c));
-            setSimilarCards(cards);
+        findSimilarToMany(ids, 24).then(async (hits) => {
+            setSimilarCards(await resolveIds(hits.map((h) => h.id)));
         });
     };
     // Multi-select is only meaningful when at least one batch action can run.
@@ -646,8 +683,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         }
     };
     const toggleSortDir = () => setSortSel({ field: effSort.field, dir: effSort.dir === 'asc' ? 'desc' : 'asc' });
-    const currentSeries = catalog && seriesId ? catalog.getSeries(seriesId) : undefined;
-    const currentSet = catalog && setId ? catalog.getSet(setId) : undefined;
+    const currentSeries = tax && seriesId ? tax.getSeries(seriesId) : undefined;
+    const currentSet = tax && setId ? tax.getSet(setId) : undefined;
     // The card already in the pocket that opened this picker (if any) — offered as
     // a one-tap "find similar to what's here" jump.
     const occupant = catalog && selectedCardId ? catalog.getCard(selectedCardId) : undefined;
@@ -770,7 +807,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         const row = Math.floor(index / cols);
         return { length: rowHeight, offset: rowHeight * row, index };
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${catalog ? catalog.cardCount.toLocaleString() + ' ' : ''}cards — ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), isCardLevel || !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? '⚡ On-device search — instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards — ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), isCardLevel || !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? '⚡ On-device search — instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
                         !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [warm
                                         ? filteredCards.length === viewCards.length
@@ -779,7 +816,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                         : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarCards.length > 0
                                             ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}:`
                                             : 'Finding similar cards…' }), _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.similarThumbs, keyboardShouldPersistTaps: "handled", children: similarTo.ids.map((sid) => {
-                                    const src = catalog?.getCard(sid);
+                                    const src = findCard(sid);
                                     const uri = cardThumbUrl(sid, 245);
                                     return (_jsx(Pressable, { style: styles.similarThumb, onPress: () => src && setActionCard(src), children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: sid, transition: 80 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: src?.name?.slice(0, 1) ?? '?' }) })) }, sid));
                                 }) })] })) : seriesId ? (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs })) : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), analyticsScope ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
@@ -807,9 +844,11 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     ? 'Searching…'
                                     : 'No similar cards found.'
                                 : level === 'cards'
-                                    ? 'No cards in this set.'
+                                    ? !catalog && coldSetLoading
+                                        ? 'Loading set…'
+                                        : 'No cards in this set.'
                                     : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedIds
-                    .map((id) => catalog?.getCard(id))
+                    .map((id) => findCard(id))
                     .filter((c) => Boolean(c)), onAddAll: onPickCards ? () => onPickCards(selectedIds) : undefined, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onClose: () => {
                     setMultiOpen(false);
                     setMultiSelectMode(false);

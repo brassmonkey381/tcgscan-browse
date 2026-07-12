@@ -145,6 +145,8 @@ export interface RawCatalog {
     series: Record<string, RawSeries>;
     vunionGroups?: RawVUnionGroup[];
 }
+/** Sort key for collector numbers: "12/102" -> 12, "SWSH045" -> 45, "" -> ∞. */
+export declare function numberKey(n: string): number;
 /** yyyy-mm-dd -> "Mar 2022" (or "" for empty). */
 export declare function formatSetDate(iso: string): string;
 /**

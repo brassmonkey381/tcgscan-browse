@@ -10,7 +10,7 @@
  * with the price carried separately), so a hit renders + opens its action sheet WITHOUT the
  * card being in the in-memory catalog. Fails soft (empty) — server search is an enhancement.
  */
-import type { CatalogCard } from './catalog';
+import { type CatalogCard } from './catalog';
 import type { ParsedQuery } from './query';
 /** One page of server results: tile-ready cards, their prices (by id), and the true total. */
 export interface SearchPage {
@@ -35,6 +35,17 @@ export declare function searchCards(parsed: ParsedQuery, { limit, offset, facets
     offset?: number;
     facets?: ServerFacetSelection;
 }): Promise<SearchPage>;
+/**
+ * A set's browse-visible cards, straight from PostgREST (no catalog needed) — powers the
+ * cold-mode Series → Set → Card drill-down. Sorted like the warm listCards (collector number,
+ * then name); cached per set for the session. Fails soft (empty).
+ */
+export declare function fetchSetCards(setId: string): Promise<CatalogCard[]>;
+/**
+ * Resolve specific card ids to tile-ready cards without the catalog (cold-mode similar
+ * results, multi-select thumbs, …). Order follows the input ids. Fails soft (drops misses).
+ */
+export declare function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]>;
 /**
  * Facet values (+counts) for the query's match set — restores the facet bar in COLD mode.
  * Exclude-self per facet (server-side), mirroring the warm facetOptions. Returns facet key →
