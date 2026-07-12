@@ -101,9 +101,15 @@ export function cardThumbUrl(id, tier) {
     const hashed = manifestUrl(id, TIER_FIELD[String(tier)]);
     if (hashed)
         return hashed;
-    // Manifest loaded but this card isn't mirrored → the TCGPlayer CDN source.
-    if (imageManifestReady())
+    if (imageManifestReady()) {
+        // Tier not mirrored yet: prefer the card's mirrored FULL image (our bucket serves CORS
+        // headers) over the TCGPlayer CDN — the CDN sends none, so fetch-based web image loaders
+        // (expo-image) can't consume it. CDN remains the last resort for wholly unmirrored cards.
+        const full = manifestUrl(id, 'image');
+        if (full)
+            return full;
         return cdnImageUrl(id);
+    }
     // Manifest not loaded yet (static/offline): flat convention path.
     if (tier === 'full')
         return `${config.imgBase}/card-imgs/${id}.jpg`;
