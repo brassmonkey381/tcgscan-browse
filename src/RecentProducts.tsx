@@ -228,6 +228,31 @@ export function RecentProducts({
       .slice(0, cardLimit);
   }, [catalog, cold, today, cardLimit]);
 
+  // One carousel of cards: upcoming + recently-released, shuffled into a single mix. Seeded by
+  // the concatenated ids (mulberry32) so it's stable across re-renders but reshuffles when the
+  // window changes — no Math.random (unstable + unavailable in some runtimes).
+  const mixedCards = useMemo(() => {
+    const pool = [...upcomingCards, ...releasedCards];
+    let seed = 0;
+    for (const c of pool) for (let i = 0; i < c.id.length; i += 1) seed = (seed * 31 + c.id.charCodeAt(i)) >>> 0;
+    const rand = (() => {
+      let a = seed || 1;
+      return () => {
+        a |= 0;
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    })();
+    const arr = pool.slice();
+    for (let i = arr.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rand() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }, [upcomingCards, releasedCards]);
+
   // Measured width → how many card tiles a card carousel shows at once.
   const [width, setWidth] = useState(0);
   const onLayout = (e: LayoutChangeEvent) => {
@@ -367,9 +392,11 @@ export function RecentProducts({
 
   return (
     <View style={styles.root} onLayout={onLayout}>
+      {title ? <Text style={styles.header}>{title}</Text> : null}
+
       {setTiles.length > 0 ? (
         <>
-          <Text style={styles.header}>{title}</Text>
+          <Text style={styles.subHeader}>Sets</Text>
           <Carousel
             items={setTiles}
             visible={SETS_PER_VIEW}
@@ -380,24 +407,11 @@ export function RecentProducts({
         </>
       ) : null}
 
-      {upcomingCards.length > 0 ? (
+      {mixedCards.length > 0 ? (
         <>
-          <Text style={styles.subHeader}>Upcoming cards</Text>
+          <Text style={styles.subHeader}>Cards</Text>
           <Carousel
-            items={upcomingCards}
-            visible={cardsPerView}
-            keyOf={(c) => c.id}
-            renderItem={renderCard}
-            styles={styles}
-          />
-        </>
-      ) : null}
-
-      {releasedCards.length > 0 ? (
-        <>
-          <Text style={styles.subHeader}>Recently released</Text>
-          <Carousel
-            items={releasedCards}
+            items={mixedCards}
             visible={cardsPerView}
             keyOf={(c) => c.id}
             renderItem={renderCard}

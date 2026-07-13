@@ -140,6 +140,32 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
             .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
             .slice(0, cardLimit);
     }, [catalog, cold, today, cardLimit]);
+    // One carousel of cards: upcoming + recently-released, shuffled into a single mix. Seeded by
+    // the concatenated ids (mulberry32) so it's stable across re-renders but reshuffles when the
+    // window changes — no Math.random (unstable + unavailable in some runtimes).
+    const mixedCards = useMemo(() => {
+        const pool = [...upcomingCards, ...releasedCards];
+        let seed = 0;
+        for (const c of pool)
+            for (let i = 0; i < c.id.length; i += 1)
+                seed = (seed * 31 + c.id.charCodeAt(i)) >>> 0;
+        const rand = (() => {
+            let a = seed || 1;
+            return () => {
+                a |= 0;
+                a = (a + 0x6d2b79f5) | 0;
+                let t = Math.imul(a ^ (a >>> 15), 1 | a);
+                t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            };
+        })();
+        const arr = pool.slice();
+        for (let i = arr.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(rand() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+    }, [upcomingCards, releasedCards]);
     // Measured width → how many card tiles a card carousel shows at once.
     const [width, setWidth] = useState(0);
     const onLayout = (e) => {
@@ -197,7 +223,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
                                     .filter(Boolean)
                                     .join(' · ') }), shopLink(t.shopUrl)] }), t.set.coverUri ? (_jsx(Image, { source: { uri: t.set.coverUri }, style: styles.tileLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `logo-${t.set.id}`, transition: 100 })) : null] })] }));
     const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: [_jsx(CardThumb, { card: card, styles: styles }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, shopLink(productUrl(card.id), true)] }));
-    return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.header, children: title }), _jsx(Carousel, { items: setTiles, visible: SETS_PER_VIEW, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, upcomingCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Upcoming cards" }), _jsx(Carousel, { items: upcomingCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, releasedCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Recently released" }), _jsx(Carousel, { items: releasedCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
+    return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [title ? _jsx(Text, { style: styles.header, children: title }) : null, setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Sets" }), _jsx(Carousel, { items: setTiles, visible: SETS_PER_VIEW, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, mixedCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Cards" }), _jsx(Carousel, { items: mixedCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
 }
 /**
  * A clickable, infinite carousel: shows `visible` items at once, and the arrows step by
