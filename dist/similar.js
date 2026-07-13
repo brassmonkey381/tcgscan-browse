@@ -6,6 +6,16 @@
  * never a dependency.
  */
 import { getApiKey, getApiUrl } from './config';
+/** How long a similarity RPC may run before we abort and fail soft. A hung request without
+ *  this left the browser's "Searching…" placeholder up forever. */
+const RPC_TIMEOUT_MS = 12000;
+/** fetch that always settles: aborts after RPC_TIMEOUT_MS (AbortSignal.timeout isn't
+ *  available on all RN runtimes, so wire the controller by hand). */
+function fetchWithTimeout(url, init) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), RPC_TIMEOUT_MS);
+    return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 /** True when the app is configured to reach the data server's REST API. */
 export function similarAvailable() {
     return Boolean(getApiUrl() && getApiKey());
@@ -14,7 +24,7 @@ export async function findSimilar(cardId, limit = 24) {
     if (!similarAvailable())
         return [];
     try {
-        const res = await fetch(`${getApiUrl()}/rpc/find_similar`, {
+        const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar`, {
             method: 'POST',
             headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
             body: JSON.stringify({ p_card_id: cardId, p_limit: limit }),
@@ -38,7 +48,7 @@ export async function findSimilarToMany(cardIds, limit = 24) {
     if (!similarAvailable() || cardIds.length === 0)
         return [];
     try {
-        const res = await fetch(`${getApiUrl()}/rpc/find_similar_to_cards`, {
+        const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_to_cards`, {
             method: 'POST',
             headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
             body: JSON.stringify({ p_card_ids: cardIds, p_limit: limit }),
@@ -82,7 +92,7 @@ export async function findSimilarWeighted(steps, limit = 24) {
     if (!similarAvailable() || ids.length === 0)
         return [];
     try {
-        const res = await fetch(`${getApiUrl()}/rpc/find_similar_weighted`, {
+        const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_weighted`, {
             method: 'POST',
             headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
             body: JSON.stringify({ p_card_ids: ids, p_weights: weights, p_limit: limit }),

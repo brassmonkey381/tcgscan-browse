@@ -67,7 +67,7 @@ import {
 import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
 import { formatUsd, usePriceSummary } from './prices';
-import { findSimilar, findSimilarToMany, findSimilarWeighted, similarAvailable, type SimilarStep } from './similar';
+import { findSimilarWeighted, similarAvailable, type SimilarStep } from './similar';
 import {
   fetchCardsByIds,
   fetchSetCards,
@@ -434,6 +434,11 @@ export function CatalogBrowser({
   const [similarCards, setSimilarCards] = useState<CatalogCard[]>(browseState.similarCards);
   // The ongoing similarity session (seed + every more/less refinement) — see similar.ts.
   const [similarSteps, setSimilarSteps] = useState<SimilarStep[]>(browseState.similarSteps);
+  // True only while a similarity request is actually in flight. Without this, an empty result
+  // (RPC failure/timeout fails soft to []) was indistinguishable from "still searching" and the
+  // grid showed "Searching…" forever — the user's only way out was a full page refresh.
+  const [similarBusy, setSimilarBusy] = useState(false);
+  const similarReq = useRef(0);
 
   // Cold path (catalog not loaded yet): text search runs against the server's search_cards RPC.
   // We accumulate pages, guarding against out-of-order responses with a monotonic request token.
@@ -816,6 +821,24 @@ export function CatalogBrowser({
     setCardQuery(text);
   };
 
+  /** Run (or re-run) the similarity session: fetch, resolve, publish — guarded by a monotonic
+   *  token so a slow/stale response can't clobber a newer search, and ALWAYS settling
+   *  `similarBusy` so the UI can tell "searching" from "found nothing / failed" (and offer
+   *  Retry instead of an eternal spinner). One seed step is the plain find-similar case —
+   *  the weighted RPC with a single weight-1.0 group ranks identically. */
+  const runSimilar = (steps: SimilarStep[]) => {
+    const token = ++similarReq.current;
+    setSimilarBusy(true);
+    findSimilarWeighted(steps, 24)
+      .then((hits) => resolveIds(hits.map((h) => h.id)))
+      .catch(() => [] as CatalogCard[])
+      .then((cards) => {
+        if (similarReq.current !== token) return; // superseded by a newer search
+        setSimilarCards(cards);
+        setSimilarBusy(false);
+      });
+  };
+
   /** "Find similar" — embedding search on the data server, results shown in the grid. */
   const openSimilar = (card: CatalogCard) => {
     setCardQuery('');
@@ -823,24 +846,22 @@ export function CatalogBrowser({
     clearFilters();
     setSimilarTo({ ids: [card.id], name: card.name });
     setSimilarCards([]);
-    setSimilarSteps([{ kind: 'seed', ids: [card.id] }]);
-    findSimilar(card.id, 24).then(async (hits) => {
-      setSimilarCards(await resolveIds(hits.map((h) => h.id)));
-    });
+    const steps: SimilarStep[] = [{ kind: 'seed', ids: [card.id] }];
+    setSimilarSteps(steps);
+    runSimilar(steps);
   };
 
-  /** "Find similar to all" — embedding search on the AVERAGE of the selected cards' vectors
-   *  (find_similar_to_cards server-side). Results replace the grid, like openSimilar. */
+  /** "Find similar to all" — embedding search on the AVERAGE of the selected cards' vectors.
+   *  Results replace the grid, like openSimilar. */
   const openSimilarMany = (ids: string[]) => {
     setCardQuery('');
     setCardQueryDebounced('');
     clearFilters();
     setSimilarTo({ ids: [...ids], name: `${ids.length} cards` });
     setSimilarCards([]);
-    setSimilarSteps([{ kind: 'seed', ids: [...ids] }]);
-    findSimilarToMany(ids, 24).then(async (hits) => {
-      setSimilarCards(await resolveIds(hits.map((h) => h.id)));
-    });
+    const steps: SimilarStep[] = [{ kind: 'seed', ids: [...ids] }];
+    setSimilarSteps(steps);
+    runSimilar(steps);
   };
 
   /** "More / less like this" — extend the ONGOING similarity session and re-rank against the
@@ -850,9 +871,7 @@ export function CatalogBrowser({
     const steps: SimilarStep[] = [...similarSteps, { kind, ids }];
     setSimilarSteps(steps);
     setSimilarCards([]);
-    findSimilarWeighted(steps, 24).then(async (hits) => {
-      setSimilarCards(await resolveIds(hits.map((h) => h.id)));
-    });
+    runSimilar(steps);
   };
 
   // Multi-select is only meaningful when at least one batch action can run.
@@ -1185,8 +1204,15 @@ export function CatalogBrowser({
               <Text style={styles.meta} numberOfLines={1}>
                 {similarCards.length > 0
                   ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}${refineNote}:`
-                  : 'Finding similar cards…'}
+                  : similarBusy
+                    ? 'Finding similar cards…'
+                    : 'No similar cards found.'}
               </Text>
+              {!similarBusy && similarCards.length === 0 ? (
+                <Pressable onPress={() => runSimilar(similarSteps)} hitSlop={8}>
+                  <Text style={styles.clear}>Retry</Text>
+                </Pressable>
+              ) : null}
               <Pressable onPress={clearSimilar} hitSlop={8}>
                 <Text style={styles.clear}>Clear</Text>
               </Pressable>
@@ -1329,9 +1355,9 @@ export function CatalogBrowser({
                   ? 'Type to search all cards.'
                   : 'Loading cards…'
                 : level === 'similar'
-                  ? similarCards.length === 0 && similarTo
+                  ? similarBusy
                     ? 'Searching…'
-                    : 'No similar cards found.'
+                    : 'No similar cards found — tap Retry above.'
                   : level === 'cards'
                     ? !catalog && coldSetLoading
                       ? 'Loading set…'
