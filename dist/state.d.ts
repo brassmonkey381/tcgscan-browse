@@ -54,6 +54,13 @@ export type BrowseCommand = {
  | {
     type: 'similarMany';
     cardIds: string[];
+}
+/** Open a set directly by its id (catalog-free — works in cold mode; ids are the catalog's
+ *  string set ids). `seriesId` (the series NAME) positions the drill-down breadcrumb. */
+ | {
+    type: 'viewSetById';
+    setId: string;
+    seriesId?: string;
 };
 /** Deliver a command to the mounted browser(s), or hold it for the next subscriber. */
 export declare function sendBrowseCommand(cmd: BrowseCommand): void;

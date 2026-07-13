@@ -668,6 +668,16 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 openSimilarMany(cmd.cardIds);
                 return;
             }
+            if (cmd.type === 'viewSetById') {
+                // Catalog-free set jump (cold mode fetches the set's cards server-side).
+                setCardQuery('');
+                setCardQueryDebounced('');
+                clearSimilar();
+                clearFilters();
+                setSeriesId(cmd.seriesId ?? null);
+                setSetId(cmd.setId);
+                return;
+            }
             const card = catalog?.getCard(cmd.cardId);
             if (!card)
                 return;

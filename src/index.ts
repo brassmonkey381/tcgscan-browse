@@ -17,6 +17,7 @@ export {
   cardThumbUrl,
   cdnImageUrl,
   productUrl,
+  setShopUrl,
   type BrowseConfig,
   type CatalogSource,
 } from './config';

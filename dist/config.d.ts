@@ -72,6 +72,11 @@ export declare function productUrl(id: string): string;
  * for any consumer that wants the source image without the manifest. `size` is the
  * square edge in px (TCGPlayer serves `_in_<size>x<size>.jpg`).
  */
+/**
+ * TCGPlayer category page for a SET, from the sets table's `url_name`
+ * ("ME05 Pitch Black" → …/pokemon/me05-pitch-black). '' when the name is empty.
+ */
+export declare function setShopUrl(urlName: string): string;
 export declare function cdnImageUrl(id: string, size?: number): string;
 /**
  * Image tiers, keyed by a card's stable id — so a card's image resolves WITHOUT the

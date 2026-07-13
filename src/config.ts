@@ -130,6 +130,20 @@ export function productUrl(id: string): string {
  * for any consumer that wants the source image without the manifest. `size` is the
  * square edge in px (TCGPlayer serves `_in_<size>x<size>.jpg`).
  */
+/**
+ * TCGPlayer category page for a SET, from the sets table's `url_name`
+ * ("ME05 Pitch Black" → …/pokemon/me05-pitch-black). '' when the name is empty.
+ */
+export function setShopUrl(urlName: string): string {
+  const slug = urlName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug
+    ? `https://www.tcgplayer.com/categories/trading-and-collectible-card-games/pokemon/${slug}`
+    : '';
+}
+
 export function cdnImageUrl(id: string, size = 1000): string {
   return id ? `https://tcgplayer-cdn.tcgplayer.com/product/${id}_in_${size}x${size}.jpg` : '';
 }

@@ -53,7 +53,10 @@ export type BrowseCommand =
   | { type: 'similar'; cardId: string }
   | { type: 'viewSet'; cardId: string }
   /** Find cards similar to ALL of these (average embedding) — e.g. a binder multi-selection. */
-  | { type: 'similarMany'; cardIds: string[] };
+  | { type: 'similarMany'; cardIds: string[] }
+  /** Open a set directly by its id (catalog-free — works in cold mode; ids are the catalog's
+   *  string set ids). `seriesId` (the series NAME) positions the drill-down breadcrumb. */
+  | { type: 'viewSetById'; setId: string; seriesId?: string };
 
 const commandListeners = new Set<(cmd: BrowseCommand) => void>();
 let pendingCommand: BrowseCommand | null = null;
