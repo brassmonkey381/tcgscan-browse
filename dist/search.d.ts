@@ -52,3 +52,17 @@ export declare function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]>;
  * values in server order (the kit re-orders for display). Fails soft (empty map).
  */
 export declare function searchFacets(parsed: ParsedQuery, facets?: ServerFacetSelection): Promise<Record<string, string[]>>;
+/**
+ * Every card in the recent release window (release_date >= cutoff, upcoming included),
+ * newest first — powers the catalog-FREE Recent & Upcoming feed. Fails soft ([]).
+ */
+export declare function fetchRecentWindow(cutoff: string, limit?: number): Promise<CatalogCard[]>;
+/** Set metadata for feed tiles (names, counts, official logos). The table is small (~200 rows). */
+export interface SetMeta {
+    id: string;
+    name: string;
+    series: string;
+    cardCount: number;
+    logoUrl: string;
+}
+export declare function fetchSetMeta(): Promise<Map<string, SetMeta>>;

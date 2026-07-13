@@ -22,4 +22,4 @@ export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuer
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, } from './state';
 export { CatalogBrowser } from './CatalogBrowser';
 export { CardActionModal } from './CardActionModal';
-export { RecentProducts } from './RecentProducts';
+export { RecentProducts, type FeedSet } from './RecentProducts';

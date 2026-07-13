@@ -21,13 +21,14 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * App-agnostic like the rest of the kit: colors come from an injected `BrowseTheme`.
  */
 import { Image } from 'expo-image';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View, } from 'react-native';
 import { CardActionModal } from './CardActionModal';
 import { formatSetDate } from './catalog';
 import { cardThumbUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
+import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable } from './search';
 import { similarAvailable } from './similar';
 import { resolveTheme } from './theme';
 /** Gap between tiles in a carousel (px). */
@@ -51,31 +52,94 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
         d.setMonth(d.getMonth() - monthsBack);
         return d.toISOString().slice(0, 10);
     }, [monthsBack]);
+    // Catalog-FREE data: without the catalog, fetch the same window from the public tables
+    // (recent+upcoming cards, set names/counts/logos). Load-once per mount; fails soft.
+    const [cold, setCold] = useState(null);
+    useEffect(() => {
+        if (catalog || cold || !serverSearchAvailable())
+            return;
+        let live = true;
+        Promise.all([fetchRecentWindow(cutoff), fetchSetMeta()]).then(([cards, meta]) => {
+            if (live)
+                setCold({ cards, meta });
+        });
+        return () => {
+            live = false;
+        };
+    }, [catalog, cold, cutoff]);
     const setTiles = useMemo(() => {
-        return catalog
-            .allSets()
-            .filter((set) => Boolean(set.releaseDate) && set.releaseDate >= cutoff)
-            .map((set) => {
-            const cards = catalog.listCards(set.id);
-            const montage = [...cards]
-                .sort((a, b) => priceOf(b.id) - priceOf(a.id))
-                .slice(0, montageCount);
-            return {
-                set,
-                montage,
-                // The set's TCGPlayer category page. The catalog carries no `url_name`, but TCGPlayer's
-                // slug is derivable from the set name with one rule — `&` becomes "and" (verified
-                // against the sets table); everything else slugifies identically. setShopUrl handles
-                // the rest (lowercase, non-alphanumeric → dashes).
-                shopUrl: setShopUrl(set.name.replace(/&/g, ' and ')),
-                upcoming: set.releaseDate > today,
-            };
+        // The set's TCGPlayer category page. TCGPlayer's slug is derivable from the set name with
+        // one rule — `&` becomes "and" (verified against the sets table); setShopUrl handles the
+        // rest (lowercase, non-alphanumeric → dashes).
+        const shopFor = (name) => setShopUrl(name.replace(/&/g, ' and '));
+        const tile = (set, cards) => ({
+            set,
+            montage: [...cards].sort((a, b) => priceOf(b.id) - priceOf(a.id)).slice(0, montageCount),
+            shopUrl: shopFor(set.name),
+            upcoming: set.releaseDate > today,
+        });
+        if (catalog) {
+            return catalog
+                .allSets()
+                .filter((set) => Boolean(set.releaseDate) && set.releaseDate >= cutoff)
+                .map((set) => tile({
+                id: set.id,
+                name: set.name,
+                seriesId: set.seriesId,
+                releaseDate: set.releaseDate,
+                cardCount: set.cardCount,
+                coverUri: set.coverUri ?? '',
+            }, catalog.listCards(set.id)))
+                .filter((t) => t.montage.length > 0);
+        }
+        if (!cold)
+            return [];
+        // Cold: group the window's cards by set; a set's release = its earliest card date.
+        const bySet = new Map();
+        for (const c of cold.cards) {
+            if (!c.setId)
+                continue;
+            const list = bySet.get(c.setId) ?? [];
+            list.push(c);
+            bySet.set(c.setId, list);
+        }
+        return [...bySet.entries()]
+            .map(([setId, cards]) => {
+            const meta = cold.meta.get(setId);
+            const releaseDate = cards.reduce((min, c) => (c.releaseDate && c.releaseDate < min ? c.releaseDate : min), cards[0]?.releaseDate ?? '');
+            return tile({
+                id: setId,
+                name: meta?.name ?? cards[0]?.setName ?? '',
+                seriesId: meta?.series ?? cards[0]?.seriesId ?? '',
+                releaseDate,
+                cardCount: meta?.cardCount ?? cards.length,
+                coverUri: meta?.logoUrl ?? '',
+            }, cards);
         })
-            .filter((t) => t.montage.length > 0);
+            .filter((t) => t.montage.length > 0)
+            .sort((a, b) => b.set.releaseDate.localeCompare(a.set.releaseDate));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [catalog, cutoff, montageCount, priceSummary, today]);
-    const upcomingCards = useMemo(() => catalog.upcomingCards(today, cardLimit), [catalog, today, cardLimit]);
-    const releasedCards = useMemo(() => catalog.releasedCards(today, cardLimit), [catalog, today, cardLimit]);
+    }, [catalog, cold, cutoff, montageCount, priceSummary, today]);
+    const upcomingCards = useMemo(() => {
+        if (catalog)
+            return catalog.upcomingCards(today, cardLimit);
+        if (!cold)
+            return [];
+        return [...cold.cards]
+            .filter((c) => c.releaseDate > today)
+            .sort((a, b) => a.releaseDate.localeCompare(b.releaseDate) || a.name.localeCompare(b.name))
+            .slice(0, cardLimit);
+    }, [catalog, cold, today, cardLimit]);
+    const releasedCards = useMemo(() => {
+        if (catalog)
+            return catalog.releasedCards(today, cardLimit);
+        if (!cold)
+            return [];
+        return [...cold.cards]
+            .filter((c) => c.releaseDate && c.releaseDate <= today)
+            .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
+            .slice(0, cardLimit);
+    }, [catalog, cold, today, cardLimit]);
     // Measured width → how many card tiles a card carousel shows at once.
     const [width, setWidth] = useState(0);
     const onLayout = (e) => {
@@ -129,9 +193,9 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     if (setTiles.length === 0 && upcomingCards.length === 0 && releasedCards.length === 0) {
         return null;
     }
-    const renderSet = (t, tileWidth) => (_jsxs(Pressable, { style: styles.tile, onPress: onOpenSet ? () => onOpenSet(t.set) : undefined, accessibilityRole: onOpenSet ? 'button' : undefined, accessibilityLabel: onOpenSet ? `Browse ${t.set.name}${t.upcoming ? ' (upcoming)' : ''}` : undefined, children: [_jsxs(View, { style: styles.montage, children: [t.montage.map((card) => (_jsx(Pressable, { style: styles.montageSlot, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }, card.id))), t.upcoming ? (_jsx(View, { style: styles.badge, pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }), _jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
-                    .filter(Boolean)
-                    .join(' · ') }), shopLink(t.shopUrl)] }));
+    const renderSet = (t, tileWidth) => (_jsxs(Pressable, { style: styles.tile, onPress: onOpenSet ? () => onOpenSet(t.set) : undefined, accessibilityRole: onOpenSet ? 'button' : undefined, accessibilityLabel: onOpenSet ? `Browse ${t.set.name}${t.upcoming ? ' (upcoming)' : ''}` : undefined, children: [_jsxs(View, { style: styles.montage, children: [t.montage.map((card) => (_jsx(Pressable, { style: styles.montageSlot, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }, card.id))), t.upcoming ? (_jsx(View, { style: styles.badge, pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }), _jsxs(View, { style: styles.tileFooter, children: [_jsxs(View, { style: styles.tileFooterLeft, children: [_jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
+                                    .filter(Boolean)
+                                    .join(' · ') }), shopLink(t.shopUrl)] }), t.set.coverUri ? (_jsx(Image, { source: { uri: t.set.coverUri }, style: styles.tileLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `logo-${t.set.id}`, transition: 100 })) : null] })] }));
     const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: [_jsx(CardThumb, { card: card, styles: styles }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, shopLink(productUrl(card.id), true)] }));
     return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.header, children: title }), _jsx(Carousel, { items: setTiles, visible: SETS_PER_VIEW, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, upcomingCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Upcoming cards" }), _jsx(Carousel, { items: upcomingCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, releasedCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Recently released" }), _jsx(Carousel, { items: releasedCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
 }
@@ -257,6 +321,9 @@ function makeStyles(t) {
             paddingVertical: 2,
         },
         badgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
+        tileFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        tileFooterLeft: { flex: 1, gap: 3 },
+        tileLogo: { width: 72, height: 44 },
         tileName: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15 },
         tileMeta: { fontSize: 10, color: t.subtext, fontVariant: ['tabular-nums'] },
         tileLink: { fontSize: 11, fontWeight: '700', color: t.link, marginTop: 1 },

@@ -219,3 +219,62 @@ export async function searchFacets(
     return {};
   }
 }
+
+/**
+ * Every card in the recent release window (release_date >= cutoff, upcoming included),
+ * newest first — powers the catalog-FREE Recent & Upcoming feed. Fails soft ([]).
+ */
+export async function fetchRecentWindow(cutoff: string, limit = 1500): Promise<CatalogCard[]> {
+  if (!serverSearchAvailable()) return [];
+  try {
+    const res = await fetch(
+      `${getApiUrl()}/cards?select=${CARD_COLS}&release_date=gte.${cutoff}&browse_visible=is.true&order=release_date.desc&limit=${limit}`,
+      { headers: { apikey: getApiKey() } },
+    );
+    if (!res.ok) return [];
+    return ((await res.json()) as SearchRow[]).map(rowToCard);
+  } catch {
+    return [];
+  }
+}
+
+/** Set metadata for feed tiles (names, counts, official logos). The table is small (~200 rows). */
+export interface SetMeta {
+  id: string;
+  name: string;
+  series: string;
+  cardCount: number;
+  logoUrl: string;
+}
+
+export async function fetchSetMeta(): Promise<Map<string, SetMeta>> {
+  if (!serverSearchAvailable()) return new Map();
+  try {
+    const res = await fetch(
+      `${getApiUrl()}/sets?select=id,name,series,card_count,logo_url`,
+      { headers: { apikey: getApiKey() } },
+    );
+    if (!res.ok) return new Map();
+    const rows = (await res.json()) as {
+      id: number;
+      name: string | null;
+      series: string | null;
+      card_count: number | null;
+      logo_url: string | null;
+    }[];
+    return new Map(
+      rows.map((r) => [
+        String(r.id),
+        {
+          id: String(r.id),
+          name: r.name ?? '',
+          series: r.series ?? '',
+          cardCount: r.card_count ?? 0,
+          logoUrl: r.logo_url ?? '',
+        },
+      ]),
+    );
+  } catch {
+    return new Map();
+  }
+}

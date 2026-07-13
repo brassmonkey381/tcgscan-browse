@@ -158,4 +158,4 @@ export {
 
 export { CatalogBrowser } from './CatalogBrowser';
 export { CardActionModal } from './CardActionModal';
-export { RecentProducts } from './RecentProducts';
+export { RecentProducts, type FeedSet } from './RecentProducts';

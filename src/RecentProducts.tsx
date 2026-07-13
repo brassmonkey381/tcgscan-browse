@@ -20,7 +20,7 @@
  * App-agnostic like the rest of the kit: colors come from an injected `BrowseTheme`.
  */
 import { Image } from 'expo-image';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Linking,
   type LayoutChangeEvent,
@@ -31,10 +31,11 @@ import {
 } from 'react-native';
 
 import { CardActionModal } from './CardActionModal';
-import { formatSetDate, type Catalog, type CatalogCard, type CatalogSet } from './catalog';
+import { formatSetDate, type Catalog, type CatalogCard } from './catalog';
 import { cardThumbUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
+import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable, type SetMeta } from './search';
 import { similarAvailable } from './similar';
 import { resolveTheme, type BrowseTheme } from './theme';
 import type { CardAction } from './actions';
@@ -48,8 +49,21 @@ const CARD_TARGET_W = 104;
 
 type Styles = ReturnType<typeof makeStyles>;
 
+/** The set identity a feed tile carries — same fields warm (catalog) and cold (REST). */
+export interface FeedSet {
+  id: string;
+  name: string;
+  seriesId: string;
+  releaseDate: string;
+  cardCount: number;
+  /** Official set logo, '' when unknown. */
+  coverUri: string;
+}
+
 interface RecentProductsProps {
-  catalog: Catalog;
+  /** The loaded catalog, or null to run catalog-FREE (the feed fetches its own slim data
+   *  from the public cards/sets tables — same three carousels either way). */
+  catalog: Catalog | null;
   /**
    * How far back (in months) a released set stays in the feed. Every set from this
    * window plus all upcoming (future-dated) sets are shown, newest first. Default 12.
@@ -79,12 +93,12 @@ interface RecentProductsProps {
    * (e.g. via `sendBrowseCommand({type:'viewSetById'})`). Omitted → set tiles aren't tappable
    * at the tile level (their montage cards still open the card action modal).
    */
-  onOpenSet?: (set: CatalogSet) => void;
+  onOpenSet?: (set: FeedSet) => void;
 }
 
 /** A set paired with its montage cards (priciest first) and its TCGPlayer set-category URL. */
 interface SetTile {
-  set: CatalogSet;
+  set: FeedSet;
   montage: CatalogCard[];
   shopUrl: string;
   upcoming: boolean;
@@ -118,38 +132,101 @@ export function RecentProducts({
     return d.toISOString().slice(0, 10);
   }, [monthsBack]);
 
-  const setTiles = useMemo<SetTile[]>(() => {
-    return catalog
-      .allSets()
-      .filter((set) => Boolean(set.releaseDate) && set.releaseDate >= cutoff)
-      .map((set) => {
-        const cards = catalog.listCards(set.id);
-        const montage = [...cards]
-          .sort((a, b) => priceOf(b.id) - priceOf(a.id))
-          .slice(0, montageCount);
-        return {
-          set,
-          montage,
-          // The set's TCGPlayer category page. The catalog carries no `url_name`, but TCGPlayer's
-          // slug is derivable from the set name with one rule — `&` becomes "and" (verified
-          // against the sets table); everything else slugifies identically. setShopUrl handles
-          // the rest (lowercase, non-alphanumeric → dashes).
-          shopUrl: setShopUrl(set.name.replace(/&/g, ' and ')),
-          upcoming: set.releaseDate > today,
-        };
-      })
-      .filter((t) => t.montage.length > 0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, cutoff, montageCount, priceSummary, today]);
+  // Catalog-FREE data: without the catalog, fetch the same window from the public tables
+  // (recent+upcoming cards, set names/counts/logos). Load-once per mount; fails soft.
+  const [cold, setCold] = useState<{ cards: CatalogCard[]; meta: Map<string, SetMeta> } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (catalog || cold || !serverSearchAvailable()) return;
+    let live = true;
+    Promise.all([fetchRecentWindow(cutoff), fetchSetMeta()]).then(([cards, meta]) => {
+      if (live) setCold({ cards, meta });
+    });
+    return () => {
+      live = false;
+    };
+  }, [catalog, cold, cutoff]);
 
-  const upcomingCards = useMemo(
-    () => catalog.upcomingCards(today, cardLimit),
-    [catalog, today, cardLimit],
-  );
-  const releasedCards = useMemo(
-    () => catalog.releasedCards(today, cardLimit),
-    [catalog, today, cardLimit],
-  );
+  const setTiles = useMemo<SetTile[]>(() => {
+    // The set's TCGPlayer category page. TCGPlayer's slug is derivable from the set name with
+    // one rule — `&` becomes "and" (verified against the sets table); setShopUrl handles the
+    // rest (lowercase, non-alphanumeric → dashes).
+    const shopFor = (name: string) => setShopUrl(name.replace(/&/g, ' and '));
+    const tile = (set: FeedSet, cards: CatalogCard[]): SetTile => ({
+      set,
+      montage: [...cards].sort((a, b) => priceOf(b.id) - priceOf(a.id)).slice(0, montageCount),
+      shopUrl: shopFor(set.name),
+      upcoming: set.releaseDate > today,
+    });
+    if (catalog) {
+      return catalog
+        .allSets()
+        .filter((set) => Boolean(set.releaseDate) && set.releaseDate >= cutoff)
+        .map((set) =>
+          tile(
+            {
+              id: set.id,
+              name: set.name,
+              seriesId: set.seriesId,
+              releaseDate: set.releaseDate,
+              cardCount: set.cardCount,
+              coverUri: set.coverUri ?? '',
+            },
+            catalog.listCards(set.id),
+          ),
+        )
+        .filter((t) => t.montage.length > 0);
+    }
+    if (!cold) return [];
+    // Cold: group the window's cards by set; a set's release = its earliest card date.
+    const bySet = new Map<string, CatalogCard[]>();
+    for (const c of cold.cards) {
+      if (!c.setId) continue;
+      const list = bySet.get(c.setId) ?? [];
+      list.push(c);
+      bySet.set(c.setId, list);
+    }
+    return [...bySet.entries()]
+      .map(([setId, cards]) => {
+        const meta = cold.meta.get(setId);
+        const releaseDate = cards.reduce(
+          (min, c) => (c.releaseDate && c.releaseDate < min ? c.releaseDate : min),
+          cards[0]?.releaseDate ?? '',
+        );
+        return tile(
+          {
+            id: setId,
+            name: meta?.name ?? cards[0]?.setName ?? '',
+            seriesId: meta?.series ?? cards[0]?.seriesId ?? '',
+            releaseDate,
+            cardCount: meta?.cardCount ?? cards.length,
+            coverUri: meta?.logoUrl ?? '',
+          },
+          cards,
+        );
+      })
+      .filter((t) => t.montage.length > 0)
+      .sort((a, b) => b.set.releaseDate.localeCompare(a.set.releaseDate));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, cold, cutoff, montageCount, priceSummary, today]);
+
+  const upcomingCards = useMemo(() => {
+    if (catalog) return catalog.upcomingCards(today, cardLimit);
+    if (!cold) return [];
+    return [...cold.cards]
+      .filter((c) => c.releaseDate > today)
+      .sort((a, b) => a.releaseDate.localeCompare(b.releaseDate) || a.name.localeCompare(b.name))
+      .slice(0, cardLimit);
+  }, [catalog, cold, today, cardLimit]);
+  const releasedCards = useMemo(() => {
+    if (catalog) return catalog.releasedCards(today, cardLimit);
+    if (!cold) return [];
+    return [...cold.cards]
+      .filter((c) => c.releaseDate && c.releaseDate <= today)
+      .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
+      .slice(0, cardLimit);
+  }, [catalog, cold, today, cardLimit]);
 
   // Measured width → how many card tiles a card carousel shows at once.
   const [width, setWidth] = useState(0);
@@ -243,15 +320,30 @@ export function RecentProducts({
           </View>
         ) : null}
       </View>
-      <Text style={styles.tileName} numberOfLines={2}>
-        {t.set.name}
-      </Text>
-      <Text style={styles.tileMeta} numberOfLines={1}>
-        {[formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
-          .filter(Boolean)
-          .join(' · ')}
-      </Text>
-      {shopLink(t.shopUrl)}
+      <View style={styles.tileFooter}>
+        <View style={styles.tileFooterLeft}>
+          <Text style={styles.tileName} numberOfLines={2}>
+            {t.set.name}
+          </Text>
+          <Text style={styles.tileMeta} numberOfLines={1}>
+            {[formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
+              .filter(Boolean)
+              .join(' · ')}
+          </Text>
+          {shopLink(t.shopUrl)}
+        </View>
+        {t.set.coverUri ? (
+          // The set's official logo fills the footer's free corner.
+          <Image
+            source={{ uri: t.set.coverUri }}
+            style={styles.tileLogo}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            recyclingKey={`logo-${t.set.id}`}
+            transition={100}
+          />
+        ) : null}
+      </View>
     </Pressable>
   );
 
@@ -549,6 +641,9 @@ function makeStyles(t: BrowseTheme) {
       paddingVertical: 2,
     },
     badgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
+    tileFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    tileFooterLeft: { flex: 1, gap: 3 },
+    tileLogo: { width: 72, height: 44 },
     tileName: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15 },
     tileMeta: { fontSize: 10, color: t.subtext, fontVariant: ['tabular-nums'] },
     tileLink: { fontSize: 11, fontWeight: '700', color: t.link, marginTop: 1 },

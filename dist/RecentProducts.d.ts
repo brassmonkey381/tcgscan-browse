@@ -1,7 +1,19 @@
-import { type Catalog, type CatalogCard, type CatalogSet } from './catalog';
+import { type Catalog, type CatalogCard } from './catalog';
 import { type BrowseTheme } from './theme';
+/** The set identity a feed tile carries — same fields warm (catalog) and cold (REST). */
+export interface FeedSet {
+    id: string;
+    name: string;
+    seriesId: string;
+    releaseDate: string;
+    cardCount: number;
+    /** Official set logo, '' when unknown. */
+    coverUri: string;
+}
 interface RecentProductsProps {
-    catalog: Catalog;
+    /** The loaded catalog, or null to run catalog-FREE (the feed fetches its own slim data
+     *  from the public cards/sets tables — same three carousels either way). */
+    catalog: Catalog | null;
     /**
      * How far back (in months) a released set stays in the feed. Every set from this
      * window plus all upcoming (future-dated) sets are shown, newest first. Default 12.
@@ -31,7 +43,7 @@ interface RecentProductsProps {
      * (e.g. via `sendBrowseCommand({type:'viewSetById'})`). Omitted → set tiles aren't tappable
      * at the tile level (their montage cards still open the card action modal).
      */
-    onOpenSet?: (set: CatalogSet) => void;
+    onOpenSet?: (set: FeedSet) => void;
 }
 export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, }: RecentProductsProps): import("react").JSX.Element | null;
 export {};
