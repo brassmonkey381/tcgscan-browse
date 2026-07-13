@@ -25,7 +25,7 @@ import { useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View, } from 'react-native';
 import { CardActionModal } from './CardActionModal';
 import { formatSetDate } from './catalog';
-import { cardThumbUrl, productUrl } from './config';
+import { cardThumbUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
 import { similarAvailable } from './similar';
@@ -36,7 +36,7 @@ const TILE_GAP = 10;
 const SETS_PER_VIEW = 4;
 /** Card carousels pack to roughly this tile width, then show as many as fit. */
 const CARD_TARGET_W = 104;
-export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, }) {
+export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, onOpenSet, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme), [theme]);
     // Card thumbs resolve by id via the content-hashed manifest; repaint when it lands.
@@ -63,7 +63,11 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
             return {
                 set,
                 montage,
-                chaseUrl: montage[0] ? productUrl(montage[0].id) : '',
+                // The set's TCGPlayer category page. The catalog carries no `url_name`, but TCGPlayer's
+                // slug is derivable from the set name with one rule — `&` becomes "and" (verified
+                // against the sets table); everything else slugifies identically. setShopUrl handles
+                // the rest (lowercase, non-alphanumeric → dashes).
+                shopUrl: setShopUrl(set.name.replace(/&/g, ' and ')),
                 upcoming: set.releaseDate > today,
             };
         })
@@ -125,9 +129,9 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     if (setTiles.length === 0 && upcomingCards.length === 0 && releasedCards.length === 0) {
         return null;
     }
-    const renderSet = (t, tileWidth) => (_jsxs(View, { style: styles.tile, children: [_jsxs(View, { style: styles.montage, children: [t.montage.map((card) => (_jsx(Pressable, { style: styles.montageSlot, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }, card.id))), t.upcoming ? (_jsx(View, { style: styles.badge, pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }), _jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
+    const renderSet = (t, tileWidth) => (_jsxs(Pressable, { style: styles.tile, onPress: onOpenSet ? () => onOpenSet(t.set) : undefined, accessibilityRole: onOpenSet ? 'button' : undefined, accessibilityLabel: onOpenSet ? `Browse ${t.set.name}${t.upcoming ? ' (upcoming)' : ''}` : undefined, children: [_jsxs(View, { style: styles.montage, children: [t.montage.map((card) => (_jsx(Pressable, { style: styles.montageSlot, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }, card.id))), t.upcoming ? (_jsx(View, { style: styles.badge, pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }), _jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
                     .filter(Boolean)
-                    .join(' · ') }), shopLink(t.chaseUrl)] }));
+                    .join(' · ') }), shopLink(t.shopUrl)] }));
     const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: [_jsx(CardThumb, { card: card, styles: styles }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, shopLink(productUrl(card.id), true)] }));
     return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.header, children: title }), _jsx(Carousel, { items: setTiles, visible: SETS_PER_VIEW, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, upcomingCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Upcoming cards" }), _jsx(Carousel, { items: upcomingCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, releasedCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Recently released" }), _jsx(Carousel, { items: releasedCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
 }

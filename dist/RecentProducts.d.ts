@@ -1,4 +1,4 @@
-import { type Catalog, type CatalogCard } from './catalog';
+import { type Catalog, type CatalogCard, type CatalogSet } from './catalog';
 import { type BrowseTheme } from './theme';
 interface RecentProductsProps {
     catalog: Catalog;
@@ -26,6 +26,12 @@ interface RecentProductsProps {
      * another browser on the page. Omitted → the action is hidden.
      */
     onViewSet?: (card: CatalogCard) => void;
+    /**
+     * Open a whole SET (from a set tile tap) — wire this to another browser on the page
+     * (e.g. via `sendBrowseCommand({type:'viewSetById'})`). Omitted → set tiles aren't tappable
+     * at the tile level (their montage cards still open the card action modal).
+     */
+    onOpenSet?: (set: CatalogSet) => void;
 }
-export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, theme: themeProp, title, onFindSimilar, onViewSet, }: RecentProductsProps): import("react").JSX.Element | null;
+export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, }: RecentProductsProps): import("react").JSX.Element | null;
 export {};

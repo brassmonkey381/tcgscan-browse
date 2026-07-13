@@ -224,7 +224,7 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
     // Hydrate the content-hashed image manifest and repaint tiles when it lands —
@@ -688,6 +688,19 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [catalog]);
+    // One-shot "find similar to all" seed from a host (the binder picker): run the multi-card
+    // search on mount, bypassing the broadcast command bus so a second mounted browser can't
+    // steal it. Ref-guarded → applied once per distinct seed array (a fresh open passes a new ref).
+    const appliedSimilarRef = useRef(null);
+    useEffect(() => {
+        if (!initialSimilar || initialSimilar.length === 0)
+            return;
+        if (appliedSimilarRef.current === initialSimilar)
+            return;
+        appliedSimilarRef.current = initialSimilar;
+        openSimilarMany(initialSimilar);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialSimilar]);
     /** Show every card by this card's illustrator — a search on the `artist:` field
      *  (quoted, since illustrator names have spaces). Sets both the raw and debounced
      *  query so results appear immediately, like jumpToSet/openSimilar. */

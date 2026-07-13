@@ -63,10 +63,18 @@ interface CatalogBrowserProps {
     /** Height (px) of each series/set art tile. Larger = taller cover art. Defaults to the
      *  standard tile height. */
     taxTileHeight?: number;
+    /**
+     * One-shot "find similar to all" seed: card ids to run a multi-card similarity search on
+     * as soon as this browser mounts. Unlike `sendBrowseCommand({type:'similarMany'})`, this is
+     * an explicit prop, so it can't be intercepted by another `CatalogBrowser` mounted elsewhere
+     * on the screen — the binder picker uses it so its seed survives the per-pocket remount.
+     * Applied once per distinct array reference (pass a fresh array to re-run).
+     */
+    initialSimilar?: string[];
 }
 /**
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth, taxTileHeight, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

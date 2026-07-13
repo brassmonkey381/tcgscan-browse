@@ -32,7 +32,7 @@ import {
 
 import { CardActionModal } from './CardActionModal';
 import { formatSetDate, type Catalog, type CatalogCard, type CatalogSet } from './catalog';
-import { cardThumbUrl, productUrl } from './config';
+import { cardThumbUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
 import { similarAvailable } from './similar';
@@ -74,13 +74,19 @@ interface RecentProductsProps {
    * another browser on the page. Omitted → the action is hidden.
    */
   onViewSet?: (card: CatalogCard) => void;
+  /**
+   * Open a whole SET (from a set tile tap) — wire this to another browser on the page
+   * (e.g. via `sendBrowseCommand({type:'viewSetById'})`). Omitted → set tiles aren't tappable
+   * at the tile level (their montage cards still open the card action modal).
+   */
+  onOpenSet?: (set: CatalogSet) => void;
 }
 
-/** A set paired with its montage cards (priciest first) and its chase card's TCGPlayer URL. */
+/** A set paired with its montage cards (priciest first) and its TCGPlayer set-category URL. */
 interface SetTile {
   set: CatalogSet;
   montage: CatalogCard[];
-  chaseUrl: string;
+  shopUrl: string;
   upcoming: boolean;
 }
 
@@ -93,6 +99,7 @@ export function RecentProducts({
   title = 'Recent & Upcoming',
   onFindSimilar,
   onViewSet,
+  onOpenSet,
 }: RecentProductsProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -123,7 +130,11 @@ export function RecentProducts({
         return {
           set,
           montage,
-          chaseUrl: montage[0] ? productUrl(montage[0].id) : '',
+          // The set's TCGPlayer category page. The catalog carries no `url_name`, but TCGPlayer's
+          // slug is derivable from the set name with one rule — `&` becomes "and" (verified
+          // against the sets table); everything else slugifies identically. setShopUrl handles
+          // the rest (lowercase, non-alphanumeric → dashes).
+          shopUrl: setShopUrl(set.name.replace(/&/g, ' and ')),
           upcoming: set.releaseDate > today,
         };
       })
@@ -202,7 +213,13 @@ export function RecentProducts({
   }
 
   const renderSet = (t: SetTile, tileWidth: number): ReactNode => (
-    <View style={styles.tile}>
+    // Tap the tile (its name / meta / padding) to open the whole set in the host browser; the
+    // montage cards are their own Pressables on top, so tapping a card still opens its modal.
+    <Pressable
+      style={styles.tile}
+      onPress={onOpenSet ? () => onOpenSet(t.set) : undefined}
+      accessibilityRole={onOpenSet ? 'button' : undefined}
+      accessibilityLabel={onOpenSet ? `Browse ${t.set.name}${t.upcoming ? ' (upcoming)' : ''}` : undefined}>
       <View style={styles.montage}>
         {t.montage.map((card) => (
           <Pressable
@@ -234,8 +251,8 @@ export function RecentProducts({
           .filter(Boolean)
           .join(' · ')}
       </Text>
-      {shopLink(t.chaseUrl)}
-    </View>
+      {shopLink(t.shopUrl)}
+    </Pressable>
   );
 
   const renderCard = (card: CatalogCard): ReactNode => (

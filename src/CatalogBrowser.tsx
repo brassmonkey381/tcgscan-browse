@@ -370,6 +370,14 @@ interface CatalogBrowserProps {
   /** Height (px) of each series/set art tile. Larger = taller cover art. Defaults to the
    *  standard tile height. */
   taxTileHeight?: number;
+  /**
+   * One-shot "find similar to all" seed: card ids to run a multi-card similarity search on
+   * as soon as this browser mounts. Unlike `sendBrowseCommand({type:'similarMany'})`, this is
+   * an explicit prop, so it can't be intercepted by another `CatalogBrowser` mounted elsewhere
+   * on the screen — the binder picker uses it so its seed survives the per-pocket remount.
+   * Applied once per distinct array reference (pass a fresh array to re-run).
+   */
+  initialSimilar?: string[];
 }
 
 /**
@@ -390,6 +398,7 @@ export function CatalogBrowser({
   theme: themeProp,
   cardTileWidth = TARGET_TILE_W,
   taxTileHeight = TAX_TILE_H,
+  initialSimilar,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
   const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
@@ -887,6 +896,18 @@ export function CatalogBrowser({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog]);
+
+  // One-shot "find similar to all" seed from a host (the binder picker): run the multi-card
+  // search on mount, bypassing the broadcast command bus so a second mounted browser can't
+  // steal it. Ref-guarded → applied once per distinct seed array (a fresh open passes a new ref).
+  const appliedSimilarRef = useRef<string[] | null>(null);
+  useEffect(() => {
+    if (!initialSimilar || initialSimilar.length === 0) return;
+    if (appliedSimilarRef.current === initialSimilar) return;
+    appliedSimilarRef.current = initialSimilar;
+    openSimilarMany(initialSimilar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSimilar]);
 
   /** Show every card by this card's illustrator — a search on the `artist:` field
    *  (quoted, since illustrator names have spaces). Sets both the raw and debounced
