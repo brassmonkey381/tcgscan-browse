@@ -38,6 +38,12 @@ extras. Everything else (binders, images, prices, sealed) is tier-independent.
 | V-UNION assembled group tiles (Size facet) | ✗ (facet value absent) | ✓ | Silently absent — acceptable (needs `vunionGroups`) |
 | Analytics (kit) | ✗ warm-only | ✓ | michi doesn't surface browse analytics today — moot |
 
+> **Update 2026-07-14:** items 1–5 below are FIXED (kit v0.5.29 + poke-michi): SliceStudio
+> renders cold; `onPickCard`/`onPickCards` carry the full card so guest jumbo picks land 2×2;
+> the occupant, similar-source thumbs, and `similar`/`viewSet` command targets cold-resolve via
+> `fetchCardsByIds`. Remaining open: badge sign-in nudge, native gated path, per-user rate
+> limits + the PostgREST bulk-read hole.
+
 ## Gaps that are BUGS / unhandled (actionable)
 
 1. **SliceStudio card picker: infinite spinner for guests.** `SliceStudio.tsx` renders
