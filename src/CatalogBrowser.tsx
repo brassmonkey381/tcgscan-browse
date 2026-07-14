@@ -359,6 +359,13 @@ interface CatalogBrowserProps {
    *  plus a headline value under each card tile. Off by default — apps that don't
    *  want pricing (e.g. michi's binder picker) simply omit it. */
   analytics?: boolean;
+  /**
+   * Gate the analytics PANELS behind this node (tile values stay visible): when set, the
+   * Analytics tab renders it instead of SetAnalytics/SeriesAnalytics — e.g. a "sign in to
+   * see set analytics" CTA for guests — and the tab gets an accent highlight to draw the
+   * eye. Only meaningful with `analytics` enabled; omit for the normal full experience.
+   */
+  analyticsLocked?: ReactNode;
   /** Injected color contract (partial override merged over the light default). */
   theme?: Partial<BrowseTheme>;
   /**
@@ -395,6 +402,7 @@ export function CatalogBrowser({
   onOpenCard,
   footer,
   analytics,
+  analyticsLocked,
   theme: themeProp,
   cardTileWidth = TARGET_TILE_W,
   taxTileHeight = TAX_TILE_H,
@@ -1260,9 +1268,13 @@ export function CatalogBrowser({
             {(['cards', 'analytics'] as const).map((t) => {
               const on = t === analyticsTab;
               const label = t === 'analytics' ? 'Analytics' : analyticsScope === 'series' ? 'Sets' : 'Cards';
+              // Locked analytics: accent-ring the tab so the gated perk draws the eye.
+              const spotlight = t === 'analytics' && !!analyticsLocked && !on;
               return (
-                <Pressable key={t} onPress={() => setAnalyticsTab(t)} style={[styles.tab, on && styles.tabOn]}>
-                  <Text style={[styles.tabText, on && styles.tabTextOn]}>{label}</Text>
+                <Pressable key={t} onPress={() => setAnalyticsTab(t)} style={[styles.tab, on && styles.tabOn, spotlight && styles.tabSpotlight]}>
+                  <Text style={[styles.tabText, on && styles.tabTextOn, spotlight && styles.tabTextSpotlight]}>
+                    {spotlight ? `✨ ${label}` : label}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -1316,7 +1328,10 @@ export function CatalogBrowser({
 
       {analyticsView ? (
         <ScrollView style={styles.list} contentContainerStyle={styles.analyticsContent}>
-          {catalog && analyticsScope === 'set' && setId ? (
+          {analyticsLocked ? (
+            // Gated (e.g. guest): the app-supplied CTA replaces the analytics panels.
+            analyticsLocked
+          ) : catalog && analyticsScope === 'set' && setId ? (
             <SetAnalytics catalog={catalog} setId={setId} onOpenCard={openCard} theme={theme} />
           ) : catalog && analyticsScope === 'series' && seriesId ? (
             <SeriesAnalytics catalog={catalog} seriesId={seriesId} onOpenCard={openCard} theme={theme} />
@@ -1757,6 +1772,9 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     tabOn: { backgroundColor: t.selected },
     tabText: { fontSize: 13, fontWeight: '700', color: t.subtext },
     tabTextOn: { color: t.text },
+    // analyticsLocked spotlight: accent ring + accent label on the inactive Analytics tab.
+    tabSpotlight: { borderWidth: 1, borderColor: t.accent },
+    tabTextSpotlight: { color: t.accent },
     controls: { gap: 6, paddingBottom: 8 },
     sectionLabel: {
       fontSize: 12,

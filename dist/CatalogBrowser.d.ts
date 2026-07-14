@@ -52,6 +52,13 @@ interface CatalogBrowserProps {
      *  plus a headline value under each card tile. Off by default — apps that don't
      *  want pricing (e.g. michi's binder picker) simply omit it. */
     analytics?: boolean;
+    /**
+     * Gate the analytics PANELS behind this node (tile values stay visible): when set, the
+     * Analytics tab renders it instead of SetAnalytics/SeriesAnalytics — e.g. a "sign in to
+     * see set analytics" CTA for guests — and the tab gets an accent highlight to draw the
+     * eye. Only meaningful with `analytics` enabled; omit for the normal full experience.
+     */
+    analyticsLocked?: ReactNode;
     /** Injected color contract (partial override merged over the light default). */
     theme?: Partial<BrowseTheme>;
     /**
@@ -76,5 +83,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, cardActions, quickAction, onOpenCard, footer, analytics, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};
