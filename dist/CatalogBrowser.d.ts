@@ -16,8 +16,10 @@ interface CatalogBrowserProps {
      * Legacy/default primary action. When supplied and `cardActions` is omitted, the sheet
      * shows a "Place in pocket" / Replace "<occupant>" primary that calls this — preserving
      * poke-michi's binder behavior. Apps with a richer action set pass `cardActions` instead.
+     * The full `card` rides along so COLD-mode picks (no catalog to re-resolve the id against)
+     * still carry kind/name — e.g. a guest placing a jumbo gets its real 2×2 footprint.
      */
-    onPickCard?: (cardId: string) => void;
+    onPickCard?: (cardId: string, card?: CatalogCard) => void;
     /**
      * Place an assembled V-UNION (its four ordered piece ids) — the Size=V-UNION group tiles
      * call this. Omit if the app can't place a 2×2 V-UNION (the group tiles then no-op).
@@ -26,8 +28,9 @@ interface CatalogBrowserProps {
     /**
      * Multi-select batch placement: the ids selected via Ctrl/Shift-click (web). Wired to the
      * "Add all to a binder" action. Omit to hide that action (e.g. surfaces with no binder).
+     * `cards` carries the resolved cards for the ids that could be resolved (see onPickCard).
      */
-    onPickCards?: (cardIds: string[]) => void;
+    onPickCards?: (cardIds: string[], cards?: CatalogCard[]) => void;
     /**
      * App-supplied per-card action list for the tap sheet. Receives the browser's
      * `BrowserBuiltins` (findSimilar / viewSet / viewIllustrator, each present only when

@@ -300,9 +300,32 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         }
         return fetchCardsByIds(ids);
     }, [catalog]);
-    /** Best-effort synchronous lookup for thumbs/sheets: catalog, else the current view. */
-    const findCard = (id) => catalog?.getCard(id) ?? viewCardsRef.current.find((c) => c.id === id);
+    // Cold-resolved cards by id (occupant, similar-source thumbs, command targets) — filled by
+    // the effects below so synchronous lookups work without the catalog.
+    const [coldCards, setColdCards] = useState({});
+    /** Best-effort synchronous lookup for thumbs/sheets: catalog, cold cache, or the current view. */
+    const findCard = (id) => catalog?.getCard(id) ?? coldCards[id] ?? viewCardsRef.current.find((c) => c.id === id);
     const viewCardsRef = useRef([]);
+    // Cold: resolve the pocket occupant + any similar-source ids that aren't otherwise findable,
+    // so the "≈ similar to what's here" shortcut and the source-thumb sheets work for guests.
+    useEffect(() => {
+        if (catalog)
+            return;
+        const wanted = [...(selectedCardId ? [selectedCardId] : []), ...(similarTo?.ids ?? [])];
+        const missing = wanted.filter((id) => !coldCards[id]);
+        if (missing.length === 0)
+            return;
+        let stale = false;
+        fetchCardsByIds(missing).then((cards) => {
+            if (stale || cards.length === 0)
+                return;
+            setColdCards((prev) => ({ ...prev, ...Object.fromEntries(cards.map((c) => [c.id, c])) }));
+        });
+        return () => {
+            stale = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [catalog, selectedCardId, similarTo]);
     // Write every change back so the next mount resumes here.
     useEffect(() => {
         Object.assign(browseState, {
@@ -697,13 +720,18 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 setSetId(cmd.setId);
                 return;
             }
-            const card = catalog?.getCard(cmd.cardId);
-            if (!card)
-                return;
-            if (cmd.type === 'similar')
-                openSimilar(card);
-            else if (cmd.type === 'viewSet')
-                jumpToSet(card);
+            // Resolve the target card: catalog when warm, a server fetch when cold — so the
+            // commands work for guests too.
+            const run = (card) => cmd.type === 'similar' ? openSimilar(card) : jumpToSet(card);
+            const warmCard = catalog?.getCard(cmd.cardId);
+            if (warmCard)
+                run(warmCard);
+            else if (!catalog) {
+                fetchCardsByIds([cmd.cardId]).then(([card]) => {
+                    if (card)
+                        run(card);
+                });
+            }
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [catalog]);
@@ -751,8 +779,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const currentSeries = tax && seriesId ? tax.getSeries(seriesId) : undefined;
     const currentSet = tax && setId ? tax.getSet(setId) : undefined;
     // The card already in the pocket that opened this picker (if any) — offered as
-    // a one-tap "find similar to what's here" jump.
-    const occupant = catalog && selectedCardId ? catalog.getCard(selectedCardId) : undefined;
+    // a one-tap "find similar to what's here" jump. Cold mode resolves it server-side
+    // (the coldCards effect above), so guests get the shortcut too.
+    const occupant = selectedCardId ? findCard(selectedCardId) : undefined;
     const openCard = onOpenCard ?? onPickCard ?? (() => { });
     /** The package-intrinsic actions for a card, bound to this browser's state. */
     const builtinsFor = (card) => ({
@@ -822,7 +851,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                     label: (c) => occupant && occupant.id !== c.id ? `Replace “${occupant.name}”` : 'Place in pocket',
                     onPress: (c) => {
                         setActionCard(null);
-                        onPickCard(c.id);
+                        onPickCard(c.id, c);
                     },
                 },
             ]
@@ -943,7 +972,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                         : 'No cards in this set.'
                                     : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedIds
                     .map((id) => findCard(id))
-                    .filter((c) => Boolean(c)), onAddAll: onPickCards ? () => onPickCards(selectedIds) : undefined, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
+                    .filter((c) => Boolean(c)), onAddAll: onPickCards
+                    ? () => onPickCards(selectedIds, selectedIds.map((id) => findCard(id)).filter((c) => Boolean(c)))
+                    : undefined, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
                     setMultiOpen(false);
                     setMultiSelectMode(false);
                     clearSelection();

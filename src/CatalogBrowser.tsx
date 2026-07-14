@@ -323,8 +323,10 @@ interface CatalogBrowserProps {
    * Legacy/default primary action. When supplied and `cardActions` is omitted, the sheet
    * shows a "Place in pocket" / Replace "<occupant>" primary that calls this — preserving
    * poke-michi's binder behavior. Apps with a richer action set pass `cardActions` instead.
+   * The full `card` rides along so COLD-mode picks (no catalog to re-resolve the id against)
+   * still carry kind/name — e.g. a guest placing a jumbo gets its real 2×2 footprint.
    */
-  onPickCard?: (cardId: string) => void;
+  onPickCard?: (cardId: string, card?: CatalogCard) => void;
   /**
    * Place an assembled V-UNION (its four ordered piece ids) — the Size=V-UNION group tiles
    * call this. Omit if the app can't place a 2×2 V-UNION (the group tiles then no-op).
@@ -333,8 +335,9 @@ interface CatalogBrowserProps {
   /**
    * Multi-select batch placement: the ids selected via Ctrl/Shift-click (web). Wired to the
    * "Add all to a binder" action. Omit to hide that action (e.g. surfaces with no binder).
+   * `cards` carries the resolved cards for the ids that could be resolved (see onPickCard).
    */
-  onPickCards?: (cardIds: string[]) => void;
+  onPickCards?: (cardIds: string[], cards?: CatalogCard[]) => void;
   /**
    * App-supplied per-card action list for the tap sheet. Receives the browser's
    * `BrowserBuiltins` (findSimilar / viewSet / viewIllustrator, each present only when
@@ -492,10 +495,30 @@ export function CatalogBrowser({
     },
     [catalog],
   );
-  /** Best-effort synchronous lookup for thumbs/sheets: catalog, else the current view. */
+  // Cold-resolved cards by id (occupant, similar-source thumbs, command targets) — filled by
+  // the effects below so synchronous lookups work without the catalog.
+  const [coldCards, setColdCards] = useState<Record<string, CatalogCard>>({});
+  /** Best-effort synchronous lookup for thumbs/sheets: catalog, cold cache, or the current view. */
   const findCard = (id: string): CatalogCard | undefined =>
-    catalog?.getCard(id) ?? viewCardsRef.current.find((c) => c.id === id);
+    catalog?.getCard(id) ?? coldCards[id] ?? viewCardsRef.current.find((c) => c.id === id);
   const viewCardsRef = useRef<CatalogCard[]>([]);
+  // Cold: resolve the pocket occupant + any similar-source ids that aren't otherwise findable,
+  // so the "≈ similar to what's here" shortcut and the source-thumb sheets work for guests.
+  useEffect(() => {
+    if (catalog) return;
+    const wanted = [...(selectedCardId ? [selectedCardId] : []), ...(similarTo?.ids ?? [])];
+    const missing = wanted.filter((id) => !coldCards[id]);
+    if (missing.length === 0) return;
+    let stale = false;
+    fetchCardsByIds(missing).then((cards) => {
+      if (stale || cards.length === 0) return;
+      setColdCards((prev) => ({ ...prev, ...Object.fromEntries(cards.map((c) => [c.id, c])) }));
+    });
+    return () => {
+      stale = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, selectedCardId, similarTo]);
 
   // Write every change back so the next mount resumes here.
   useEffect(() => {
@@ -916,10 +939,17 @@ export function CatalogBrowser({
         setSetId(cmd.setId);
         return;
       }
-      const card = catalog?.getCard(cmd.cardId);
-      if (!card) return;
-      if (cmd.type === 'similar') openSimilar(card);
-      else if (cmd.type === 'viewSet') jumpToSet(card);
+      // Resolve the target card: catalog when warm, a server fetch when cold — so the
+      // commands work for guests too.
+      const run = (card: CatalogCard) =>
+        cmd.type === 'similar' ? openSimilar(card) : jumpToSet(card);
+      const warmCard = catalog?.getCard(cmd.cardId);
+      if (warmCard) run(warmCard);
+      else if (!catalog) {
+        fetchCardsByIds([cmd.cardId]).then(([card]) => {
+          if (card) run(card);
+        });
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog]);
@@ -971,8 +1001,9 @@ export function CatalogBrowser({
   const currentSeries = tax && seriesId ? tax.getSeries(seriesId) : undefined;
   const currentSet = tax && setId ? tax.getSet(setId) : undefined;
   // The card already in the pocket that opened this picker (if any) — offered as
-  // a one-tap "find similar to what's here" jump.
-  const occupant = catalog && selectedCardId ? catalog.getCard(selectedCardId) : undefined;
+  // a one-tap "find similar to what's here" jump. Cold mode resolves it server-side
+  // (the coldCards effect above), so guests get the shortcut too.
+  const occupant = selectedCardId ? findCard(selectedCardId) : undefined;
   const openCard = onOpenCard ?? onPickCard ?? (() => {});
 
   /** The package-intrinsic actions for a card, bound to this browser's state. */
@@ -1046,7 +1077,7 @@ export function CatalogBrowser({
               occupant && occupant.id !== c.id ? `Replace “${occupant.name}”` : 'Place in pocket',
             onPress: (c) => {
               setActionCard(null);
-              onPickCard(c.id);
+              onPickCard(c.id, c);
             },
           },
         ]
@@ -1399,7 +1430,15 @@ export function CatalogBrowser({
           cards={selectedIds
             .map((id) => findCard(id))
             .filter((c): c is CatalogCard => Boolean(c))}
-          onAddAll={onPickCards ? () => onPickCards(selectedIds) : undefined}
+          onAddAll={
+            onPickCards
+              ? () =>
+                  onPickCards(
+                    selectedIds,
+                    selectedIds.map((id) => findCard(id)).filter((c): c is CatalogCard => Boolean(c)),
+                  )
+              : undefined
+          }
           onFindSimilarAll={similarAvailable() ? () => openSimilarMany(selectedIds) : undefined}
           onMoreLikeAll={
             similarAvailable() && similarTo ? () => refineSimilar('more', selectedIds) : undefined
