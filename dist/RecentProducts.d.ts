@@ -44,6 +44,12 @@ interface RecentProductsProps {
      * at the tile level (their montage cards still open the card action modal).
      */
     onOpenSet?: (set: FeedSet) => void;
+    /**
+     * Drop the tapped card into a binder — surfaced as the PRIMARY "Add to a binder…" action
+     * (a host chooser then picks the target binder). When wired, TCGPlayer demotes to a
+     * secondary action. Omitted → the action is hidden (TCGPlayer stays primary).
+     */
+    onAddToBinder?: (card: CatalogCard) => void;
 }
-export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, }: RecentProductsProps): import("react").JSX.Element | null;
+export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }: RecentProductsProps): import("react").JSX.Element | null;
 export {};

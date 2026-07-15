@@ -37,7 +37,7 @@ const TILE_GAP = 10;
 const SETS_PER_VIEW = 4;
 /** Card carousels pack to roughly this tile width, then show as many as fit. */
 const CARD_TARGET_W = 104;
-export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, onOpenSet, }) {
+export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme), [theme]);
     // Card thumbs resolve by id via the content-hashed manifest; repaint when it lands.
@@ -182,9 +182,21 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     // The store link shared by set + card tiles. Labeled "Shop" (store-agnostic); points at
     // the card's TCGPlayer product page for now (productUrl). `centered` for the card tiles.
     const shopLink = (url, centered = false) => (_jsx(Pressable, { onPress: () => open(url), hitSlop: 4, disabled: !url, accessibilityLabel: "Shop this card", children: _jsx(Text, { style: [styles.tileLink, centered && styles.tileLinkCenter], children: "Shop \u2192" }) }));
-    // The modal's actions for a card: drive-the-other-browser intents (when wired) + TCGPlayer.
+    // The modal's actions for a card: add-to-binder (host chooser) + drive-the-other-browser
+    // intents (when wired) + TCGPlayer.
     const actionsFor = (card) => {
         const actions = [];
+        if (onAddToBinder) {
+            actions.push({
+                key: 'add-to-binder',
+                kind: 'primary',
+                label: 'Add to a binder…',
+                onPress: (c) => {
+                    setActionCard(null);
+                    onAddToBinder(c);
+                },
+            });
+        }
         if (onFindSimilar && similarAvailable()) {
             actions.push({
                 key: 'find-similar',
@@ -207,7 +219,8 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
         }
         actions.push({
             key: 'tcgplayer',
-            kind: 'primary',
+            // Add-to-binder owns the primary slot when wired; TCGPlayer becomes secondary.
+            kind: onAddToBinder ? 'default' : 'primary',
             label: 'View on TCGPlayer ↗',
             onPress: (c) => {
                 setActionCard(null);

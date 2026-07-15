@@ -94,6 +94,12 @@ interface RecentProductsProps {
    * at the tile level (their montage cards still open the card action modal).
    */
   onOpenSet?: (set: FeedSet) => void;
+  /**
+   * Drop the tapped card into a binder — surfaced as the PRIMARY "Add to a binder…" action
+   * (a host chooser then picks the target binder). When wired, TCGPlayer demotes to a
+   * secondary action. Omitted → the action is hidden (TCGPlayer stays primary).
+   */
+  onAddToBinder?: (card: CatalogCard) => void;
 }
 
 /** A set paired with its montage cards (priciest first) and its TCGPlayer set-category URL. */
@@ -114,6 +120,7 @@ export function RecentProducts({
   onFindSimilar,
   onViewSet,
   onOpenSet,
+  onAddToBinder,
 }: RecentProductsProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -275,9 +282,21 @@ export function RecentProducts({
     </Pressable>
   );
 
-  // The modal's actions for a card: drive-the-other-browser intents (when wired) + TCGPlayer.
+  // The modal's actions for a card: add-to-binder (host chooser) + drive-the-other-browser
+  // intents (when wired) + TCGPlayer.
   const actionsFor = (card: CatalogCard): CardAction[] => {
     const actions: CardAction[] = [];
+    if (onAddToBinder) {
+      actions.push({
+        key: 'add-to-binder',
+        kind: 'primary',
+        label: 'Add to a binder…',
+        onPress: (c) => {
+          setActionCard(null);
+          onAddToBinder(c);
+        },
+      });
+    }
     if (onFindSimilar && similarAvailable()) {
       actions.push({
         key: 'find-similar',
@@ -300,7 +319,8 @@ export function RecentProducts({
     }
     actions.push({
       key: 'tcgplayer',
-      kind: 'primary',
+      // Add-to-binder owns the primary slot when wired; TCGPlayer becomes secondary.
+      kind: onAddToBinder ? 'default' : 'primary',
       label: 'View on TCGPlayer ↗',
       onPress: (c) => {
         setActionCard(null);
