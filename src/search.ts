@@ -165,23 +165,44 @@ export async function fetchSetCards(setId: string): Promise<CatalogCard[]> {
   }
 }
 
+/** Per-id card cache + in-flight coalescing for fetchCardsByIds (mirrors setCardsCache). */
+const cardByIdCache = new Map<string, CatalogCard>();
+const cardByIdInflight = new Map<string, Promise<void>>();
+
 /**
  * Resolve specific card ids to tile-ready cards without the catalog (cold-mode similar
  * results, multi-select thumbs, …). Order follows the input ids. Fails soft (drops misses).
+ * Cached per id for the session; concurrent callers coalesce onto one request, so the
+ * browser's independent cold consumers (occupant effect, command handler, similar results)
+ * share a single round-trip per id.
  */
 export async function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]> {
   if (!serverSearchAvailable() || ids.length === 0) return [];
-  try {
-    const list = ids.map(encodeURIComponent).join(',');
-    const res = await fetch(`${getApiUrl()}/cards?select=${CARD_COLS}&id=in.(${list})`, {
-      headers: { apikey: getApiKey() },
-    });
-    if (!res.ok) return [];
-    const byId = new Map(((await res.json()) as SearchRow[]).map((r) => [String(r.id), rowToCard(r)]));
-    return ids.map((id) => byId.get(id)).filter((c): c is CatalogCard => Boolean(c));
-  } catch {
-    return [];
+  const misses = [...new Set(ids)].filter(
+    (id) => !cardByIdCache.has(id) && !cardByIdInflight.has(id),
+  );
+  if (misses.length > 0) {
+    const req = (async () => {
+      try {
+        const list = misses.map(encodeURIComponent).join(',');
+        const res = await fetch(`${getApiUrl()}/cards?select=${CARD_COLS}&id=in.(${list})`, {
+          headers: { apikey: getApiKey() },
+        });
+        if (!res.ok) return;
+        for (const r of (await res.json()) as SearchRow[]) {
+          const card = rowToCard(r);
+          cardByIdCache.set(card.id, card);
+        }
+      } catch {
+        // fail soft — unresolved ids simply retry on the next call
+      } finally {
+        for (const id of misses) cardByIdInflight.delete(id);
+      }
+    })();
+    for (const id of misses) cardByIdInflight.set(id, req);
   }
+  await Promise.all(ids.map((id) => cardByIdInflight.get(id)));
+  return ids.map((id) => cardByIdCache.get(id)).filter((c): c is CatalogCard => Boolean(c));
 }
 
 /**

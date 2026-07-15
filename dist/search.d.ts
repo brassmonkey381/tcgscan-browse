@@ -44,6 +44,9 @@ export declare function fetchSetCards(setId: string): Promise<CatalogCard[]>;
 /**
  * Resolve specific card ids to tile-ready cards without the catalog (cold-mode similar
  * results, multi-select thumbs, …). Order follows the input ids. Fails soft (drops misses).
+ * Cached per id for the session; concurrent callers coalesce onto one request, so the
+ * browser's independent cold consumers (occupant effect, command handler, similar results)
+ * share a single round-trip per id.
  */
 export declare function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]>;
 /**

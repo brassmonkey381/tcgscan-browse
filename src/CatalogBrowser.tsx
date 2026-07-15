@@ -945,17 +945,13 @@ export function CatalogBrowser({
         setSetId(cmd.setId);
         return;
       }
-      // Resolve the target card: catalog when warm, a server fetch when cold — so the
-      // commands work for guests too.
-      const run = (card: CatalogCard) =>
-        cmd.type === 'similar' ? openSimilar(card) : jumpToSet(card);
-      const warmCard = catalog?.getCard(cmd.cardId);
-      if (warmCard) run(warmCard);
-      else if (!catalog) {
-        fetchCardsByIds([cmd.cardId]).then(([card]) => {
-          if (card) run(card);
-        });
-      }
+      // Resolve the target card (catalog when warm, server fetch when cold) and run —
+      // so the commands work for guests too.
+      resolveIds([cmd.cardId]).then(([card]) => {
+        if (!card) return;
+        if (cmd.type === 'similar') openSimilar(card);
+        else jumpToSet(card);
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog]);
@@ -1174,6 +1170,11 @@ export function CatalogBrowser({
     const row = Math.floor(index / cols);
     return { length: rowHeight, offset: rowHeight * row, index };
   };
+
+  // The resolved multi-selection — feeds both the batch modal's thumbs and its add-all payload.
+  const selectedCards = multiOpen
+    ? selectedIds.map((id) => findCard(id)).filter((c): c is CatalogCard => Boolean(c))
+    : [];
 
   return (
     <View style={styles.browser} onLayout={onLayout}>
@@ -1433,18 +1434,8 @@ export function CatalogBrowser({
 
       {multiOpen ? (
         <MultiCardActionModal
-          cards={selectedIds
-            .map((id) => findCard(id))
-            .filter((c): c is CatalogCard => Boolean(c))}
-          onAddAll={
-            onPickCards
-              ? () =>
-                  onPickCards(
-                    selectedIds,
-                    selectedIds.map((id) => findCard(id)).filter((c): c is CatalogCard => Boolean(c)),
-                  )
-              : undefined
-          }
+          cards={selectedCards}
+          onAddAll={onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined}
           addAllLabel={pickCardsLabel}
           onFindSimilarAll={similarAvailable() ? () => openSimilarMany(selectedIds) : undefined}
           onMoreLikeAll={
