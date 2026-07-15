@@ -131,6 +131,7 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
 export function MultiCardActionModal({
   cards,
   onAddAll,
+  addAllLabel = 'Add all to a binder',
   onFindSimilarAll,
   onMoreLikeAll,
   onLessLikeAll,
@@ -138,8 +139,11 @@ export function MultiCardActionModal({
   theme = lightTheme,
 }: {
   cards: CatalogCard[];
-  /** "Add all to a binder" (app-supplied). Omit to hide the button. */
+  /** The batch-add action (app-supplied). Omit to hide the button. */
   onAddAll?: () => void;
+  /** Label for the batch-add button — apps word it for their container
+   *  ("Add all to a binder" / "Add all to portfolio" / …). */
+  addAllLabel?: string;
   /** "Find similar to all" (kit-supplied embedding search). Omit to hide the button. */
   onFindSimilarAll?: () => void;
   /** Refine the ongoing similarity session toward this group (similar mode only). */
@@ -185,7 +189,7 @@ export function MultiCardActionModal({
                   onAddAll();
                 }}>
                 <Text style={[styles.actionText, styles.actionPrimaryText]} numberOfLines={1}>
-                  Add all to a binder
+                  {addAllLabel}
                 </Text>
               </Pressable>
             ) : null}

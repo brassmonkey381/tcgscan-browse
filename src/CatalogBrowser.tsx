@@ -339,6 +339,11 @@ interface CatalogBrowserProps {
    */
   onPickCards?: (cardIds: string[], cards?: CatalogCard[]) => void;
   /**
+   * Label for the multi-select batch-add button, worded for the app's container —
+   * e.g. poke-michi's default "Add all to a binder", tcgscan-app's "Add all to portfolio".
+   */
+  pickCardsLabel?: string;
+  /**
    * App-supplied per-card action list for the tap sheet. Receives the browser's
    * `BrowserBuiltins` (findSimilar / viewSet / viewIllustrator, each present only when
    * applicable) so the app composes
@@ -400,6 +405,7 @@ export function CatalogBrowser({
   onPickCard,
   onPickVUnion,
   onPickCards,
+  pickCardsLabel,
   cardActions,
   quickAction,
   onOpenCard,
@@ -1439,6 +1445,7 @@ export function CatalogBrowser({
                   )
               : undefined
           }
+          addAllLabel={pickCardsLabel}
           onFindSimilarAll={similarAvailable() ? () => openSimilarMany(selectedIds) : undefined}
           onMoreLikeAll={
             similarAvailable() && similarTo ? () => refineSimilar('more', selectedIds) : undefined

@@ -32,6 +32,11 @@ interface CatalogBrowserProps {
      */
     onPickCards?: (cardIds: string[], cards?: CatalogCard[]) => void;
     /**
+     * Label for the multi-select batch-add button, worded for the app's container —
+     * e.g. poke-michi's default "Add all to a binder", tcgscan-app's "Add all to portfolio".
+     */
+    pickCardsLabel?: string;
+    /**
      * App-supplied per-card action list for the tap sheet. Receives the browser's
      * `BrowserBuiltins` (findSimilar / viewSet / viewIllustrator, each present only when
      * applicable) so the app composes
@@ -86,5 +91,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};
