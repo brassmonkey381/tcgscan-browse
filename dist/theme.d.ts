@@ -42,5 +42,20 @@ export interface BrowseTheme {
 export declare const lightTheme: BrowseTheme;
 /** Merge an app's partial override over the light default. */
 export declare function resolveTheme(overrides?: Partial<BrowseTheme>): BrowseTheme;
+/**
+ * Soft lift for tiles (set tiles, taxonomy tiles) — makes them read as physical objects on the
+ * shelf, matching michi-maker's binder-page shadows. Subtle enough to disappear gracefully on
+ * dark themes; iOS/web read the shadow* props, Android reads `elevation`.
+ */
+export declare const tileShadow: {
+    readonly shadowColor: "#000000";
+    readonly shadowOpacity: 0.08;
+    readonly shadowRadius: 8;
+    readonly shadowOffset: {
+        readonly width: 0;
+        readonly height: 3;
+    };
+    readonly elevation: 2;
+};
 /** Rarity bar palette for analytics — theme-independent (bars need distinct hues). */
 export declare const RARITY_PALETTE: string[];

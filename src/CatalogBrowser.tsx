@@ -76,7 +76,7 @@ import {
   serverSearchAvailable,
 } from './search';
 import { useTaxonomy, type TaxonomySource } from './taxonomy';
-import { resolveTheme, type BrowseTheme } from './theme';
+import { resolveTheme, tileShadow, type BrowseTheme } from './theme';
 
 /** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
  *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
@@ -1956,6 +1956,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       padding: 8,
       gap: 4,
       backgroundColor: t.panel,
+      ...tileShadow,
     },
     taxLogoWrap: {
       height: 52,

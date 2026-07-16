@@ -37,7 +37,7 @@ import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
 import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable, type SetMeta } from './search';
 import { similarAvailable } from './similar';
-import { resolveTheme, type BrowseTheme } from './theme';
+import { resolveTheme, tileShadow, type BrowseTheme } from './theme';
 import type { CardAction } from './actions';
 
 /** Gap between tiles in a carousel (px). */
@@ -615,7 +615,14 @@ function makeStyles(t: BrowseTheme) {
   return StyleSheet.create({
     root: { gap: 10 },
     header: { fontSize: 18, fontWeight: '800', color: t.text },
-    subHeader: { fontSize: 13, fontWeight: '700', color: t.subtext, marginTop: 4 },
+    subHeader: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: t.subtext,
+      marginTop: 4,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 0.5,
+    },
 
     // carousel
     carouselWrap: { gap: 6 },
@@ -656,6 +663,7 @@ function makeStyles(t: BrowseTheme) {
       padding: 8,
       gap: 3,
       backgroundColor: t.panel,
+      ...tileShadow,
     },
     montage: { flexDirection: 'row', gap: 3, marginBottom: 3 },
     montageSlot: {

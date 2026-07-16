@@ -18,6 +18,18 @@ export const lightTheme = {
 export function resolveTheme(overrides) {
     return overrides ? { ...lightTheme, ...overrides } : lightTheme;
 }
+/**
+ * Soft lift for tiles (set tiles, taxonomy tiles) — makes them read as physical objects on the
+ * shelf, matching michi-maker's binder-page shadows. Subtle enough to disappear gracefully on
+ * dark themes; iOS/web read the shadow* props, Android reads `elevation`.
+ */
+export const tileShadow = {
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+};
 /** Rarity bar palette for analytics — theme-independent (bars need distinct hues). */
 export const RARITY_PALETTE = [
     '#3B82F6',
