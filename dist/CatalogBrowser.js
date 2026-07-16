@@ -36,7 +36,7 @@ import { formatUsd, usePriceSummary } from './prices';
 import { findSimilarWeighted, similarAvailable } from './similar';
 import { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, } from './search';
 import { useTaxonomy } from './taxonomy';
-import { resolveTheme } from './theme';
+import { resolveTheme, tileShadow } from './theme';
 /** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
  *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
 const PAGE_SIZE = 90;
@@ -1195,6 +1195,7 @@ function makeStyles(t, taxTileHeight) {
             padding: 8,
             gap: 4,
             backgroundColor: t.panel,
+            ...tileShadow,
         },
         taxLogoWrap: {
             height: 52,

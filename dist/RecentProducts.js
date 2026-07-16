@@ -30,7 +30,7 @@ import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
 import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable } from './search';
 import { similarAvailable } from './similar';
-import { resolveTheme } from './theme';
+import { resolveTheme, tileShadow } from './theme';
 /** Gap between tiles in a carousel (px). */
 const TILE_GAP = 10;
 /** Set tiles shown at once (the reference wall's cadence). */
@@ -303,7 +303,14 @@ function makeStyles(t) {
     return StyleSheet.create({
         root: { gap: 10 },
         header: { fontSize: 18, fontWeight: '800', color: t.text },
-        subHeader: { fontSize: 13, fontWeight: '700', color: t.subtext, marginTop: 4 },
+        subHeader: {
+            fontSize: 12,
+            fontWeight: '700',
+            color: t.subtext,
+            marginTop: 4,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+        },
         // carousel
         carouselWrap: { gap: 6 },
         carousel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -341,6 +348,7 @@ function makeStyles(t) {
             padding: 8,
             gap: 3,
             backgroundColor: t.panel,
+            ...tileShadow,
         },
         montage: { flexDirection: 'row', gap: 3, marginBottom: 3 },
         montageSlot: {

@@ -13,7 +13,7 @@ export { evolutionNeighbors, formatSetDate, getCatalog, getCatalogStatus, getLoa
 export { formatUsd, getCardPrices, getPriceSummary, getValueSeries, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, TIME_RANGES, usePriceSummary, windowByRange, type CardPrices, type PricePoint, type PriceSummary, type PriceSummaryEntry, type TimeRange, type ValueSeriesKind, type ValueSeriesPoint, } from './prices';
 export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, type ValuePoint, } from './analytics';
 export { resolveActions, resolveLabel, type BrowserBuiltins, type CardAction, type CardActionsFactory, } from './actions';
-export { lightTheme, resolveTheme, RARITY_PALETTE, type BrowseTheme } from './theme';
+export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE, type BrowseTheme } from './theme';
 export { findSimilar, findSimilarToMany, findSimilarWeighted, refineWeights, similarAvailable, type SimilarHit, type SimilarStep, } from './similar';
 export { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, type SearchPage, type ServerFacetSelection, } from './search';
 export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
