@@ -75,12 +75,6 @@ export function productUrl(id) {
     return id ? `https://www.tcgplayer.com/product/${id}` : '';
 }
 /**
- * TCGPlayer CDN image for a card — also a pure `{id}` template (the `<id>_in_NxN.jpg`
- * convention). Used as the fallback for cards not yet mirrored to our bucket, and
- * for any consumer that wants the source image without the manifest. `size` is the
- * square edge in px (TCGPlayer serves `_in_<size>x<size>.jpg`).
- */
-/**
  * TCGPlayer category page for a SET, from the sets table's `url_name`
  * ("ME05 Pitch Black" → …/pokemon/me05-pitch-black). '' when the name is empty.
  */
@@ -93,6 +87,14 @@ export function setShopUrl(urlName) {
         ? `https://www.tcgplayer.com/categories/trading-and-collectible-card-games/pokemon/${slug}`
         : '';
 }
+/**
+ * TCGPlayer CDN image for a card — a pure `{id}` template (the `<id>_in_NxN.jpg` convention).
+ *
+ * @deprecated NO LONGER USED as an image fallback anywhere: the CDN now 403s hotlinked pulls
+ * (and never sent CORS headers to begin with), so requesting it only burns a doomed fetch.
+ * Kept exported only so downstream consumers keep compiling; do not reintroduce it as a
+ * fallback — unmirrored cards should render their placeholder until the pipeline mirrors them.
+ */
 export function cdnImageUrl(id, size = 1000) {
     return id ? `https://tcgplayer-cdn.tcgplayer.com/product/${id}_in_${size}x${size}.jpg` : '';
 }
@@ -103,9 +105,11 @@ export function cdnImageUrl(id, size = 1000) {
  *   - 640 → 640px webp (binder-page / inspection view)
  *   - 'full' → full-size jpg
  * Hosted buckets key images by content hash, so the URL comes from the image
- * manifest (hydrateImageManifest). If the manifest is loaded but the card isn't in
- * it (not yet mirrored), fall back to the id-derivable TCGPlayer CDN image. Only
- * before the manifest has loaded at all (static/offline) do we use the flat
+ * manifest (hydrateImageManifest). If the manifest is loaded but the card's tier
+ * isn't in it, fall back to the card's mirrored full image; a wholly unmirrored
+ * card resolves to '' (placeholder) — the TCGPlayer CDN is NOT used (it 403s
+ * hotlinked pulls now, and we don't want to lean on it regardless). Only before
+ * the manifest has loaded at all (static/offline) do we use the flat
  * convention path.
  */
 export function cardThumbUrl(id, tier) {
@@ -115,13 +119,10 @@ export function cardThumbUrl(id, tier) {
     if (hashed)
         return hashed;
     if (imageManifestReady()) {
-        // Tier not mirrored yet: prefer the card's mirrored FULL image (our bucket serves CORS
-        // headers) over the TCGPlayer CDN — the CDN sends none, so fetch-based web image loaders
-        // (expo-image) can't consume it. CDN remains the last resort for wholly unmirrored cards.
-        const full = manifestUrl(id, 'image');
-        if (full)
-            return full;
-        return cdnImageUrl(id);
+        // Tier not mirrored yet: use the card's mirrored FULL image (our bucket serves CORS
+        // headers). Wholly unmirrored → '' so consumers show their placeholder instead of
+        // firing a doomed request at the TCGPlayer CDN (403 + no CORS).
+        return manifestUrl(id, 'image') ?? '';
     }
     // Manifest not loaded yet (static/offline): flat convention path.
     if (tier === 'full')

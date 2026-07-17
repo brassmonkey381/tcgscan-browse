@@ -67,16 +67,18 @@ export declare function resolveImageUrl(path: string): string;
  */
 export declare function productUrl(id: string): string;
 /**
- * TCGPlayer CDN image for a card — also a pure `{id}` template (the `<id>_in_NxN.jpg`
- * convention). Used as the fallback for cards not yet mirrored to our bucket, and
- * for any consumer that wants the source image without the manifest. `size` is the
- * square edge in px (TCGPlayer serves `_in_<size>x<size>.jpg`).
- */
-/**
  * TCGPlayer category page for a SET, from the sets table's `url_name`
  * ("ME05 Pitch Black" → …/pokemon/me05-pitch-black). '' when the name is empty.
  */
 export declare function setShopUrl(urlName: string): string;
+/**
+ * TCGPlayer CDN image for a card — a pure `{id}` template (the `<id>_in_NxN.jpg` convention).
+ *
+ * @deprecated NO LONGER USED as an image fallback anywhere: the CDN now 403s hotlinked pulls
+ * (and never sent CORS headers to begin with), so requesting it only burns a doomed fetch.
+ * Kept exported only so downstream consumers keep compiling; do not reintroduce it as a
+ * fallback — unmirrored cards should render their placeholder until the pipeline mirrors them.
+ */
 export declare function cdnImageUrl(id: string, size?: number): string;
 /**
  * Image tiers, keyed by a card's stable id — so a card's image resolves WITHOUT the
@@ -85,9 +87,11 @@ export declare function cdnImageUrl(id: string, size?: number): string;
  *   - 640 → 640px webp (binder-page / inspection view)
  *   - 'full' → full-size jpg
  * Hosted buckets key images by content hash, so the URL comes from the image
- * manifest (hydrateImageManifest). If the manifest is loaded but the card isn't in
- * it (not yet mirrored), fall back to the id-derivable TCGPlayer CDN image. Only
- * before the manifest has loaded at all (static/offline) do we use the flat
+ * manifest (hydrateImageManifest). If the manifest is loaded but the card's tier
+ * isn't in it, fall back to the card's mirrored full image; a wholly unmirrored
+ * card resolves to '' (placeholder) — the TCGPlayer CDN is NOT used (it 403s
+ * hotlinked pulls now, and we don't want to lean on it regardless). Only before
+ * the manifest has loaded at all (static/offline) do we use the flat
  * convention path.
  */
 export declare function cardThumbUrl(id: string, tier: 245 | 640 | 'full'): string;
