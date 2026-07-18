@@ -9,7 +9,7 @@
  */
 export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, cdnImageUrl, productUrl, setShopUrl, type BrowseConfig, type CatalogSource, } from './config';
 export { hydrateImageManifest, imageManifestReady, subscribeImageManifest, useImageManifest, type ManifestCache, } from './images';
-export { evolutionNeighbors, formatSetDate, getCatalog, getCatalogStatus, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, subscribeCatalogStatus, useCatalogStatus, type Catalog, type CatalogStatus, type CatalogLoadStatus, type CatalogCard, type CatalogSeries, type CatalogSet, type CardKind, type RawCard, type RawCatalog, type RawSeries, type RawSet, type RawVUnionGroup, type VUnionGroup, } from './catalog';
+export { evolutionNeighbors, formatSetDate, getCatalog, getCatalogStatus, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, subscribeCatalogStatus, useCatalogStatus, type Catalog, type CatalogStatus, type CatalogLoadStatus, type CatalogCard, type CatalogSeries, type CatalogSet, type CardKind, type CardLanguage, type RawCard, type RawCatalog, type RawSeries, type RawSet, type RawVUnionGroup, type VUnionGroup, } from './catalog';
 export { formatUsd, getCardPrices, getPriceSummary, getValueSeries, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, TIME_RANGES, usePriceSummary, windowByRange, type CardPrices, type PricePoint, type PriceSummary, type PriceSummaryEntry, type TimeRange, type ValueSeriesKind, type ValueSeriesPoint, } from './prices';
 export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, type ValuePoint, } from './analytics';
 export { resolveActions, resolveLabel, type BrowserBuiltins, type CardAction, type CardActionsFactory, } from './actions';
@@ -17,7 +17,7 @@ export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE, type BrowseTheme 
 export { findSimilar, findSimilarToMany, findSimilarWeighted, refineWeights, similarAvailable, type SimilarHit, type SimilarStep, } from './similar';
 export { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, type SearchPage, type ServerFacetSelection, } from './search';
 export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
-export { loadSealed, loadSealedPrices, useSealed, type SealedCatalog, type SealedProduct, type SealedSet, } from './sealed';
+export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, type SealedCatalog, type SealedProduct, type SealedSet, } from './sealed';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, type CompareField, type CompareOp, type Comparison, type FieldKey, type ManualSection, type ParsedQuery, type QueryableCard, type QuerySort, type SortDir, } from './query';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, } from './state';
 export { CatalogBrowser } from './CatalogBrowser';

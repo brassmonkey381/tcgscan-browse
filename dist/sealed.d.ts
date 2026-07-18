@@ -1,3 +1,4 @@
+import type { CardLanguage } from './catalog';
 export interface SealedProduct {
     id: string;
     name: string;
@@ -7,7 +8,17 @@ export interface SealedProduct {
     image: string;
     imageSmall: string;
     imageMedium: string;
+    /** Printing language: 'en' | 'ja'. Read from the artifact's `language` field when present;
+     *  otherwise derived from the JP ' -JP' series suffix (see sealedLanguageOf). Defaults 'en'. */
+    language: CardLanguage;
 }
+/** Derive a sealed product's printing language. Prefers an explicit `language` field (stamped by
+ *  the combined publish); falls back to the pipeline's ' -JP' series-name suffix for artifacts
+ *  published before the field existed. Defaults to English. */
+export declare function sealedLanguageOf(p: {
+    language?: string;
+    series?: string;
+}): CardLanguage;
 export interface SealedSet {
     id: string;
     name: string;

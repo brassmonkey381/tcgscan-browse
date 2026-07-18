@@ -10,7 +10,7 @@
  * with the price carried separately), so a hit renders + opens its action sheet WITHOUT the
  * card being in the in-memory catalog. Fails soft (empty) — server search is an enhancement.
  */
-import { type CatalogCard } from './catalog';
+import { type CardLanguage, type CatalogCard } from './catalog';
 import type { ParsedQuery } from './query';
 /** One page of server results: tile-ready cards, their prices (by id), and the true total. */
 export interface SearchPage {
@@ -30,17 +30,18 @@ export type ServerFacetSelection = Record<string, string[]>;
  * (the caller accumulates pages); `facets` are exact-match chip selections (AND across facets,
  * OR within). Returns tile-ready cards + their prices + the real total.
  */
-export declare function searchCards(parsed: ParsedQuery, { limit, offset, facets, }?: {
+export declare function searchCards(parsed: ParsedQuery, { limit, offset, facets, languages, }?: {
     limit?: number;
     offset?: number;
     facets?: ServerFacetSelection;
+    languages?: CardLanguage[];
 }): Promise<SearchPage>;
 /**
  * A set's browse-visible cards, straight from PostgREST (no catalog needed) — powers the
  * cold-mode Series → Set → Card drill-down. Sorted like the warm listCards (collector number,
  * then name); cached per set for the session. Fails soft (empty).
  */
-export declare function fetchSetCards(setId: string): Promise<CatalogCard[]>;
+export declare function fetchSetCards(setId: string, languages?: CardLanguage[]): Promise<CatalogCard[]>;
 /**
  * Resolve specific card ids to tile-ready cards without the catalog (cold-mode similar
  * results, multi-select thumbs, …). Order follows the input ids. Fails soft (drops misses).
@@ -54,12 +55,12 @@ export declare function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]>;
  * Exclude-self per facet (server-side), mirroring the warm facetOptions. Returns facet key →
  * values in server order (the kit re-orders for display). Fails soft (empty map).
  */
-export declare function searchFacets(parsed: ParsedQuery, facets?: ServerFacetSelection): Promise<Record<string, string[]>>;
+export declare function searchFacets(parsed: ParsedQuery, facets?: ServerFacetSelection, languages?: CardLanguage[]): Promise<Record<string, string[]>>;
 /**
  * Every card in the recent release window (release_date >= cutoff, upcoming included),
  * newest first — powers the catalog-FREE Recent & Upcoming feed. Fails soft ([]).
  */
-export declare function fetchRecentWindow(cutoff: string, limit?: number): Promise<CatalogCard[]>;
+export declare function fetchRecentWindow(cutoff: string, languages?: CardLanguage[], limit?: number): Promise<CatalogCard[]>;
 /** Set metadata for feed tiles (names, counts, official logos). The table is small (~200 rows). */
 export interface SetMeta {
     id: string;

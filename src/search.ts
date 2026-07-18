@@ -10,7 +10,7 @@
  * with the price carried separately), so a hit renders + opens its action sheet WITHOUT the
  * card being in the in-memory catalog. Fails soft (empty) — server search is an enhancement.
  */
-import { numberKey, type CardKind, type CatalogCard } from './catalog';
+import { numberKey, type CardKind, type CardLanguage, type CatalogCard } from './catalog';
 import { getApiKey, getApiUrl } from './config';
 import type { ParsedQuery } from './query';
 
@@ -101,7 +101,8 @@ export async function searchCards(
     limit = 60,
     offset = 0,
     facets,
-  }: { limit?: number; offset?: number; facets?: ServerFacetSelection } = {},
+    languages,
+  }: { limit?: number; offset?: number; facets?: ServerFacetSelection; languages?: CardLanguage[] } = {},
 ): Promise<SearchPage> {
   const empty: SearchPage = { cards: [], priceById: {}, total: 0 };
   if (!serverSearchAvailable()) return empty;
@@ -120,6 +121,9 @@ export async function searchCards(
         p_dir: parsed.sortDir,
         p_limit: limit,
         p_offset: offset,
+        // Only sent when constrained, so the unconstrained default still matches the pre-language
+        // RPC overload — the language migration only gates language-CONSTRAINED cold search.
+        ...(languages?.length ? { p_lang: languages } : {}),
       }),
     });
     if (!res.ok) return empty;
@@ -137,7 +141,13 @@ export async function searchCards(
 /** The card columns the direct PostgREST fetchers select (matches SearchRow minus cur/score). */
 const CARD_COLS =
   'id,name,number,rarity,card_type,set_id,set_name,series,release_date,' +
-  'illustrator,types,stage,hp,evolution_stage_index,evolves_from,evolution_line,jumbo';
+  'illustrator,types,stage,hp,evolution_stage_index,evolves_from,evolution_line,jumbo,language';
+
+/** PostgREST `&language=in.(...)` clause for a language constraint, or '' when unconstrained.
+ *  Codes are the literal 'en'/'ja' enum values — safe unencoded in the in() list. */
+function langClause(languages?: CardLanguage[]): string {
+  return languages?.length ? `&language=in.(${languages.join(',')})` : '';
+}
 
 /** Per-set card cache for the cold drill-down (setId -> fetched, sorted cards). */
 const setCardsCache = new Map<string, CatalogCard[]>();
@@ -147,20 +157,21 @@ const setCardsCache = new Map<string, CatalogCard[]>();
  * cold-mode Series → Set → Card drill-down. Sorted like the warm listCards (collector number,
  * then name); cached per set for the session. Fails soft (empty).
  */
-export async function fetchSetCards(setId: string): Promise<CatalogCard[]> {
+export async function fetchSetCards(setId: string, languages?: CardLanguage[]): Promise<CatalogCard[]> {
   if (!serverSearchAvailable() || !setId) return [];
-  const hit = setCardsCache.get(setId);
+  const cacheKey = languages?.length ? `${setId}|${languages.join(',')}` : setId;
+  const hit = setCardsCache.get(cacheKey);
   if (hit) return hit;
   try {
     const res = await fetch(
-      `${getApiUrl()}/cards?select=${CARD_COLS}&set_id=eq.${encodeURIComponent(setId)}&browse_visible=is.true&limit=1000`,
+      `${getApiUrl()}/cards?select=${CARD_COLS}&set_id=eq.${encodeURIComponent(setId)}&browse_visible=is.true${langClause(languages)}&limit=1000`,
       { headers: { apikey: getApiKey() } },
     );
     if (!res.ok) return [];
     const cards = ((await res.json()) as SearchRow[])
       .map(rowToCard)
       .sort((a, b) => numberKey(a.number) - numberKey(b.number) || a.name.localeCompare(b.name));
-    setCardsCache.set(setId, cards);
+    setCardsCache.set(cacheKey, cards);
     return cards;
   } catch {
     return [];
@@ -215,6 +226,7 @@ export async function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]> {
 export async function searchFacets(
   parsed: ParsedQuery,
   facets?: ServerFacetSelection,
+  languages?: CardLanguage[],
 ): Promise<Record<string, string[]>> {
   if (!serverSearchAvailable()) return {};
   try {
@@ -228,6 +240,8 @@ export async function searchFacets(
         p_facets: packFacets(facets),
         p_min_price: parsed.minPrice,
         p_max_price: parsed.maxPrice,
+        // See searchCards: only sent when constrained, for pre-migration compatibility.
+        ...(languages?.length ? { p_lang: languages } : {}),
       }),
     });
     if (!res.ok) return {};
@@ -247,11 +261,15 @@ export async function searchFacets(
  * Every card in the recent release window (release_date >= cutoff, upcoming included),
  * newest first — powers the catalog-FREE Recent & Upcoming feed. Fails soft ([]).
  */
-export async function fetchRecentWindow(cutoff: string, limit = 1500): Promise<CatalogCard[]> {
+export async function fetchRecentWindow(
+  cutoff: string,
+  languages?: CardLanguage[],
+  limit = 1500,
+): Promise<CatalogCard[]> {
   if (!serverSearchAvailable()) return [];
   try {
     const res = await fetch(
-      `${getApiUrl()}/cards?select=${CARD_COLS}&release_date=gte.${cutoff}&browse_visible=is.true&order=release_date.desc&limit=${limit}`,
+      `${getApiUrl()}/cards?select=${CARD_COLS}&release_date=gte.${cutoff}&browse_visible=is.true${langClause(languages)}&order=release_date.desc&limit=${limit}`,
       { headers: { apikey: getApiKey() } },
     );
     if (!res.ok) return [];

@@ -19,6 +19,10 @@ const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setTimeou
 /** Real-world size class of a card (drives its pocket footprint in binder UIs). */
 export type CardKind = 'standard' | 'jumbo' | 'vunion';
 
+/** Printing language of a card / sealed product: English or Japanese. Used both on the
+ *  card model and as the upstream `languages` constraint the browse surfaces accept. */
+export type CardLanguage = 'en' | 'ja';
+
 /** A single card from the catalog. `id` is the catalog's stable card id (string). */
 export interface CatalogCard {
   id: string;
@@ -55,7 +59,7 @@ export interface CatalogCard {
   imageSubstituted?: boolean;
   /** Printing language: 'en' (English) | 'ja' (Japanese). Defaults 'en' when a
    *  legacy/EN-only source omits it. Drives the language badge + facet. */
-  language: 'en' | 'ja';
+  language: CardLanguage;
 }
 
 /**

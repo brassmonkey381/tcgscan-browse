@@ -9,6 +9,14 @@
  */
 import { useEffect, useState } from 'react';
 import { getBrowseUrl } from './config';
+/** Derive a sealed product's printing language. Prefers an explicit `language` field (stamped by
+ *  the combined publish); falls back to the pipeline's ' -JP' series-name suffix for artifacts
+ *  published before the field existed. Defaults to English. */
+export function sealedLanguageOf(p) {
+    if (p.language === 'ja' || p.language === 'en')
+        return p.language;
+    return p.series?.endsWith(' -JP') ? 'ja' : 'en';
+}
 class LocalSealed {
     constructor(raw) {
         this.products = [];
@@ -24,6 +32,7 @@ class LocalSealed {
                 image: p.image ?? '',
                 imageSmall: p.image_small ?? '',
                 imageMedium: p.image_medium ?? '',
+                language: sealedLanguageOf(p),
             });
         }
         for (const s of Object.values(raw.sets ?? {})) {

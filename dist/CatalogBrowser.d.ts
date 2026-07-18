@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { type CardAction, type CardActionsFactory } from './actions';
-import { type Catalog, type CatalogCard } from './catalog';
+import { type Catalog, type CardLanguage, type CatalogCard } from './catalog';
 import { type BrowseTheme } from './theme';
 interface CatalogBrowserProps {
     /**
@@ -86,10 +86,18 @@ interface CatalogBrowserProps {
      * Applied once per distinct array reference (pass a fresh array to re-run).
      */
     initialSimilar?: string[];
+    /**
+     * Constrain this browser instance to one or more printing languages — the upstream app decides
+     * which language(s) this browser shows (e.g. an EN-only or JP-only surface). `undefined`/empty =
+     * unconstrained (all languages), the default. When a single language is pinned, the in-UI
+     * language facet chip auto-hides; with both allowed it stays, letting the user toggle within the
+     * bound. Honored on the warm (catalog) and cold (server-search) paths alike.
+     */
+    languages?: CardLanguage[];
 }
 /**
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

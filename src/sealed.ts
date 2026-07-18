@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react';
 
+import type { CardLanguage } from './catalog';
 import { getBrowseUrl } from './config';
 
 export interface SealedProduct {
@@ -20,6 +21,17 @@ export interface SealedProduct {
   image: string; // full-size mirrored jpg URL
   imageSmall: string; // 245px webp
   imageMedium: string; // 640px webp
+  /** Printing language: 'en' | 'ja'. Read from the artifact's `language` field when present;
+   *  otherwise derived from the JP ' -JP' series suffix (see sealedLanguageOf). Defaults 'en'. */
+  language: CardLanguage;
+}
+
+/** Derive a sealed product's printing language. Prefers an explicit `language` field (stamped by
+ *  the combined publish); falls back to the pipeline's ' -JP' series-name suffix for artifacts
+ *  published before the field existed. Defaults to English. */
+export function sealedLanguageOf(p: { language?: string; series?: string }): CardLanguage {
+  if (p.language === 'ja' || p.language === 'en') return p.language;
+  return p.series?.endsWith(' -JP') ? 'ja' : 'en';
 }
 
 export interface SealedSet {
@@ -46,6 +58,7 @@ interface RawSealedProduct {
   image?: string;
   image_small?: string;
   image_medium?: string;
+  language?: string; // 'en' | 'ja' — stamped by the combined publish; absent on older artifacts
 }
 interface RawSealed {
   products: Record<string, RawSealedProduct>;
@@ -68,6 +81,7 @@ class LocalSealed implements SealedCatalog {
         image: p.image ?? '',
         imageSmall: p.image_small ?? '',
         imageMedium: p.image_medium ?? '',
+        language: sealedLanguageOf(p),
       });
     }
     for (const s of Object.values(raw.sets ?? {})) {

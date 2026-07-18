@@ -58,6 +58,7 @@ import {
   seriesDateRange,
   useCatalogStatus,
   type Catalog,
+  type CardLanguage,
   type CatalogCard,
   type CatalogLoadStatus,
   type CatalogSeries,
@@ -405,6 +406,14 @@ interface CatalogBrowserProps {
    * Applied once per distinct array reference (pass a fresh array to re-run).
    */
   initialSimilar?: string[];
+  /**
+   * Constrain this browser instance to one or more printing languages — the upstream app decides
+   * which language(s) this browser shows (e.g. an EN-only or JP-only surface). `undefined`/empty =
+   * unconstrained (all languages), the default. When a single language is pinned, the in-UI
+   * language facet chip auto-hides; with both allowed it stays, letting the user toggle within the
+   * bound. Honored on the warm (catalog) and cold (server-search) paths alike.
+   */
+  languages?: CardLanguage[];
 }
 
 /**
@@ -428,6 +437,7 @@ export function CatalogBrowser({
   cardTileWidth = TARGET_TILE_W,
   taxTileHeight = TAX_TILE_H,
   initialSimilar,
+  languages,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
   const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
@@ -436,6 +446,18 @@ export function CatalogBrowser({
   useImageManifest();
   // Catalog load phase — drives the search-source badge (on-device vs, later, server search).
   const catalogStatus = useCatalogStatus();
+
+  // Upstream language constraint → a stable Set (null = unconstrained). Keyed by the sorted codes
+  // so an inline array prop doesn't thrash memo identity. `langOk` gates the warm/local card lists;
+  // the cold server path is constrained server-side via the `languages` arg to the RPC calls.
+  const langSet = useMemo(
+    () => (languages && languages.length ? new Set(languages) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [languages?.join(',')],
+  );
+  const langOk = (c: CatalogCard) => !langSet || langSet.has(c.language);
+  // Stable array form of the same constraint for the cold server RPCs (undefined = unconstrained).
+  const langArg = useMemo(() => (langSet ? ([...langSet] as CardLanguage[]) : undefined), [langSet]);
 
   // Hydrate from the session browse state so reopening the picker restores the
   // last search/drill-down/similar view (one search often feeds several pockets).
@@ -494,7 +516,7 @@ export function CatalogBrowser({
     }
     let stale = false;
     setColdSetLoading(true);
-    fetchSetCards(setId).then((cards) => {
+    fetchSetCards(setId, langArg).then((cards) => {
       if (stale) return;
       setColdSetCards(cards);
       setColdSetLoading(false);
@@ -502,7 +524,7 @@ export function CatalogBrowser({
     return () => {
       stale = true;
     };
-  }, [catalog, coldSearch, setId]);
+  }, [catalog, coldSearch, setId, langArg]);
   /** Resolve ids to cards: catalog when warm, a server fetch when cold. */
   const resolveIds = useCallback(
     async (ids: string[]): Promise<CatalogCard[]> => {
@@ -654,17 +676,20 @@ export function CatalogBrowser({
   // (bare words match name/artist/set/series/rarity/type/stage — name hits rank first),
   // similar-mode results, or the set's cards.
   const viewCards = useMemo<CatalogCard[]>(() => {
-    // Cold search: the accumulated server-search pages.
+    // Cold search: the accumulated server-search pages (already language-constrained server-side).
     if (!catalog && searching) return serverCards;
-    if (catalog && searching) return runQuery(catalog.listAll(), effParsed, priceOf, Infinity);
+    if (catalog && searching)
+      return runQuery(catalog.listAll().filter(langOk), effParsed, priceOf, Infinity);
     // Set cards / similar results (warm from the catalog, cold from the per-set fetch): keep
     // their natural order (collector number / best-match) until the UI sort control asks for
-    // something else, then re-sort by the chosen field.
-    const base = similarTo ? similarCards : setId ? (catalog ? catalog.listCards(setId) : coldSetCards) : [];
+    // something else, then re-sort by the chosen field. The language bound applies to every local
+    // list so facet options + counts stay consistent with what's shown.
+    const rawBase = similarTo ? similarCards : setId ? (catalog ? catalog.listCards(setId) : coldSetCards) : [];
+    const base = langSet ? rawBase.filter(langOk) : rawBase;
     if (effSort.field === 'relevance' || base.length === 0) return base;
     return sortCards(base, effParsed, priceOf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, searching, serverCards, coldSetCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary]);
+  }, [catalog, searching, serverCards, coldSetCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary, langSet]);
   viewCardsRef.current = viewCards;
 
   // Cold search: (re)fetch page 0 when the query/sort/facet selection changes; the token guard
@@ -673,7 +698,12 @@ export function CatalogBrowser({
     async (offset: number, replace: boolean) => {
       const token = ++serverToken.current;
       setServerLoading(true);
-      const page = await searchCards(effParsed, { limit: PAGE_SIZE, offset, facets: selection });
+      const page = await searchCards(effParsed, {
+        limit: PAGE_SIZE,
+        offset,
+        facets: selection,
+        languages: langArg,
+      });
       if (serverToken.current !== token) return; // a newer request superseded this one
       serverOffset.current = offset + page.cards.length;
       setServerTotal(page.total);
@@ -681,7 +711,7 @@ export function CatalogBrowser({
       setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
       setServerLoading(false);
     },
-    [effParsed, selection],
+    [effParsed, selection, langArg],
   );
   useEffect(() => {
     if (!coldSearch || !searching) {
@@ -694,7 +724,7 @@ export function CatalogBrowser({
     fetchServerPage(0, true);
     // Facet options for the same query (exclude-self server-side) — drives the cold facet bar.
     let stale = false;
-    searchFacets(effParsed, selection).then((f) => {
+    searchFacets(effParsed, selection, langArg).then((f) => {
       if (!stale) setServerFacets(f);
     });
     return () => {

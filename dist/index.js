@@ -17,7 +17,7 @@ export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE } from './theme';
 export { findSimilar, findSimilarToMany, findSimilarWeighted, refineWeights, similarAvailable, } from './similar';
 export { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, } from './search';
 export { loadTaxonomy, useTaxonomy } from './taxonomy';
-export { loadSealed, loadSealedPrices, useSealed, } from './sealed';
+export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, } from './sealed';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, } from './query';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, } from './state';
 export { CatalogBrowser } from './CatalogBrowser';

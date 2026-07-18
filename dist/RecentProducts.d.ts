@@ -1,4 +1,4 @@
-import { type Catalog, type CatalogCard } from './catalog';
+import { type CardLanguage, type Catalog, type CatalogCard } from './catalog';
 import { type BrowseTheme } from './theme';
 /** The set identity a feed tile carries — same fields warm (catalog) and cold (REST). */
 export interface FeedSet {
@@ -31,6 +31,12 @@ interface RecentProductsProps {
      * Omitted → every rarity, newest-first upcoming+released shuffle capped at cardLimit.
      */
     rarityFilter?: (card: CatalogCard) => boolean;
+    /**
+     * Constrain the feed to one or more printing languages — the upstream app decides which
+     * language(s) this feed shows. `undefined`/empty = all languages (default). Honored on both the
+     * warm (catalog) and cold (server) paths; cold fetches are constrained server-side.
+     */
+    languages?: CardLanguage[];
     /** Injected color contract (partial override merged over the light default). */
     theme?: Partial<BrowseTheme>;
     /** Header title. Default "Recent & Upcoming". */
@@ -59,5 +65,5 @@ interface RecentProductsProps {
      */
     onAddToBinder?: (card: CatalogCard) => void;
 }
-export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, rarityFilter, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }: RecentProductsProps): import("react").JSX.Element | null;
+export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, rarityFilter, languages, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }: RecentProductsProps): import("react").JSX.Element | null;
 export {};

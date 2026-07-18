@@ -49,6 +49,7 @@ export {
   type CatalogSeries,
   type CatalogSet,
   type CardKind,
+  type CardLanguage,
   type RawCard,
   type RawCatalog,
   type RawSeries,
@@ -122,6 +123,7 @@ export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
 export {
   loadSealed,
   loadSealedPrices,
+  sealedLanguageOf,
   useSealed,
   type SealedCatalog,
   type SealedProduct,

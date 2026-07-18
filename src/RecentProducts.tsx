@@ -31,7 +31,7 @@ import {
 } from 'react-native';
 
 import { CardActionModal } from './CardActionModal';
-import { formatSetDate, type Catalog, type CatalogCard } from './catalog';
+import { formatSetDate, type CardLanguage, type Catalog, type CatalogCard } from './catalog';
 import { cardThumbUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
@@ -81,6 +81,12 @@ interface RecentProductsProps {
    * Omitted → every rarity, newest-first upcoming+released shuffle capped at cardLimit.
    */
   rarityFilter?: (card: CatalogCard) => boolean;
+  /**
+   * Constrain the feed to one or more printing languages — the upstream app decides which
+   * language(s) this feed shows. `undefined`/empty = all languages (default). Honored on both the
+   * warm (catalog) and cold (server) paths; cold fetches are constrained server-side.
+   */
+  languages?: CardLanguage[];
   /** Injected color contract (partial override merged over the light default). */
   theme?: Partial<BrowseTheme>;
   /** Header title. Default "Recent & Upcoming". */
@@ -126,6 +132,7 @@ export function RecentProducts({
   montageCount = 3,
   cardLimit = 40,
   rarityFilter,
+  languages,
   theme: themeProp,
   title = 'Recent & Upcoming',
   onFindSimilar,
@@ -140,6 +147,16 @@ export function RecentProducts({
 
   const priceSummary = usePriceSummary();
   const priceOf = (id: string) => priceSummary?.[id]?.cur ?? 0;
+
+  // Upstream language constraint. `langSet` (null = unconstrained) gates the warm card lists;
+  // cold fetches are constrained server-side via `languages`. Keyed by sorted codes for stable
+  // memo identity against an inline array prop.
+  const langSet = useMemo(
+    () => (languages && languages.length ? new Set(languages) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [languages?.join(',')],
+  );
+  const langOk = (c: CatalogCard) => !langSet || langSet.has(c.language);
 
   // Today (yyyy-mm-dd) for the upcoming/released split, and the release-window cutoff
   // `monthsBack` months earlier. Computed once (setMonth handles year rollover).
@@ -156,15 +173,17 @@ export function RecentProducts({
     null,
   );
   useEffect(() => {
-    if (catalog || cold || !serverSearchAvailable()) return;
+    if (catalog || !serverSearchAvailable()) return;
     let live = true;
-    Promise.all([fetchRecentWindow(cutoff), fetchSetMeta()]).then(([cards, meta]) => {
+    Promise.all([fetchRecentWindow(cutoff, languages), fetchSetMeta()]).then(([cards, meta]) => {
       if (live) setCold({ cards, meta });
     });
     return () => {
       live = false;
     };
-  }, [catalog, cold, cutoff]);
+    // Refetch when the window or language constraint changes (keyed by sorted codes, not identity).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, cutoff, languages?.join(',')]);
 
   const setTiles = useMemo<SetTile[]>(() => {
     // The set's TCGPlayer category page. TCGPlayer's slug is derivable from the set name with
@@ -172,8 +191,10 @@ export function RecentProducts({
     // rest (lowercase, non-alphanumeric → dashes).
     const shopFor = (name: string) => setShopUrl(name.replace(/&/g, ' and '));
     const tile = (set: FeedSet, cards: CatalogCard[]): SetTile => {
-      // Rarity gate (e.g. "double rares and higher") applies to the montage AND the card pool.
-      const eligible = rarityFilter ? cards.filter(rarityFilter) : cards;
+      // Language bound + rarity gate (e.g. "double rares and higher") apply to the montage AND the
+      // card pool. (Cold cards arrive already language-filtered from the server; langOk is then a
+      // no-op — but keeping it here makes the warm path correct with one rule.)
+      const eligible = cards.filter((c) => langOk(c) && (!rarityFilter || rarityFilter(c)));
       const priced = [...eligible].sort((a, b) => priceOf(b.id) - priceOf(a.id));
       return {
         set,
@@ -233,24 +254,36 @@ export function RecentProducts({
       .filter((t) => t.montage.length > 0)
       .sort((a, b) => b.set.releaseDate.localeCompare(a.set.releaseDate));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, cold, cutoff, montageCount, priceSummary, today, rarityFilter]);
+  }, [catalog, cold, cutoff, montageCount, priceSummary, today, rarityFilter, langSet]);
 
+  // When language-constrained (warm), pull the FULL upcoming/released list and filter before the
+  // cap — capping first would undercount (e.g. a JP-only feed when recent cards are mostly EN).
   const upcomingCards = useMemo(() => {
-    if (catalog) return catalog.upcomingCards(today, cardLimit);
+    if (catalog)
+      return catalog
+        .upcomingCards(today, langSet ? Infinity : cardLimit)
+        .filter(langOk)
+        .slice(0, cardLimit);
     if (!cold) return [];
     return [...cold.cards]
       .filter((c) => c.releaseDate > today)
       .sort((a, b) => a.releaseDate.localeCompare(b.releaseDate) || a.name.localeCompare(b.name))
       .slice(0, cardLimit);
-  }, [catalog, cold, today, cardLimit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, cold, today, cardLimit, langSet]);
   const releasedCards = useMemo(() => {
-    if (catalog) return catalog.releasedCards(today, cardLimit);
+    if (catalog)
+      return catalog
+        .releasedCards(today, langSet ? Infinity : cardLimit)
+        .filter(langOk)
+        .slice(0, cardLimit);
     if (!cold) return [];
     return [...cold.cards]
       .filter((c) => c.releaseDate && c.releaseDate <= today)
       .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
       .slice(0, cardLimit);
-  }, [catalog, cold, today, cardLimit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, cold, today, cardLimit, langSet]);
 
   // With a rarity filter, show EVERY matching card from the sets in the window, ordered by
   // release date descending (newest set first; priciest first within a set). The filter keeps it
