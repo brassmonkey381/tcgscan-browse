@@ -25,9 +25,10 @@ interface RecentProductsProps {
     cardLimit?: number;
     /**
      * Keep only cards this predicate accepts (e.g. "double rares and higher") in the card carousel
-     * AND the set-tile montages. When set, the card carousel is also built to SPAN every set in the
-     * window — one card from each set per round (priciest first), so all shown sets are represented
-     * rather than the newest sets crowding out the rest. Omitted → every rarity, newest-first mix.
+     * AND the set-tile montages. When set, the card carousel shows EVERY matching card from the sets
+     * in the window, ordered by release date descending (newest sets first; priciest first within a
+     * set) — the filter is what keeps it tight, so pass a large/Infinite `cardLimit` for no cap.
+     * Omitted → every rarity, newest-first upcoming+released shuffle capped at cardLimit.
      */
     rarityFilter?: (card: CatalogCard) => boolean;
     /** Injected color contract (partial override merged over the light default). */

@@ -37,25 +37,6 @@ const TILE_GAP = 10;
 const SETS_PER_VIEW = 4;
 /** Card carousels pack to roughly this tile width, then show as many as fit. */
 const CARD_TARGET_W = 104;
-/** Interleave one card from each set per round (lists are priciest-first), capped at `limit`.
- *  Guarantees every set is represented before any set contributes a second card. */
-function spanSets(perSet, limit) {
-    const out = [];
-    for (let round = 0; out.length < limit; round += 1) {
-        let progressed = false;
-        for (const cards of perSet) {
-            if (round < cards.length) {
-                out.push(cards[round]);
-                progressed = true;
-                if (out.length >= limit)
-                    break;
-            }
-        }
-        if (!progressed)
-            break;
-    }
-    return out;
-}
 export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, rarityFilter, theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -165,10 +146,20 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
             .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
             .slice(0, cardLimit);
     }, [catalog, cold, today, cardLimit]);
-    // With a rarity filter, the card carousel spans the SAME sets shown above — one card from each
-    // set per round (priciest first), capped at cardLimit — so every set is represented. Without a
-    // filter, keep the classic newest-first upcoming+released mix (shuffled below).
-    const spannedCards = useMemo(() => (rarityFilter ? spanSets(setTiles.map((t) => t.cards), cardLimit) : null), [rarityFilter, setTiles, cardLimit]);
+    // With a rarity filter, show EVERY matching card from the sets in the window, ordered by
+    // release date descending (newest set first; priciest first within a set). The filter keeps it
+    // tight; `cardLimit` may be Infinity for no cap. Without a filter, the classic shuffle below.
+    const filteredCards = useMemo(() => {
+        if (!rarityFilter)
+            return null;
+        return setTiles
+            .flatMap((t) => t.cards) // already rarity-filtered, priciest-first per set
+            .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) ||
+            priceOf(b.id) - priceOf(a.id) ||
+            a.name.localeCompare(b.name))
+            .slice(0, cardLimit);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rarityFilter, setTiles, cardLimit, priceSummary]);
     // One carousel of cards: upcoming + recently-released, shuffled into a single mix. Seeded by
     // the concatenated ids (mulberry32) so it's stable across re-renders but reshuffles when the
     // window changes — no Math.random (unstable + unavailable in some runtimes).
@@ -195,9 +186,9 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
         }
         return arr;
     }, [upcomingCards, releasedCards]);
-    // The cards actually shown: the set-spanning premium pool when a rarity filter is set, else
-    // the classic shuffled mix.
-    const cardItems = spannedCards ?? mixedCards;
+    // The cards actually shown: the filtered, date-desc premium pool when a rarity filter is set,
+    // else the classic shuffled mix.
+    const cardItems = filteredCards ?? mixedCards;
     // Measured width → how many card tiles a card carousel shows at once.
     const [width, setWidth] = useState(0);
     const onLayout = (e) => {
