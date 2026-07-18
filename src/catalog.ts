@@ -81,6 +81,8 @@ export interface CatalogSet {
   coverUri?: string; // official set logo, else undefined (blank tile)
   releaseDate: string; // set launch (earliest card release_date), yyyy-mm-dd or ""
   lastPrinted: string; // latest card release_date in the set
+  /** Printing language of this set (a set is single-language). See `resolveLanguage`. */
+  language: CardLanguage;
 }
 
 export interface CatalogSeries {
@@ -91,6 +93,22 @@ export interface CatalogSeries {
   coverUri?: string; // official series logo, else undefined (blank tile)
   releaseDate: string; // newest set's release (for recency sort), yyyy-mm-dd or ""
   firstDate: string; // oldest set's release
+  /** Printing language of this series (JP series are distinct entries). See `resolveLanguage`. */
+  language: CardLanguage;
+}
+
+/**
+ * Language of a set/series when the data has no explicit field yet: Japanese entries are
+ * suffixed " -JP" in the taxonomy (e.g. "Scarlet & Violet -JP"); everything else is English.
+ * A stopgap heuristic — `resolveLanguage` prefers a real `language` field when present.
+ */
+export function languageFromName(name: string): CardLanguage {
+  return name.trim().toLowerCase().endsWith('-jp') ? 'ja' : 'en';
+}
+
+/** Prefer an explicit language value from the data; otherwise fall back to the name heuristic. */
+export function resolveLanguage(explicit: unknown, name: string): CardLanguage {
+  return explicit === 'ja' || explicit === 'en' ? explicit : languageFromName(name);
 }
 
 export interface Catalog {
@@ -163,12 +181,14 @@ export interface RawSet {
   card_count?: number;
   logo?: string; // set-art logo URL, if matched
   symbol?: string;
+  language?: 'en' | 'ja'; // explicit printing language when the data provides it (else derived)
 }
 export interface RawSeries {
   name: string;
   set_ids: (number | string)[];
   card_count?: number;
   logo?: string; // series logo URL, if available
+  language?: 'en' | 'ja'; // explicit printing language when the data provides it (else derived)
 }
 export interface RawVUnionGroup {
   base?: string;
@@ -361,6 +381,8 @@ class LocalCatalog implements Catalog {
         coverUri: raw_s.logo, // official set logo if matched, else blank
         releaseDate: dates[0] ?? '',
         lastPrinted: dates[dates.length - 1] ?? '',
+        // Prefer an explicit field, else this set's cards (uniform language), else the name.
+        language: resolveLanguage(raw_s.language ?? cards[0]?.language, raw_s.series ?? raw_s.name ?? ''),
       });
     }
 
@@ -381,6 +403,8 @@ class LocalCatalog implements Catalog {
         coverUri: raw_series.logo, // dedicated series-art image, else blank
         firstDate: setDates[0] ?? '',
         releaseDate: setDates[setDates.length - 1] ?? '',
+        // Prefer an explicit field, else a member set's language, else the series name.
+        language: resolveLanguage(raw_series.language ?? setsInSeries[0]?.language, raw_series.name),
       });
     }
   }

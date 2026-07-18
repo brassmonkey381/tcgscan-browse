@@ -57,6 +57,8 @@ export interface CatalogSet {
     coverUri?: string;
     releaseDate: string;
     lastPrinted: string;
+    /** Printing language of this set (a set is single-language). See `resolveLanguage`. */
+    language: CardLanguage;
 }
 export interface CatalogSeries {
     id: string;
@@ -66,7 +68,17 @@ export interface CatalogSeries {
     coverUri?: string;
     releaseDate: string;
     firstDate: string;
+    /** Printing language of this series (JP series are distinct entries). See `resolveLanguage`. */
+    language: CardLanguage;
 }
+/**
+ * Language of a set/series when the data has no explicit field yet: Japanese entries are
+ * suffixed " -JP" in the taxonomy (e.g. "Scarlet & Violet -JP"); everything else is English.
+ * A stopgap heuristic — `resolveLanguage` prefers a real `language` field when present.
+ */
+export declare function languageFromName(name: string): CardLanguage;
+/** Prefer an explicit language value from the data; otherwise fall back to the name heuristic. */
+export declare function resolveLanguage(explicit: unknown, name: string): CardLanguage;
 export interface Catalog {
     listSeries(): CatalogSeries[];
     getSeries(seriesId: string): CatalogSeries | undefined;
@@ -134,12 +146,14 @@ export interface RawSet {
     card_count?: number;
     logo?: string;
     symbol?: string;
+    language?: 'en' | 'ja';
 }
 export interface RawSeries {
     name: string;
     set_ids: (number | string)[];
     card_count?: number;
     logo?: string;
+    language?: 'en' | 'ja';
 }
 export interface RawVUnionGroup {
     base?: string;

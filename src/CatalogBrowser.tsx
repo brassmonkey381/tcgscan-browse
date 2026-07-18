@@ -655,8 +655,17 @@ export function CatalogBrowser({
             : 'series';
   const isCardLevel = level === 'cards' || level === 'search' || level === 'similar';
 
-  const series = useMemo(() => tax?.listSeries() ?? [], [tax]);
-  const sets = useMemo(() => (tax && seriesId ? tax.listSets(seriesId) : []), [tax, seriesId]);
+  // Series + sets are language-tagged (explicit field, else derived) — constrain the taxonomy
+  // drill-down to the allowed language(s), same as the card lists, so an EN-only browser never
+  // shows JP series/set tiles.
+  const series = useMemo(
+    () => (tax?.listSeries() ?? []).filter((s) => !langSet || langSet.has(s.language)),
+    [tax, langSet],
+  );
+  const sets = useMemo(
+    () => (tax && seriesId ? tax.listSets(seriesId) : []).filter((s) => !langSet || langSet.has(s.language)),
+    [tax, seriesId, langSet],
+  );
 
   // The parsed search-box query (grammar: words, key:value fields, price bounds, sort).
   const parsed = useMemo(() => parseQuery(q), [q]);

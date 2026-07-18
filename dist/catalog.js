@@ -14,6 +14,18 @@ const BUILD_CHUNK = 4000;
 /** Yield a macrotask so pending input/paint can run between build batches. */
 const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve, 0));
 /**
+ * Language of a set/series when the data has no explicit field yet: Japanese entries are
+ * suffixed " -JP" in the taxonomy (e.g. "Scarlet & Violet -JP"); everything else is English.
+ * A stopgap heuristic — `resolveLanguage` prefers a real `language` field when present.
+ */
+export function languageFromName(name) {
+    return name.trim().toLowerCase().endsWith('-jp') ? 'ja' : 'en';
+}
+/** Prefer an explicit language value from the data; otherwise fall back to the name heuristic. */
+export function resolveLanguage(explicit, name) {
+    return explicit === 'ja' || explicit === 'en' ? explicit : languageFromName(name);
+}
+/**
  * A card's footprint kind. The oversized flag (`jumbo: bool`) is the real signal in
  * today's slim catalog; `raw.kind` is a legacy string kept only so an older fat catalog
  * still resolves. (V-UNION is derived separately from `vunionGroups`, not from here.)
@@ -182,6 +194,8 @@ class LocalCatalog {
                 coverUri: raw_s.logo, // official set logo if matched, else blank
                 releaseDate: dates[0] ?? '',
                 lastPrinted: dates[dates.length - 1] ?? '',
+                // Prefer an explicit field, else this set's cards (uniform language), else the name.
+                language: resolveLanguage(raw_s.language ?? cards[0]?.language, raw_s.series ?? raw_s.name ?? ''),
             });
         }
         for (const raw_series of Object.values(raw.series)) {
@@ -201,6 +215,8 @@ class LocalCatalog {
                 coverUri: raw_series.logo, // dedicated series-art image, else blank
                 firstDate: setDates[0] ?? '',
                 releaseDate: setDates[setDates.length - 1] ?? '',
+                // Prefer an explicit field, else a member set's language, else the series name.
+                language: resolveLanguage(raw_series.language ?? setsInSeries[0]?.language, raw_series.name),
             });
         }
     }

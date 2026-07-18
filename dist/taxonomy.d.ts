@@ -1,4 +1,4 @@
-import type { CatalogSeries, CatalogSet } from './catalog';
+import { type CatalogSeries, type CatalogSet } from './catalog';
 /** The subset of the catalog surface the drill-down needs (Catalog satisfies this). */
 export interface TaxonomySource {
     listSeries(): CatalogSeries[];

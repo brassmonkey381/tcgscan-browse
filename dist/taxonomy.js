@@ -8,6 +8,7 @@
  * renders either source identically.
  */
 import { useEffect, useState } from 'react';
+import { resolveLanguage } from './catalog';
 import { getBrowseUrl } from './config';
 /** Newest release first; empty dates sink; ties by name — matches the catalog ordering. */
 function byReleaseDesc(a, b) {
@@ -29,6 +30,8 @@ class LocalTaxonomy {
                 coverUri: s.logo,
                 releaseDate: s.release_date ?? '',
                 lastPrinted: s.last_printed ?? '',
+                // No cards cold — derive from the set's SERIES name (which carries the " -JP" marker).
+                language: resolveLanguage(s.language, s.series ?? s.name ?? ''),
             });
         }
         for (const raw_series of Object.values(raw.series ?? {})) {
@@ -45,6 +48,7 @@ class LocalTaxonomy {
                 coverUri: raw_series.logo,
                 firstDate: dates[0] ?? '',
                 releaseDate: dates[dates.length - 1] ?? '',
+                language: resolveLanguage(raw_series.language, raw_series.name),
             });
         }
     }

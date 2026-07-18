@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react';
 
-import type { CatalogSeries, CatalogSet } from './catalog';
+import { resolveLanguage, type CatalogSeries, type CatalogSet } from './catalog';
 import { getBrowseUrl } from './config';
 
 /** The subset of the catalog surface the drill-down needs (Catalog satisfies this). */
@@ -31,12 +31,14 @@ interface RawTaxSet {
   logo?: string;
   release_date?: string;
   last_printed?: string;
+  language?: 'en' | 'ja'; // explicit printing language when provided (else derived from name)
 }
 interface RawTaxSeries {
   name: string;
   set_ids?: (string | number)[];
   card_count?: number;
   logo?: string;
+  language?: 'en' | 'ja'; // explicit printing language when provided (else derived from name)
 }
 interface RawTaxonomy {
   counts?: { cards?: number };
@@ -71,6 +73,8 @@ class LocalTaxonomy implements TaxonomySource {
         coverUri: s.logo,
         releaseDate: s.release_date ?? '',
         lastPrinted: s.last_printed ?? '',
+        // No cards cold — derive from the set's SERIES name (which carries the " -JP" marker).
+        language: resolveLanguage(s.language, s.series ?? s.name ?? ''),
       });
     }
     for (const raw_series of Object.values(raw.series ?? {})) {
@@ -87,6 +91,7 @@ class LocalTaxonomy implements TaxonomySource {
         coverUri: raw_series.logo,
         firstDate: dates[0] ?? '',
         releaseDate: dates[dates.length - 1] ?? '',
+        language: resolveLanguage(raw_series.language, raw_series.name),
       });
     }
   }
