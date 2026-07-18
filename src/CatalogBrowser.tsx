@@ -44,6 +44,12 @@ import {
   type QuerySort,
   type SortDir,
 } from './query';
+import {
+  CARD_GRID_GAP,
+  cardGridColumns,
+  cardTierFor,
+  cardTileWidthFor,
+} from './cardSize';
 import { browseState, subscribeBrowseCommand, type CardSize } from './state';
 import { CardActionModal, MultiCardActionModal } from './CardActionModal';
 import { SeriesAnalytics, SetAnalytics } from './analytics';
@@ -84,14 +90,7 @@ import { resolveTheme, tileShadow, type BrowseTheme } from './theme';
 const PAGE_SIZE = 90;
 /** Dense grid tuning: aim each card tile at ~this width, then pack as many columns as fit. */
 const TARGET_TILE_W = 72;
-/** Card grid columns per Size step, as a fraction of the base packing for `cardTileWidth`
- *  (S = the dense base, M/L progressively fewer columns → larger cards). Proportional rather than
- *  a fixed column delta, so the step is meaningful on wide/desktop views too; clamps to ≥1 so L
- *  can reach full-width on a narrow phone. */
-const SIZE_COL_FRACTION: Record<CardSize, number> = { S: 1, M: 0.72, L: 0.45 };
-/** Above this rendered tile width, switch card thumbs to the 640px tier so big cards stay crisp. */
-const HIRES_TILE_W = 150;
-const GRID_GAP = 6;
+const GRID_GAP = CARD_GRID_GAP;
 const CARD_ASPECT = 88 / 63; // height / width of a standard portrait card
 /** Fixed extra height under each card thumb: name line + its margin + inter-row gap. */
 const CARD_LABEL_H = 14;
@@ -815,10 +814,9 @@ export function CatalogBrowser({
     if (containerWidth <= 0) {
       return { numColumns: 4, tileW: cardTileWidth, taxCols: 3, taxTileW: TARGET_TAX_TILE_W };
     }
-    // Base packing for `cardTileWidth`, scaled down by the Size step (fewer columns → bigger cards).
-    const baseCols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (cardTileWidth + GRID_GAP)));
-    const cCols = Math.max(1, Math.round(baseCols * SIZE_COL_FRACTION[cardSize]));
-    const cW = Math.floor((containerWidth - GRID_GAP * (cCols - 1)) / cCols);
+    // Card grid columns/width for the Size step — the shared kit norm (see cardSize.ts).
+    const cCols = cardGridColumns(containerWidth, cardTileWidth, cardSize, GRID_GAP);
+    const cW = cardTileWidthFor(containerWidth, cCols, GRID_GAP);
     // Series/set tiles: 3–5 columns depending on page width (a bigger target than card tiles).
     const tCols = Math.max(3, Math.min(5, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
     const tW = Math.floor((containerWidth - GRID_GAP * (tCols - 1)) / tCols);
@@ -1211,7 +1209,7 @@ export function CatalogBrowser({
         card={c}
         width={tileW}
         // Big tiles pull the 640px thumb so they don't upscale a 245px webp.
-        tier={tileW >= HIRES_TILE_W ? 640 : 245}
+        tier={cardTierFor(tileW)}
         selected={c.id === selectedCardId}
         // In select mode (toggle, or web Ctrl/Shift) a tap toggles selection; else it opens
         // the single-card sheet.

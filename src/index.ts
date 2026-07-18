@@ -159,6 +159,16 @@ export {
   type CardSize,
 } from './state';
 
+export {
+  CARD_SIZES,
+  CARD_SIZE_FRACTION,
+  CARD_GRID_GAP,
+  CARD_HIRES_TILE_W,
+  cardGridColumns,
+  cardTileWidthFor,
+  cardTierFor,
+} from './cardSize';
+
 export { CatalogBrowser } from './CatalogBrowser';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts, type FeedSet } from './RecentProducts';
