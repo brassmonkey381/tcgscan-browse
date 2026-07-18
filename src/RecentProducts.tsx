@@ -434,8 +434,8 @@ export function RecentProducts({
     <Pressable
       style={styles.scard}
       onPress={() => setActionCard(card)}
-      accessibilityLabel={`${card.name} actions`}>
-      <CardThumb card={card} styles={styles} />
+      accessibilityLabel={`${card.name} actions${card.releaseDate > today ? ' (upcoming)' : ''}`}>
+      <CardThumb card={card} styles={styles} upcoming={!!card.releaseDate && card.releaseDate > today} />
       <Text style={styles.scardName} numberOfLines={1}>
         {card.name}
       </Text>
@@ -622,7 +622,16 @@ function formatFullDate(iso: string): string {
  * flat-path 404 still retries the hashed URL once the image manifest lands (otherwise a
  * real card would latch onto the placeholder forever).
  */
-function CardThumb({ card, styles }: { card: CatalogCard; styles: Styles }) {
+function CardThumb({
+  card,
+  styles,
+  upcoming = false,
+}: {
+  card: CatalogCard;
+  styles: Styles;
+  /** Not yet released — overlays the same "Upcoming" badge the set tiles carry. */
+  upcoming?: boolean;
+}) {
   const uri = cardThumbUrl(card.id, 245);
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const missing = !uri || failedUri === uri;
@@ -645,6 +654,11 @@ function CardThumb({ card, styles }: { card: CatalogCard; styles: Styles }) {
           onError={() => setFailedUri(uri)}
         />
       )}
+      {upcoming ? (
+        <View style={styles.badge} pointerEvents="none">
+          <Text style={styles.badgeText}>Upcoming</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
