@@ -19,7 +19,7 @@ export { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearch
 export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, type SealedCatalog, type SealedProduct, type SealedSet, } from './sealed';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, type CompareField, type CompareOp, type Comparison, type FieldKey, type ManualSection, type ParsedQuery, type QueryableCard, type QuerySort, type SortDir, } from './query';
-export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, } from './state';
+export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, type CardSize, } from './state';
 export { CatalogBrowser } from './CatalogBrowser';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts, type FeedSet } from './RecentProducts';

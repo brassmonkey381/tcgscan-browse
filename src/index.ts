@@ -156,6 +156,7 @@ export {
   subscribeBrowseCommand,
   type BrowseCommand,
   type BrowseState,
+  type CardSize,
 } from './state';
 
 export { CatalogBrowser } from './CatalogBrowser';

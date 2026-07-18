@@ -10,6 +10,10 @@ import type { CatalogCard } from './catalog';
 import type { QuerySort, SortDir } from './query';
 import type { SimilarStep } from './similar';
 
+/** Rendered card-tile size step, chosen via the browser's Size control. Scales the
+ *  consumer's `cardTileWidth` (S = smaller/more columns, L = larger/fewer). */
+export type CardSize = 'S' | 'M' | 'L';
+
 export interface BrowseState {
   cardQuery: string;
   seriesId: string | null;
@@ -18,6 +22,8 @@ export interface BrowseState {
   selection: Record<string, string[]>;
   /** Sort chosen via the UI sort control; null follows the search box's `sort:` (or relevance). */
   sortSel: { field: QuerySort; dir: SortDir } | null;
+  /** Card-tile size step chosen via the Size control (scales `cardTileWidth`). */
+  cardSize: CardSize;
   /** The source card(s) a similarity search was run on: their ids + a short label. */
   similarTo: { ids: string[]; name: string } | null;
   similarCards: CatalogCard[];
@@ -35,6 +41,7 @@ export const browseState: BrowseState = {
   setId: null,
   selection: {},
   sortSel: null,
+  cardSize: 'M',
   similarTo: null,
   similarCards: [],
   similarSteps: [],

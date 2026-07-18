@@ -42,6 +42,12 @@ import { resolveTheme, tileShadow } from './theme';
 const PAGE_SIZE = 90;
 /** Dense grid tuning: aim each card tile at ~this width, then pack as many columns as fit. */
 const TARGET_TILE_W = 72;
+/** The Size control shifts the card grid by this many columns off the base packing (S = +2
+ *  columns → smaller cards, M = the base, L = −2 → larger). A column delta rather than a width
+ *  factor, so the step stays visible even on narrow phones where the base sits at the 3-col floor. */
+const SIZE_COL_DELTA = { S: 2, M: 0, L: -2 };
+/** Above this rendered tile width, switch card thumbs to the 640px tier so big cards stay crisp. */
+const HIRES_TILE_W = 150;
 const GRID_GAP = 6;
 const CARD_ASPECT = 88 / 63; // height / width of a standard portrait card
 /** Fixed extra height under each card thumb: name line + its margin + inter-row gap. */
@@ -86,6 +92,12 @@ const SORT_OPTIONS = [
     { field: 'hp', label: 'HP' },
     { field: 'stage', label: 'Evolution' },
     { field: 'name', label: 'Name' },
+];
+/** UI size control: the tile-size steps offered by the Size chips. */
+const SIZE_OPTIONS = [
+    { size: 'S', label: 'S' },
+    { size: 'M', label: 'M' },
+    { size: 'L', label: 'L' },
 ];
 const SORT_DEFAULT_DIR = {
     relevance: 'desc',
@@ -267,6 +279,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const [selection, setSelection] = useState(browseState.selection);
     // UI sort control: null → follow the search box's `sort:` (else relevance).
     const [sortSel, setSortSel] = useState(browseState.sortSel);
+    // Card-tile size step (scales `cardTileWidth`); session-sticky via browseState.
+    const [cardSize, setCardSize] = useState(browseState.cardSize);
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [helpOpen, setHelpOpen] = useState(false);
     // "Find similar" mode: results of the data server's embedding RPC for one card.
@@ -355,11 +369,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             setId,
             selection,
             sortSel,
+            cardSize,
             similarTo,
             similarCards,
             similarSteps,
         });
-    }, [cardQuery, seriesId, setId, selection, sortSel, similarTo, similarCards, similarSteps]);
+    }, [cardQuery, seriesId, setId, selection, sortSel, cardSize, similarTo, similarCards, similarSteps]);
     // Tapping a card opens the action sheet (app-supplied actions + built-ins)
     // instead of silently replacing the pocket's occupant.
     const [actionCard, setActionCard] = useState(null);
@@ -560,13 +575,15 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         if (containerWidth <= 0) {
             return { numColumns: 4, tileW: cardTileWidth, taxCols: 3, taxTileW: TARGET_TAX_TILE_W };
         }
-        const cCols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (cardTileWidth + GRID_GAP)));
+        // Base packing for `cardTileWidth`, then shift columns by the Size step (min 2 columns).
+        const baseCols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (cardTileWidth + GRID_GAP)));
+        const cCols = Math.max(2, baseCols + SIZE_COL_DELTA[cardSize]);
         const cW = Math.floor((containerWidth - GRID_GAP * (cCols - 1)) / cCols);
         // Series/set tiles: 3–5 columns depending on page width (a bigger target than card tiles).
         const tCols = Math.max(3, Math.min(5, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
         const tW = Math.floor((containerWidth - GRID_GAP * (tCols - 1)) / tCols);
         return { numColumns: cCols, tileW: cW, taxCols: tCols, taxTileW: tW };
-    }, [containerWidth, cardTileWidth]);
+    }, [containerWidth, cardTileWidth, cardSize]);
     const cols = isCardLevel ? numColumns : taxCols;
     const cardRowHeight = Math.round(tileW * CARD_ASPECT + CARD_LABEL_H + ROW_GAP);
     const rowHeight = isCardLevel ? cardRowHeight : taxTileHeight + ROW_GAP;
@@ -929,7 +946,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         }
         const c = item.card;
         const value = priceOf(c.id);
-        return (_jsx(CardTile, { styles: styles, card: c, width: tileW, selected: c.id === selectedCardId, 
+        return (_jsx(CardTile, { styles: styles, card: c, width: tileW, 
+            // Big tiles pull the 640px thumb so they don't upscale a 245px webp.
+            tier: tileW >= HIRES_TILE_W ? 640 : 245, selected: c.id === selectedCardId, 
             // In select mode (toggle, or web Ctrl/Shift) a tap toggles selection; else it opens
             // the single-card sheet.
             onPress: () => (isSelecting() ? toggleSelected(c.id) : setActionCard(c)), multiSelected: selectedIds.includes(c.id), 
@@ -977,7 +996,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                             // Locked analytics: accent-ring the tab so the gated perk draws the eye.
                             const spotlight = t === 'analytics' && !!analyticsLocked && !on;
                             return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn, spotlight && styles.tabSpotlight], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn, spotlight && styles.tabTextSpotlight], children: spotlight ? `✨ ${label}` : label }) }, t));
-                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
+                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir })) : null, isCardLevel && !analyticsView ? _jsx(SizeBar, { styles: styles, size: cardSize, onPick: setCardSize }) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
                                         setMultiSelectMode(false);
                                         clearSelection();
                                     }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
@@ -1023,9 +1042,9 @@ function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, }) {
  * small. Cards with no local image show a neutral fallback, never a crash. Images use the
  * same memory-disk cache + recyclingKey pattern as BinderGrid.
  */
-function CardTile({ styles, card, width, selected, multiSelected, onPress, label, value, quickAction, }) {
-    // Grid tier: the 245px webp (~20KB), resolved by id via the image manifest.
-    const uri = cardThumbUrl(card.id, 245);
+function CardTile({ styles, card, width, tier = 245, selected, multiSelected, onPress, label, value, quickAction, }) {
+    // Grid tier: the 245px webp (~20KB) by default; large tiles request 640px so they stay sharp.
+    const uri = cardThumbUrl(card.id, tier);
     return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected, multiSelected && styles.cardTileMulti], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : null, card.language === 'ja' ? (_jsx(View, { style: styles.cardLangBadge, children: _jsx(Text, { style: styles.cardLangBadgeText, children: "JP" }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
 }
 /**
@@ -1055,6 +1074,16 @@ function SortBar({ styles, field, dir, onPick, onToggleDir, }) {
                     const on = o.field === field;
                     return (_jsx(Pressable, { onPress: () => onPick(o.field), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: o.label }) }, o.field));
                 }) }), field !== 'relevance' ? (_jsx(Pressable, { onPress: onToggleDir, style: styles.sortDir, accessibilityLabel: "Toggle sort direction", children: _jsx(Text, { style: styles.sortDirText, children: dir === 'asc' ? '↑' : '↓' }) })) : null] }));
+}
+/**
+ * Card-size control: S / M / L chips that scale the tile width (fewer/larger vs more/smaller
+ * columns). Session-sticky via browseState; large steps also pull the sharper 640px thumb.
+ */
+function SizeBar({ styles, size, onPick, }) {
+    return (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: "Size" }), _jsx(View, { style: styles.chipRow, children: SIZE_OPTIONS.map((o) => {
+                    const on = o.size === size;
+                    return (_jsx(Pressable, { onPress: () => onPick(o.size), style: [styles.chip, on && styles.chipOn], accessibilityLabel: `Card size ${o.label}`, children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], children: o.label }) }, o.size));
+                }) })] }));
 }
 /**
  * Compact, expandable filter panel. Collapsed it's a single row (a Filters toggle + active

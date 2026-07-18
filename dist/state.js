@@ -4,6 +4,7 @@ export const browseState = {
     setId: null,
     selection: {},
     sortSel: null,
+    cardSize: 'M',
     similarTo: null,
     similarCards: [],
     similarSteps: [],
