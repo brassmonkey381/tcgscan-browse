@@ -230,6 +230,18 @@ const FACETS: Facet[] = [
     available: (cards) => distinctSorted(cards, (c) => c.cardType ?? []),
   },
   {
+    // Printing language (English / Japanese). Only surfaces once the catalog
+    // actually holds both languages — a single-language catalog yields [] from
+    // `available` and the facet is skipped automatically (see the seam note).
+    key: 'language',
+    label: 'Language',
+    valuesOf: (c) => [c.language === 'ja' ? 'Japanese' : 'English'],
+    available: (cards) => {
+      const vals = distinctSorted(cards, (c) => [c.language === 'ja' ? 'Japanese' : 'English']);
+      return vals.length > 1 ? vals : [];
+    },
+  },
+  {
     key: 'year',
     label: 'Year',
     valuesOf: (c) => (c.releaseDate ? [c.releaseDate.slice(0, 4)] : []),
@@ -1555,6 +1567,11 @@ function CardTile({
             <Text style={styles.cardCheckText}>✓</Text>
           </View>
         ) : null}
+        {card.language === 'ja' ? (
+          <View style={styles.cardLangBadge}>
+            <Text style={styles.cardLangBadgeText}>JP</Text>
+          </View>
+        ) : null}
         {quickAction ? (
           // Nested Pressable captures its own tap, so the tile's sheet doesn't open.
           <Pressable
@@ -2013,6 +2030,17 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       justifyContent: 'center',
     },
     cardCheckText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+    // Japanese-printing badge (bottom-right of the thumb; EN cards show nothing)
+    cardLangBadge: {
+      position: 'absolute',
+      bottom: 3,
+      right: 3,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      borderRadius: 4,
+      backgroundColor: t.accent,
+    },
+    cardLangBadgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', lineHeight: 12 },
     // V-UNION group tile badge (bottom-left of the thumb)
     vunionTag: {
       position: 'absolute',

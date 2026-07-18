@@ -18,7 +18,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { getBrowseUrl } from './config';
 // Bump the version suffix if the manifest shape changes (invalidates stale caches).
-const CACHE_KEY = 'tcgscan-browse:images-manifest:v1';
+const CACHE_KEY = 'tcgscan-browse:images-manifest:v2';
 let cacheAdapter = null;
 let manifest = null;
 let hydrating = null;
@@ -41,14 +41,25 @@ function publish(next) {
     manifest = next;
     subscribers.forEach((cb) => cb());
 }
-/** id + field → absolute content-hashed URL, or undefined if unmapped/not loaded. */
+/** id + field → absolute content-hashed URL, or undefined if unmapped/not loaded.
+ * Handles both manifest schemas: in schema 2 the card entry leads with its
+ * language and the per-field base is nested under that language. */
 export function manifestUrl(id, field) {
     if (!manifest || !id)
         return undefined;
     const i = manifest.fields.indexOf(field);
     if (i < 0)
         return undefined;
-    const key = manifest.cards[id]?.[i];
+    const entry = manifest.cards[id];
+    if (!entry)
+        return undefined;
+    if (manifest.schema === 2) {
+        const lang = entry[0]; // 'en' | 'ja'
+        const key = entry[i + 1]; // keys shift right by one for the leading lang tag
+        const base = manifest.base[lang]?.[field];
+        return key && base ? `${base}/${key}` : undefined;
+    }
+    const key = entry[i];
     const base = manifest.base[field];
     return key && base ? `${base}/${key}` : undefined;
 }

@@ -51,6 +51,7 @@ interface SearchRow {
   cur: number | string | null;
   score: number;
   total_count: number | string;
+  language?: string | null; // 'en' | 'ja' (added to search_cards at the EN+JP cutover)
 }
 
 /** Map an RPC row to a CatalogCard so it renders through the same tile/sheet as warm results. */
@@ -75,6 +76,7 @@ function rowToCard(r: SearchRow): CatalogCard {
     evolutionStage: typeof r.evolution_stage_index === 'number' ? r.evolution_stage_index + 1 : -1,
     evolvesFrom: r.evolves_from ?? '',
     evolutionLine: r.evolution_line ?? [],
+    language: r.language === 'ja' ? 'ja' : 'en',
   };
 }
 

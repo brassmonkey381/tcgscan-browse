@@ -53,6 +53,9 @@ export interface CatalogCard {
    *  (WCD/oversize) — visually right, but the real card may carry a stamp, overlay,
    *  or signature the substitute lacks. Detail views surface a caveat. */
   imageSubstituted?: boolean;
+  /** Printing language: 'en' (English) | 'ja' (Japanese). Defaults 'en' when a
+   *  legacy/EN-only source omits it. Drives the language badge + facet. */
+  language: 'en' | 'ja';
 }
 
 /**
@@ -146,6 +149,7 @@ export interface RawCard {
   image_small?: string; // 245px webp tier (data server)
   image_medium?: string; // 640px webp tier (data server)
   imageSubstituted?: boolean; // image borrowed from a clean twin (may differ; see CatalogCard)
+  language?: 'en' | 'ja'; // printing language (combined EN+JP catalog); defaults 'en'
 }
 export interface RawSet {
   id: number | string;
@@ -311,6 +315,7 @@ class LocalCatalog implements Catalog {
         imageSmall: raw_c.image_small,
         imageMedium: raw_c.image_medium,
         imageSubstituted: raw_c.imageSubstituted,
+        language: raw_c.language === 'ja' ? 'ja' : 'en',
       };
       this.cards.set(card.id, card);
       this.all.push(card);

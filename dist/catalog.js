@@ -138,6 +138,7 @@ class LocalCatalog {
                 imageSmall: raw_c.image_small,
                 imageMedium: raw_c.image_medium,
                 imageSubstituted: raw_c.imageSubstituted,
+                language: raw_c.language === 'ja' ? 'ja' : 'en',
             };
             this.cards.set(card.id, card);
             this.all.push(card);

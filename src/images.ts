@@ -29,14 +29,23 @@ export interface ManifestCache {
   setItem(key: string, value: string): Promise<void>;
 }
 
+/**
+ * Two manifest schemas are supported (back-compat):
+ *   schema 1 (default): single-language. base = {field → url};
+ *     cards[id] = [imageKey, smallKey, medKey].
+ *   schema 2 (EN+JP): per-language buckets. base = {lang → {field → url}};
+ *     cards[id] = [lang, imageKey, smallKey, medKey] — each card names its own
+ *     language, so callers still resolve by id alone (cardThumbUrl unchanged).
+ */
 interface ImageManifest {
+  schema?: number; // 1 (default, legacy) | 2 (per-language)
   fields: string[]; // ["image", "image_small", "image_medium"]
-  base: Record<string, string>; // field → absolute bucket base URL
-  cards: Record<string, (string | null)[]>; // id → per-field relative hashed key (null = absent)
+  base: Record<string, string> | Record<string, Record<string, string>>;
+  cards: Record<string, (string | null)[]>;
 }
 
 // Bump the version suffix if the manifest shape changes (invalidates stale caches).
-const CACHE_KEY = 'tcgscan-browse:images-manifest:v1';
+const CACHE_KEY = 'tcgscan-browse:images-manifest:v2';
 
 let cacheAdapter: ManifestCache | null = null;
 let manifest: ImageManifest | null = null;
@@ -64,13 +73,23 @@ function publish(next: ImageManifest): void {
   subscribers.forEach((cb) => cb());
 }
 
-/** id + field → absolute content-hashed URL, or undefined if unmapped/not loaded. */
+/** id + field → absolute content-hashed URL, or undefined if unmapped/not loaded.
+ * Handles both manifest schemas: in schema 2 the card entry leads with its
+ * language and the per-field base is nested under that language. */
 export function manifestUrl(id: string, field: string): string | undefined {
   if (!manifest || !id) return undefined;
   const i = manifest.fields.indexOf(field);
   if (i < 0) return undefined;
-  const key = manifest.cards[id]?.[i];
-  const base = manifest.base[field];
+  const entry = manifest.cards[id];
+  if (!entry) return undefined;
+  if (manifest.schema === 2) {
+    const lang = entry[0] as string; // 'en' | 'ja'
+    const key = entry[i + 1]; // keys shift right by one for the leading lang tag
+    const base = (manifest.base as Record<string, Record<string, string>>)[lang]?.[field];
+    return key && base ? `${base}/${key}` : undefined;
+  }
+  const key = entry[i];
+  const base = (manifest.base as Record<string, string>)[field];
   return key && base ? `${base}/${key}` : undefined;
 }
 

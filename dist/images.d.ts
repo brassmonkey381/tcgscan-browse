@@ -14,7 +14,9 @@ export declare function setManifestCache(cache: ManifestCache | null): void;
  * URLs via `cardThumbUrl` can re-render. Returns an unsubscribe function.
  */
 export declare function subscribeImageManifest(callback: () => void): () => void;
-/** id + field → absolute content-hashed URL, or undefined if unmapped/not loaded. */
+/** id + field → absolute content-hashed URL, or undefined if unmapped/not loaded.
+ * Handles both manifest schemas: in schema 2 the card entry leads with its
+ * language and the per-field base is nested under that language. */
 export declare function manifestUrl(id: string, field: string): string | undefined;
 /** True once a manifest (cached or fresh) is in memory. */
 export declare function imageManifestReady(): boolean;

@@ -38,6 +38,7 @@ function rowToCard(r) {
         evolutionStage: typeof r.evolution_stage_index === 'number' ? r.evolution_stage_index + 1 : -1,
         evolvesFrom: r.evolves_from ?? '',
         evolutionLine: r.evolution_line ?? [],
+        language: r.language === 'ja' ? 'ja' : 'en',
     };
 }
 /** Drop empty entries so `{}` (no selection) skips the facet filter entirely server-side. */

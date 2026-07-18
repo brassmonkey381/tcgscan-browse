@@ -32,6 +32,9 @@ export interface CatalogCard {
      *  (WCD/oversize) — visually right, but the real card may carry a stamp, overlay,
      *  or signature the substitute lacks. Detail views surface a caveat. */
     imageSubstituted?: boolean;
+    /** Printing language: 'en' (English) | 'ja' (Japanese). Defaults 'en' when a
+     *  legacy/EN-only source omits it. Drives the language badge + facet. */
+    language: 'en' | 'ja';
 }
 /**
  * A V-UNION set: four 1×1 catalog pieces that tile a 2×2 block, in
@@ -118,6 +121,7 @@ export interface RawCard {
     image_small?: string;
     image_medium?: string;
     imageSubstituted?: boolean;
+    language?: 'en' | 'ja';
 }
 export interface RawSet {
     id: number | string;

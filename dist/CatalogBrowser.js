@@ -164,6 +164,18 @@ const FACETS = [
         available: (cards) => distinctSorted(cards, (c) => c.cardType ?? []),
     },
     {
+        // Printing language (English / Japanese). Only surfaces once the catalog
+        // actually holds both languages — a single-language catalog yields [] from
+        // `available` and the facet is skipped automatically (see the seam note).
+        key: 'language',
+        label: 'Language',
+        valuesOf: (c) => [c.language === 'ja' ? 'Japanese' : 'English'],
+        available: (cards) => {
+            const vals = distinctSorted(cards, (c) => [c.language === 'ja' ? 'Japanese' : 'English']);
+            return vals.length > 1 ? vals : [];
+        },
+    },
+    {
         key: 'year',
         label: 'Year',
         valuesOf: (c) => (c.releaseDate ? [c.releaseDate.slice(0, 4)] : []),
@@ -995,7 +1007,7 @@ function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, }) {
 function CardTile({ styles, card, width, selected, multiSelected, onPress, label, value, quickAction, }) {
     // Grid tier: the 245px webp (~20KB), resolved by id via the image manifest.
     const uri = cardThumbUrl(card.id, 245);
-    return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected, multiSelected && styles.cardTileMulti], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
+    return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected, multiSelected && styles.cardTileMulti], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : null, card.language === 'ja' ? (_jsx(View, { style: styles.cardLangBadge, children: _jsx(Text, { style: styles.cardLangBadgeText, children: "JP" }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
 }
 /**
  * A V-UNION group tile (Size=V-UNION): the assembled art (its top-left piece thumb) with a
@@ -1252,6 +1264,17 @@ function makeStyles(t, taxTileHeight) {
             justifyContent: 'center',
         },
         cardCheckText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+        // Japanese-printing badge (bottom-right of the thumb; EN cards show nothing)
+        cardLangBadge: {
+            position: 'absolute',
+            bottom: 3,
+            right: 3,
+            paddingHorizontal: 4,
+            paddingVertical: 1,
+            borderRadius: 4,
+            backgroundColor: t.accent,
+        },
+        cardLangBadgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', lineHeight: 12 },
         // V-UNION group tile badge (bottom-left of the thumb)
         vunionTag: {
             position: 'absolute',
