@@ -42,10 +42,11 @@ import { resolveTheme, tileShadow } from './theme';
 const PAGE_SIZE = 90;
 /** Dense grid tuning: aim each card tile at ~this width, then pack as many columns as fit. */
 const TARGET_TILE_W = 72;
-/** The Size control shifts the card grid by this many columns off the base packing (S = +2
- *  columns → smaller cards, M = the base, L = −2 → larger). A column delta rather than a width
- *  factor, so the step stays visible even on narrow phones where the base sits at the 3-col floor. */
-const SIZE_COL_DELTA = { S: 2, M: 0, L: -2 };
+/** Card grid columns per Size step, as a fraction of the base packing for `cardTileWidth`
+ *  (S = the dense base, M/L progressively fewer columns → larger cards). Proportional rather than
+ *  a fixed column delta, so the step is meaningful on wide/desktop views too; clamps to ≥1 so L
+ *  can reach full-width on a narrow phone. */
+const SIZE_COL_FRACTION = { S: 1, M: 0.72, L: 0.45 };
 /** Above this rendered tile width, switch card thumbs to the 640px tier so big cards stay crisp. */
 const HIRES_TILE_W = 150;
 const GRID_GAP = 6;
@@ -575,9 +576,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         if (containerWidth <= 0) {
             return { numColumns: 4, tileW: cardTileWidth, taxCols: 3, taxTileW: TARGET_TAX_TILE_W };
         }
-        // Base packing for `cardTileWidth`, then shift columns by the Size step (min 2 columns).
+        // Base packing for `cardTileWidth`, scaled down by the Size step (fewer columns → bigger cards).
         const baseCols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (cardTileWidth + GRID_GAP)));
-        const cCols = Math.max(2, baseCols + SIZE_COL_DELTA[cardSize]);
+        const cCols = Math.max(1, Math.round(baseCols * SIZE_COL_FRACTION[cardSize]));
         const cW = Math.floor((containerWidth - GRID_GAP * (cCols - 1)) / cCols);
         // Series/set tiles: 3–5 columns depending on page width (a bigger target than card tiles).
         const tCols = Math.max(3, Math.min(5, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
@@ -996,7 +997,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                             // Locked analytics: accent-ring the tab so the gated perk draws the eye.
                             const spotlight = t === 'analytics' && !!analyticsLocked && !on;
                             return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn, spotlight && styles.tabSpotlight], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn, spotlight && styles.tabTextSpotlight], children: spotlight ? `✨ ${label}` : label }) }, t));
-                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir })) : null, isCardLevel && !analyticsView ? _jsx(SizeBar, { styles: styles, size: cardSize, onPick: setCardSize }) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
+                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: setCardSize })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
                                         setMultiSelectMode(false);
                                         clearSelection();
                                     }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
@@ -1069,20 +1070,13 @@ function Breadcrumb({ styles, crumbs }) {
  * ↑/↓ direction toggle (hidden for Relevance, which has no direction). Mirrors the FacetBar chip
  * look. The chips drive the SAME sort the search box's `sort:` grammar sets.
  */
-function SortBar({ styles, field, dir, onPick, onToggleDir, }) {
+function SortBar({ styles, field, dir, onPick, onToggleDir, size, onPickSize, }) {
     return (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: "Sort" }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, style: styles.sortScroll, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: SORT_OPTIONS.map((o) => {
                     const on = o.field === field;
                     return (_jsx(Pressable, { onPress: () => onPick(o.field), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: o.label }) }, o.field));
-                }) }), field !== 'relevance' ? (_jsx(Pressable, { onPress: onToggleDir, style: styles.sortDir, accessibilityLabel: "Toggle sort direction", children: _jsx(Text, { style: styles.sortDirText, children: dir === 'asc' ? '↑' : '↓' }) })) : null] }));
-}
-/**
- * Card-size control: S / M / L chips that scale the tile width (fewer/larger vs more/smaller
- * columns). Session-sticky via browseState; large steps also pull the sharper 640px thumb.
- */
-function SizeBar({ styles, size, onPick, }) {
-    return (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: "Size" }), _jsx(View, { style: styles.chipRow, children: SIZE_OPTIONS.map((o) => {
+                }) }), field !== 'relevance' ? (_jsx(Pressable, { onPress: onToggleDir, style: styles.sortDir, accessibilityLabel: "Toggle sort direction", children: _jsx(Text, { style: styles.sortDirText, children: dir === 'asc' ? '↑' : '↓' }) })) : null, _jsx(View, { style: styles.sizeChips, children: SIZE_OPTIONS.map((o) => {
                     const on = o.size === size;
-                    return (_jsx(Pressable, { onPress: () => onPick(o.size), style: [styles.chip, on && styles.chipOn], accessibilityLabel: `Card size ${o.label}`, children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], children: o.label }) }, o.size));
+                    return (_jsx(Pressable, { onPress: () => onPickSize(o.size), style: [styles.sizeChip, on && styles.chipOn], accessibilityLabel: `Card size ${o.label}`, children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], children: o.label }) }, o.size));
                 }) })] }));
 }
 /**
@@ -1240,6 +1234,17 @@ function makeStyles(t, taxTileHeight) {
             borderColor: t.accent,
         },
         sortDirText: { fontSize: 14, fontWeight: '800', color: t.accent },
+        // inline card-size control (S/M/L) pinned at the end of the sort row
+        sizeChips: { flexDirection: 'row', gap: 4, marginLeft: 8 },
+        sizeChip: {
+            minWidth: 26,
+            alignItems: 'center',
+            paddingHorizontal: 7,
+            paddingVertical: 5,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: t.border,
+        },
         // list
         column: { gap: GRID_GAP, justifyContent: 'flex-start' },
         listContent: { paddingBottom: 16 },

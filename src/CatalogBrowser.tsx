@@ -84,10 +84,11 @@ import { resolveTheme, tileShadow, type BrowseTheme } from './theme';
 const PAGE_SIZE = 90;
 /** Dense grid tuning: aim each card tile at ~this width, then pack as many columns as fit. */
 const TARGET_TILE_W = 72;
-/** The Size control shifts the card grid by this many columns off the base packing (S = +2
- *  columns → smaller cards, M = the base, L = −2 → larger). A column delta rather than a width
- *  factor, so the step stays visible even on narrow phones where the base sits at the 3-col floor. */
-const SIZE_COL_DELTA: Record<CardSize, number> = { S: 2, M: 0, L: -2 };
+/** Card grid columns per Size step, as a fraction of the base packing for `cardTileWidth`
+ *  (S = the dense base, M/L progressively fewer columns → larger cards). Proportional rather than
+ *  a fixed column delta, so the step is meaningful on wide/desktop views too; clamps to ≥1 so L
+ *  can reach full-width on a narrow phone. */
+const SIZE_COL_FRACTION: Record<CardSize, number> = { S: 1, M: 0.72, L: 0.45 };
 /** Above this rendered tile width, switch card thumbs to the 640px tier so big cards stay crisp. */
 const HIRES_TILE_W = 150;
 const GRID_GAP = 6;
@@ -814,9 +815,9 @@ export function CatalogBrowser({
     if (containerWidth <= 0) {
       return { numColumns: 4, tileW: cardTileWidth, taxCols: 3, taxTileW: TARGET_TAX_TILE_W };
     }
-    // Base packing for `cardTileWidth`, then shift columns by the Size step (min 2 columns).
+    // Base packing for `cardTileWidth`, scaled down by the Size step (fewer columns → bigger cards).
     const baseCols = Math.max(3, Math.floor((containerWidth + GRID_GAP) / (cardTileWidth + GRID_GAP)));
-    const cCols = Math.max(2, baseCols + SIZE_COL_DELTA[cardSize]);
+    const cCols = Math.max(1, Math.round(baseCols * SIZE_COL_FRACTION[cardSize]));
     const cW = Math.floor((containerWidth - GRID_GAP * (cCols - 1)) / cCols);
     // Series/set tiles: 3–5 columns depending on page width (a bigger target than card tiles).
     const tCols = Math.max(3, Math.min(5, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
@@ -1402,9 +1403,16 @@ export function CatalogBrowser({
           />
         ) : null}
         {isCardLevel && !analyticsView ? (
-          <SortBar styles={styles} field={effSort.field} dir={effSort.dir} onPick={pickSort} onToggleDir={toggleSortDir} />
+          <SortBar
+            styles={styles}
+            field={effSort.field}
+            dir={effSort.dir}
+            onPick={pickSort}
+            onToggleDir={toggleSortDir}
+            size={cardSize}
+            onPickSize={setCardSize}
+          />
         ) : null}
-        {isCardLevel && !analyticsView ? <SizeBar styles={styles} size={cardSize} onPick={setCardSize} /> : null}
         {isCardLevel && canMultiSelect && !analyticsView ? (
           <View style={styles.selectRow}>
             {multiSelectMode || selectedIds.length > 0 ? (
@@ -1765,12 +1773,16 @@ function SortBar({
   dir,
   onPick,
   onToggleDir,
+  size,
+  onPickSize,
 }: {
   styles: Styles;
   field: QuerySort;
   dir: SortDir;
   onPick: (field: QuerySort) => void;
   onToggleDir: () => void;
+  size: CardSize;
+  onPickSize: (size: CardSize) => void;
 }) {
   return (
     <View style={styles.facetGroup}>
@@ -1797,34 +1809,15 @@ function SortBar({
           <Text style={styles.sortDirText}>{dir === 'asc' ? '↑' : '↓'}</Text>
         </Pressable>
       ) : null}
-    </View>
-  );
-}
-
-/**
- * Card-size control: S / M / L chips that scale the tile width (fewer/larger vs more/smaller
- * columns). Session-sticky via browseState; large steps also pull the sharper 640px thumb.
- */
-function SizeBar({
-  styles,
-  size,
-  onPick,
-}: {
-  styles: Styles;
-  size: CardSize;
-  onPick: (size: CardSize) => void;
-}) {
-  return (
-    <View style={styles.facetGroup}>
-      <Text style={styles.facetLabel}>Size</Text>
-      <View style={styles.chipRow}>
+      {/* Card-size control (S/M/L), inline at the row's end — session-sticky; L pulls the 640px thumb. */}
+      <View style={styles.sizeChips}>
         {SIZE_OPTIONS.map((o) => {
           const on = o.size === size;
           return (
             <Pressable
               key={o.size}
-              onPress={() => onPick(o.size)}
-              style={[styles.chip, on && styles.chipOn]}
+              onPress={() => onPickSize(o.size)}
+              style={[styles.sizeChip, on && styles.chipOn]}
               accessibilityLabel={`Card size ${o.label}`}>
               <Text style={[styles.chipText, on && styles.chipTextOn]}>{o.label}</Text>
             </Pressable>
@@ -2055,6 +2048,17 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       borderColor: t.accent,
     },
     sortDirText: { fontSize: 14, fontWeight: '800', color: t.accent },
+    // inline card-size control (S/M/L) pinned at the end of the sort row
+    sizeChips: { flexDirection: 'row', gap: 4, marginLeft: 8 },
+    sizeChip: {
+      minWidth: 26,
+      alignItems: 'center',
+      paddingHorizontal: 7,
+      paddingVertical: 5,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
     // list
     column: { gap: GRID_GAP, justifyContent: 'flex-start' },
     listContent: { paddingBottom: 16 },
