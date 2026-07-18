@@ -21,8 +21,15 @@ interface RecentProductsProps {
     monthsBack?: number;
     /** How many chase cards to montage per set tile. Default 3. */
     montageCount?: number;
-    /** Max cards per card carousel (upcoming / released). Default 40. */
+    /** Max cards in the card carousel. Default 40. */
     cardLimit?: number;
+    /**
+     * Keep only cards this predicate accepts (e.g. "double rares and higher") in the card carousel
+     * AND the set-tile montages. When set, the card carousel is also built to SPAN every set in the
+     * window — one card from each set per round (priciest first), so all shown sets are represented
+     * rather than the newest sets crowding out the rest. Omitted → every rarity, newest-first mix.
+     */
+    rarityFilter?: (card: CatalogCard) => boolean;
     /** Injected color contract (partial override merged over the light default). */
     theme?: Partial<BrowseTheme>;
     /** Header title. Default "Recent & Upcoming". */
@@ -51,5 +58,5 @@ interface RecentProductsProps {
      */
     onAddToBinder?: (card: CatalogCard) => void;
 }
-export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }: RecentProductsProps): import("react").JSX.Element | null;
+export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, rarityFilter, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }: RecentProductsProps): import("react").JSX.Element | null;
 export {};

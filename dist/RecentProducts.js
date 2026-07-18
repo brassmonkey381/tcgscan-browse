@@ -37,7 +37,26 @@ const TILE_GAP = 10;
 const SETS_PER_VIEW = 4;
 /** Card carousels pack to roughly this tile width, then show as many as fit. */
 const CARD_TARGET_W = 104;
-export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }) {
+/** Interleave one card from each set per round (lists are priciest-first), capped at `limit`.
+ *  Guarantees every set is represented before any set contributes a second card. */
+function spanSets(perSet, limit) {
+    const out = [];
+    for (let round = 0; out.length < limit; round += 1) {
+        let progressed = false;
+        for (const cards of perSet) {
+            if (round < cards.length) {
+                out.push(cards[round]);
+                progressed = true;
+                if (out.length >= limit)
+                    break;
+            }
+        }
+        if (!progressed)
+            break;
+    }
+    return out;
+}
+export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, rarityFilter, theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme), [theme]);
     // Card thumbs resolve by id via the content-hashed manifest; repaint when it lands.
@@ -72,12 +91,18 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
         // one rule — `&` becomes "and" (verified against the sets table); setShopUrl handles the
         // rest (lowercase, non-alphanumeric → dashes).
         const shopFor = (name) => setShopUrl(name.replace(/&/g, ' and '));
-        const tile = (set, cards) => ({
-            set,
-            montage: [...cards].sort((a, b) => priceOf(b.id) - priceOf(a.id)).slice(0, montageCount),
-            shopUrl: shopFor(set.name),
-            upcoming: set.releaseDate > today,
-        });
+        const tile = (set, cards) => {
+            // Rarity gate (e.g. "double rares and higher") applies to the montage AND the card pool.
+            const eligible = rarityFilter ? cards.filter(rarityFilter) : cards;
+            const priced = [...eligible].sort((a, b) => priceOf(b.id) - priceOf(a.id));
+            return {
+                set,
+                cards: priced,
+                montage: priced.slice(0, montageCount),
+                shopUrl: shopFor(set.name),
+                upcoming: set.releaseDate > today,
+            };
+        };
         if (catalog) {
             return catalog
                 .allSets()
@@ -119,7 +144,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
             .filter((t) => t.montage.length > 0)
             .sort((a, b) => b.set.releaseDate.localeCompare(a.set.releaseDate));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [catalog, cold, cutoff, montageCount, priceSummary, today]);
+    }, [catalog, cold, cutoff, montageCount, priceSummary, today, rarityFilter]);
     const upcomingCards = useMemo(() => {
         if (catalog)
             return catalog.upcomingCards(today, cardLimit);
@@ -140,6 +165,10 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
             .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
             .slice(0, cardLimit);
     }, [catalog, cold, today, cardLimit]);
+    // With a rarity filter, the card carousel spans the SAME sets shown above — one card from each
+    // set per round (priciest first), capped at cardLimit — so every set is represented. Without a
+    // filter, keep the classic newest-first upcoming+released mix (shuffled below).
+    const spannedCards = useMemo(() => (rarityFilter ? spanSets(setTiles.map((t) => t.cards), cardLimit) : null), [rarityFilter, setTiles, cardLimit]);
     // One carousel of cards: upcoming + recently-released, shuffled into a single mix. Seeded by
     // the concatenated ids (mulberry32) so it's stable across re-renders but reshuffles when the
     // window changes — no Math.random (unstable + unavailable in some runtimes).
@@ -166,6 +195,9 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
         }
         return arr;
     }, [upcomingCards, releasedCards]);
+    // The cards actually shown: the set-spanning premium pool when a rarity filter is set, else
+    // the classic shuffled mix.
+    const cardItems = spannedCards ?? mixedCards;
     // Measured width → how many card tiles a card carousel shows at once.
     const [width, setWidth] = useState(0);
     const onLayout = (e) => {
@@ -229,14 +261,14 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
         });
         return actions;
     };
-    if (setTiles.length === 0 && upcomingCards.length === 0 && releasedCards.length === 0) {
+    if (setTiles.length === 0 && cardItems.length === 0) {
         return null;
     }
     const renderSet = (t, tileWidth) => (_jsxs(Pressable, { style: styles.tile, onPress: onOpenSet ? () => onOpenSet(t.set) : undefined, accessibilityRole: onOpenSet ? 'button' : undefined, accessibilityLabel: onOpenSet ? `Browse ${t.set.name}${t.upcoming ? ' (upcoming)' : ''}` : undefined, children: [_jsxs(View, { style: styles.montage, children: [t.montage.map((card) => (_jsx(Pressable, { style: styles.montageSlot, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }, card.id))), t.upcoming ? (_jsx(View, { style: styles.badge, pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }), _jsxs(View, { style: styles.tileFooter, children: [_jsxs(View, { style: styles.tileFooterLeft, children: [_jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
                                     .filter(Boolean)
                                     .join(' · ') }), shopLink(t.shopUrl)] }), t.set.coverUri ? (_jsx(Image, { source: { uri: t.set.coverUri }, style: styles.tileLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `logo-${t.set.id}`, transition: 100 })) : null] })] }));
     const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: [_jsx(CardThumb, { card: card, styles: styles }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, shopLink(productUrl(card.id), true)] }));
-    return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [title ? _jsx(Text, { style: styles.header, children: title }) : null, setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Sets" }), _jsx(Carousel, { items: setTiles, visible: SETS_PER_VIEW, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, mixedCards.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Cards" }), _jsx(Carousel, { items: mixedCards, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
+    return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [title ? _jsx(Text, { style: styles.header, children: title }) : null, setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Sets" }), _jsx(Carousel, { items: setTiles, visible: SETS_PER_VIEW, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, cardItems.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Cards" }), _jsx(Carousel, { items: cardItems, visible: cardsPerView, keyOf: (c) => c.id, renderItem: renderCard, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
 }
 /**
  * A clickable, infinite carousel: shows `visible` items at once, and the arrows step by

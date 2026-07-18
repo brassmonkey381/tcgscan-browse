@@ -71,8 +71,15 @@ interface RecentProductsProps {
   monthsBack?: number;
   /** How many chase cards to montage per set tile. Default 3. */
   montageCount?: number;
-  /** Max cards per card carousel (upcoming / released). Default 40. */
+  /** Max cards in the card carousel. Default 40. */
   cardLimit?: number;
+  /**
+   * Keep only cards this predicate accepts (e.g. "double rares and higher") in the card carousel
+   * AND the set-tile montages. When set, the card carousel is also built to SPAN every set in the
+   * window — one card from each set per round (priciest first), so all shown sets are represented
+   * rather than the newest sets crowding out the rest. Omitted → every rarity, newest-first mix.
+   */
+  rarityFilter?: (card: CatalogCard) => boolean;
   /** Injected color contract (partial override merged over the light default). */
   theme?: Partial<BrowseTheme>;
   /** Header title. Default "Recent & Upcoming". */
@@ -102,12 +109,32 @@ interface RecentProductsProps {
   onAddToBinder?: (card: CatalogCard) => void;
 }
 
-/** A set paired with its montage cards (priciest first) and its TCGPlayer set-category URL. */
+/** A set paired with its (filtered) cards priciest-first, its montage slice, and its shop URL. */
 interface SetTile {
   set: FeedSet;
+  /** The set's carousel-eligible cards, priciest first (rarity-filtered when a filter is set). */
+  cards: CatalogCard[];
   montage: CatalogCard[];
   shopUrl: string;
   upcoming: boolean;
+}
+
+/** Interleave one card from each set per round (lists are priciest-first), capped at `limit`.
+ *  Guarantees every set is represented before any set contributes a second card. */
+function spanSets(perSet: CatalogCard[][], limit: number): CatalogCard[] {
+  const out: CatalogCard[] = [];
+  for (let round = 0; out.length < limit; round += 1) {
+    let progressed = false;
+    for (const cards of perSet) {
+      if (round < cards.length) {
+        out.push(cards[round]);
+        progressed = true;
+        if (out.length >= limit) break;
+      }
+    }
+    if (!progressed) break;
+  }
+  return out;
 }
 
 export function RecentProducts({
@@ -115,6 +142,7 @@ export function RecentProducts({
   monthsBack = 12,
   montageCount = 3,
   cardLimit = 40,
+  rarityFilter,
   theme: themeProp,
   title = 'Recent & Upcoming',
   onFindSimilar,
@@ -160,12 +188,18 @@ export function RecentProducts({
     // one rule — `&` becomes "and" (verified against the sets table); setShopUrl handles the
     // rest (lowercase, non-alphanumeric → dashes).
     const shopFor = (name: string) => setShopUrl(name.replace(/&/g, ' and '));
-    const tile = (set: FeedSet, cards: CatalogCard[]): SetTile => ({
-      set,
-      montage: [...cards].sort((a, b) => priceOf(b.id) - priceOf(a.id)).slice(0, montageCount),
-      shopUrl: shopFor(set.name),
-      upcoming: set.releaseDate > today,
-    });
+    const tile = (set: FeedSet, cards: CatalogCard[]): SetTile => {
+      // Rarity gate (e.g. "double rares and higher") applies to the montage AND the card pool.
+      const eligible = rarityFilter ? cards.filter(rarityFilter) : cards;
+      const priced = [...eligible].sort((a, b) => priceOf(b.id) - priceOf(a.id));
+      return {
+        set,
+        cards: priced,
+        montage: priced.slice(0, montageCount),
+        shopUrl: shopFor(set.name),
+        upcoming: set.releaseDate > today,
+      };
+    };
     if (catalog) {
       return catalog
         .allSets()
@@ -216,7 +250,7 @@ export function RecentProducts({
       .filter((t) => t.montage.length > 0)
       .sort((a, b) => b.set.releaseDate.localeCompare(a.set.releaseDate));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, cold, cutoff, montageCount, priceSummary, today]);
+  }, [catalog, cold, cutoff, montageCount, priceSummary, today, rarityFilter]);
 
   const upcomingCards = useMemo(() => {
     if (catalog) return catalog.upcomingCards(today, cardLimit);
@@ -234,6 +268,14 @@ export function RecentProducts({
       .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate) || a.name.localeCompare(b.name))
       .slice(0, cardLimit);
   }, [catalog, cold, today, cardLimit]);
+
+  // With a rarity filter, the card carousel spans the SAME sets shown above — one card from each
+  // set per round (priciest first), capped at cardLimit — so every set is represented. Without a
+  // filter, keep the classic newest-first upcoming+released mix (shuffled below).
+  const spannedCards = useMemo(
+    () => (rarityFilter ? spanSets(setTiles.map((t) => t.cards), cardLimit) : null),
+    [rarityFilter, setTiles, cardLimit],
+  );
 
   // One carousel of cards: upcoming + recently-released, shuffled into a single mix. Seeded by
   // the concatenated ids (mulberry32) so it's stable across re-renders but reshuffles when the
@@ -259,6 +301,10 @@ export function RecentProducts({
     }
     return arr;
   }, [upcomingCards, releasedCards]);
+
+  // The cards actually shown: the set-spanning premium pool when a rarity filter is set, else
+  // the classic shuffled mix.
+  const cardItems = spannedCards ?? mixedCards;
 
   // Measured width → how many card tiles a card carousel shows at once.
   const [width, setWidth] = useState(0);
@@ -330,7 +376,7 @@ export function RecentProducts({
     return actions;
   };
 
-  if (setTiles.length === 0 && upcomingCards.length === 0 && releasedCards.length === 0) {
+  if (setTiles.length === 0 && cardItems.length === 0) {
     return null;
   }
 
@@ -427,11 +473,11 @@ export function RecentProducts({
         </>
       ) : null}
 
-      {mixedCards.length > 0 ? (
+      {cardItems.length > 0 ? (
         <>
           <Text style={styles.subHeader}>Cards</Text>
           <Carousel
-            items={mixedCards}
+            items={cardItems}
             visible={cardsPerView}
             keyOf={(c) => c.id}
             renderItem={renderCard}
