@@ -17,8 +17,11 @@
  */
 import { useEffect, useSyncExternalStore } from 'react';
 import { getBrowseUrl } from './config';
-// Bump the version suffix if the manifest shape changes (invalidates stale caches).
-const CACHE_KEY = 'tcgscan-browse:images-manifest:v2';
+// Bump the version suffix when the manifest shape OR its coverage changes, to invalidate stale
+// persisted copies. v3: EN+JP coverage — clients that cached an EN-only manifest (before JP card
+// entries shipped) must drop it, else JP ids resolve to nothing (blank tiles) until a lucky
+// refresh. A key bump forces a clean re-pull of the full EN+JP manifest on next launch.
+const CACHE_KEY = 'tcgscan-browse:images-manifest:v3';
 let cacheAdapter = null;
 let manifest = null;
 let hydrating = null;
