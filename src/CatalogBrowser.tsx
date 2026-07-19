@@ -1492,6 +1492,8 @@ export function CatalogBrowser({
         columnWrapperStyle={cols > 1 ? styles.column : undefined}
         contentContainerStyle={styles.listContent}
         getItemLayout={getItemLayout}
+        // Hide the scrollbar indicator (scroll still works) — the grid reads cleaner without it.
+        showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         onEndReachedThreshold={0.8}

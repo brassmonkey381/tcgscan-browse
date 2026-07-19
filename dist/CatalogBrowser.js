@@ -1011,7 +1011,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             // consistent (FlatList can't change numColumns in place).
             , { style: styles.list, 
                 // Render a growing window of the (uncapped) results — reveal more as you scroll.
-                data: visibleData, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", onEndReachedThreshold: 0.8, onEndReached: onEndReached, initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching
+                data: visibleData, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, 
+                // Hide the scrollbar indicator (scroll still works) — the grid reads cleaner without it.
+                showsVerticalScrollIndicator: false, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", onEndReachedThreshold: 0.8, onEndReached: onEndReached, initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching
                         ? !warm && serverLoading
                             ? 'Searching…'
                             : `No cards match “${q}”.`
