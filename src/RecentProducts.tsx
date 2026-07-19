@@ -20,7 +20,7 @@
  * App-agnostic like the rest of the kit: colors come from an injected `BrowseTheme`.
  */
 import { Image } from 'expo-image';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Linking,
   type LayoutChangeEvent,
@@ -48,6 +48,8 @@ const TILE_GAP = 10;
 const SETS_PER_VIEW = 4;
 /** Card carousels pack to roughly this tile width, then show as many as fit. */
 const CARD_TARGET_W = 104;
+/** Double-tap window (ms) for the carousel arrows: a second tap within this jumps to start/end. */
+const DOUBLE_TAP_MS = 200;
 
 type Styles = ReturnType<typeof makeStyles>;
 
@@ -130,6 +132,12 @@ interface SetTile {
   shopUrl: string;
   upcoming: boolean;
 }
+
+/** A slot in the Cards carousel: either a "NEW SET / UPCOMING" filler that separates each set's
+ *  run (with the set's logo), or one card tile. */
+type CardRow =
+  | { kind: 'header'; key: string; set: FeedSet; upcoming: boolean }
+  | { kind: 'card'; key: string; card: CatalogCard };
 
 export function RecentProducts({
   catalog,
@@ -291,23 +299,6 @@ export function RecentProducts({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog, cold, today, cardLimit, langSet]);
 
-  // With a rarity filter, show EVERY matching card from the sets in the window, ordered by
-  // release date descending (newest set first; priciest first within a set). The filter keeps it
-  // tight; `cardLimit` may be Infinity for no cap. Without a filter, the classic shuffle below.
-  const filteredCards = useMemo(() => {
-    if (!rarityFilter) return null;
-    return setTiles
-      .flatMap((t) => t.cards) // already rarity-filtered, priciest-first per set
-      .sort(
-        (a, b) =>
-          b.releaseDate.localeCompare(a.releaseDate) ||
-          priceOf(b.id) - priceOf(a.id) ||
-          a.name.localeCompare(b.name),
-      )
-      .slice(0, cardLimit);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rarityFilter, setTiles, cardLimit, priceSummary]);
-
   // One carousel of cards: upcoming + recently-released, shuffled into a single mix. Seeded by
   // the concatenated ids (mulberry32) so it's stable across re-renders but reshuffles when the
   // window changes — no Math.random (unstable + unavailable in some runtimes).
@@ -333,9 +324,28 @@ export function RecentProducts({
     return arr;
   }, [upcomingCards, releasedCards]);
 
-  // The cards actually shown: the filtered, date-desc premium pool when a rarity filter is set,
-  // else the classic shuffled mix.
-  const cardItems = filteredCards ?? mixedCards;
+  // The Cards carousel rows. With a rarity filter (grouped feed), lead each set's run with a
+  // "NEW SET / UPCOMING" filler (its logo + name + date) — the same separators the Sealed carousel
+  // uses — cards priciest-first within a set, sets newest-first. Without a filter, the classic
+  // shuffled mix, no separators (there's no set grouping to head).
+  const cardRows = useMemo<CardRow[]>(() => {
+    if (!rarityFilter) {
+      return mixedCards.map((card) => ({ kind: 'card' as const, key: card.id, card }));
+    }
+    const rows: CardRow[] = [];
+    let count = 0;
+    const ordered = [...setTiles].sort((a, b) => b.set.releaseDate.localeCompare(a.set.releaseDate));
+    for (const t of ordered) {
+      if (t.cards.length === 0 || count >= cardLimit) continue;
+      rows.push({ kind: 'header', key: `h-${t.set.id}`, set: t.set, upcoming: t.upcoming });
+      for (const card of t.cards) {
+        if (count >= cardLimit) break;
+        rows.push({ kind: 'card', key: card.id, card });
+        count += 1;
+      }
+    }
+    return rows;
+  }, [rarityFilter, setTiles, mixedCards, cardLimit]);
 
   // Measured width → how many card tiles a card carousel shows at once.
   const [width, setWidth] = useState(0);
@@ -409,7 +419,7 @@ export function RecentProducts({
     return actions;
   };
 
-  if (setTiles.length === 0 && cardItems.length === 0) {
+  if (setTiles.length === 0 && cardRows.length === 0) {
     return null;
   }
 
@@ -489,6 +499,37 @@ export function RecentProducts({
     </Pressable>
   );
 
+  // The "NEW SET / UPCOMING" filler that heads each set's run in the Cards carousel — the set's
+  // logo + name + date, styled like the Sealed carousel's set headers. Tapping opens the set.
+  const renderCardHeader = (set: FeedSet, upcoming: boolean): ReactNode => (
+    <Pressable
+      style={styles.cardHeader}
+      onPress={onOpenSet ? () => onOpenSet(set) : undefined}
+      accessibilityRole={onOpenSet ? 'button' : undefined}
+      accessibilityLabel={onOpenSet ? `Browse ${set.name}${upcoming ? ' (upcoming)' : ''}` : undefined}>
+      <Text style={[styles.cardHeaderKicker, upcoming && styles.cardHeaderKickerUpcoming]}>
+        {upcoming ? 'UPCOMING' : 'NEW SET'}
+      </Text>
+      <Text style={styles.cardHeaderName} numberOfLines={3}>
+        {set.name}
+      </Text>
+      {set.releaseDate ? <Text style={styles.cardHeaderDate}>{formatSetDate(set.releaseDate)}</Text> : null}
+      {set.coverUri ? (
+        <Image
+          source={{ uri: set.coverUri }}
+          style={styles.cardHeaderLogo}
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          recyclingKey={`ch-logo-${set.id}`}
+          transition={100}
+        />
+      ) : null}
+    </Pressable>
+  );
+
+  const renderCardRow = (row: CardRow): ReactNode =>
+    row.kind === 'header' ? renderCardHeader(row.set, row.upcoming) : renderCard(row.card);
+
   return (
     <View style={styles.root} onLayout={onLayout}>
       {title ? <Text style={styles.header}>{title}</Text> : null}
@@ -506,14 +547,14 @@ export function RecentProducts({
         </>
       ) : null}
 
-      {cardItems.length > 0 ? (
+      {cardRows.length > 0 ? (
         <>
           <Text style={styles.subHeader}>Cards</Text>
           <Carousel
-            items={cardItems}
+            items={cardRows}
             visible={cardsPerView}
-            keyOf={(c) => c.id}
-            renderItem={renderCard}
+            keyOf={(r) => r.key}
+            renderItem={renderCardRow}
             styles={styles}
           />
         </>
@@ -567,25 +608,33 @@ function Carousel<T>({
 
   const prev = () => setPage((p) => (Math.min(p, pages - 1) - 1 + pages) % pages);
   const next = () => setPage((p) => (Math.min(p, pages - 1) + 1) % pages);
-  const atStart = safePage === 0;
+  // Double-tap an arrow (<200ms) to jump to the start / end; a single tap steps one page.
+  const lastPrev = useRef(0);
+  const lastNext = useRef(0);
+  const onPrev = () => {
+    const now = Date.now();
+    if (now - lastPrev.current < DOUBLE_TAP_MS) setPage(0);
+    else prev();
+    lastPrev.current = now;
+  };
+  const onNext = () => {
+    const now = Date.now();
+    if (now - lastNext.current < DOUBLE_TAP_MS) setPage(pages - 1);
+    else next();
+    lastNext.current = now;
+  };
 
   return (
     <View style={styles.carouselWrap}>
       <View style={styles.carousel}>
         {canPage ? (
-          <>
-            <Pressable
-              style={[styles.arrow, atStart && styles.arrowDim]}
-              onPress={() => setPage(0)}
-              disabled={atStart}
-              hitSlop={6}
-              accessibilityLabel="Back to start">
-              <Text style={styles.arrowText}>⟲</Text>
-            </Pressable>
-            <Pressable style={styles.arrow} onPress={prev} hitSlop={6} accessibilityLabel="Previous group">
-              <Text style={styles.arrowText}>‹</Text>
-            </Pressable>
-          </>
+          <Pressable
+            style={styles.arrow}
+            onPress={onPrev}
+            hitSlop={6}
+            accessibilityLabel="Previous group (double-tap for start)">
+            <Text style={styles.arrowText}>‹</Text>
+          </Pressable>
         ) : null}
         <View
           style={styles.track}
@@ -602,7 +651,11 @@ function Carousel<T>({
             : null}
         </View>
         {canPage ? (
-          <Pressable style={styles.arrow} onPress={next} hitSlop={6} accessibilityLabel="Next group">
+          <Pressable
+            style={styles.arrow}
+            onPress={onNext}
+            hitSlop={6}
+            accessibilityLabel="Next group (double-tap for end)">
             <Text style={styles.arrowText}>›</Text>
           </Pressable>
         ) : null}
@@ -804,5 +857,29 @@ function makeStyles(t: BrowseTheme) {
     scardName: { fontSize: 10, lineHeight: 12, color: t.text, textAlign: 'center' },
     scardSet: { fontSize: 8, lineHeight: 10, color: t.subtext, textAlign: 'center' },
     scardMeta: { fontSize: 9, lineHeight: 11, fontWeight: '700', color: t.accent, textAlign: 'center' },
+
+    // "NEW SET / UPCOMING" filler between each set's run in the Cards carousel
+    cardHeader: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: t.border,
+      borderRadius: 8,
+      backgroundColor: t.panel,
+      padding: 6,
+      gap: 3,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cardHeaderKicker: {
+      fontSize: 9,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+      color: t.subtext,
+      textTransform: 'uppercase' as const,
+    },
+    cardHeaderKickerUpcoming: { color: t.accent },
+    cardHeaderName: { fontSize: 11, fontWeight: '800', color: t.text, textAlign: 'center', lineHeight: 14 },
+    cardHeaderDate: { fontSize: 9, color: t.subtext, fontVariant: ['tabular-nums'] },
+    cardHeaderLogo: { width: '100%', height: 40, marginTop: 2 },
   });
 }
