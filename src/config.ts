@@ -40,6 +40,12 @@ export interface BrowseConfig {
   /** Publishable (anon) key for PostgREST reads. */
   apiKey?: string;
   /**
+   * Base URL of the on-device color blob dir (holding card_colors.bin / _ids.json / _meta.json).
+   * Omit → `${browseUrl}/color`. Powers the warm on-device color path (ColorIndex); the server
+   * RPC path needs only apiUrl/apiKey.
+   */
+  colorUrl?: string;
+  /**
    * Optional persistent cache (AsyncStorage / localStorage adapter) for the
    * content-hashed image manifest — enables instant first paint across launches.
    * See hydrateImageManifest / cardThumbUrl.
@@ -58,6 +64,7 @@ const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource'>> = {
   imgBase: '',
   apiUrl: '',
   apiKey: '',
+  colorUrl: '',
 };
 let catalogSource: CatalogSource | null = null;
 
@@ -67,6 +74,7 @@ export function configureBrowse(next: BrowseConfig): void {
   config.imgBase = next.imgBase;
   config.apiUrl = next.apiUrl ?? deriveApiUrl(next.browseUrl);
   config.apiKey = next.apiKey ?? '';
+  config.colorUrl = next.colorUrl ?? '';
   catalogSource = next.catalogSource ?? null;
   setManifestCache(next.cache ?? null);
 }
@@ -96,6 +104,10 @@ export function getApiUrl(): string {
 }
 export function getApiKey(): string {
   return config.apiKey;
+}
+/** Base URL of the on-device color blob dir; defaults to `${browseUrl}/color`. */
+export function getColorUrl(): string {
+  return config.colorUrl || `${config.browseUrl}/color`;
 }
 
 /**

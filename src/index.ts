@@ -109,6 +109,24 @@ export {
 } from './similar';
 
 export {
+  ColorIndex,
+  colorSearchAvailable,
+  colorServerAvailable,
+  findSimilarByColor,
+  findSimilarByColorServer,
+  getColorIndex,
+  labToSrgb,
+  loadColorIndex,
+  searchByColor,
+  searchByColorServer,
+  srgbToLab,
+  useColorIndex,
+  type ColorHit,
+  type ColorRegion,
+  type Lab,
+} from './color';
+
+export {
   fetchCardsByIds,
   fetchSetCards,
   searchCards,

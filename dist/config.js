@@ -13,6 +13,7 @@ const config = {
     imgBase: '',
     apiUrl: '',
     apiKey: '',
+    colorUrl: '',
 };
 let catalogSource = null;
 /** Set the data-server origins. Call once from the app before any browse use. */
@@ -21,6 +22,7 @@ export function configureBrowse(next) {
     config.imgBase = next.imgBase;
     config.apiUrl = next.apiUrl ?? deriveApiUrl(next.browseUrl);
     config.apiKey = next.apiKey ?? '';
+    config.colorUrl = next.colorUrl ?? '';
     catalogSource = next.catalogSource ?? null;
     setManifestCache(next.cache ?? null);
 }
@@ -48,6 +50,10 @@ export function getApiUrl() {
 }
 export function getApiKey() {
     return config.apiKey;
+}
+/** Base URL of the on-device color blob dir; defaults to `${browseUrl}/color`. */
+export function getColorUrl() {
+    return config.colorUrl || `${config.browseUrl}/color`;
 }
 /**
  * Resolve a raw catalog image path to a fully-usable image URL. Absolute URLs

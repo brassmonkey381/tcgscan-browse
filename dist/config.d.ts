@@ -35,6 +35,12 @@ export interface BrowseConfig {
     /** Publishable (anon) key for PostgREST reads. */
     apiKey?: string;
     /**
+     * Base URL of the on-device color blob dir (holding card_colors.bin / _ids.json / _meta.json).
+     * Omit → `${browseUrl}/color`. Powers the warm on-device color path (ColorIndex); the server
+     * RPC path needs only apiUrl/apiKey.
+     */
+    colorUrl?: string;
+    /**
      * Optional persistent cache (AsyncStorage / localStorage adapter) for the
      * content-hashed image manifest — enables instant first paint across launches.
      * See hydrateImageManifest / cardThumbUrl.
@@ -55,6 +61,8 @@ export declare function getBrowseUrl(): string;
 export declare function getImgBase(): string;
 export declare function getApiUrl(): string;
 export declare function getApiKey(): string;
+/** Base URL of the on-device color blob dir; defaults to `${browseUrl}/color`. */
+export declare function getColorUrl(): string;
 /**
  * Resolve a raw catalog image path to a fully-usable image URL. Absolute URLs
  * (`http(s)://…`) pass through untouched; site-root-relative paths get the
