@@ -50,8 +50,8 @@ const CARD_LABEL_H = 14;
 const ROW_GAP = 6;
 /** Series/set tiles: target width (packs into 3–5 columns by page width) + a fixed tile height
  *  (must match the `taxTile` style so getItemLayout can skip offscreen rows). */
-const TARGET_TAX_TILE_W = 210;
-const TAX_TILE_H = 136;
+const TARGET_TAX_TILE_W = 250;
+const TAX_TILE_H = 176;
 /** How many of the first cards to warm through the image cache when a view changes. */
 const PREFETCH_COUNT = 12;
 /** Distinct, alphabetically-sorted values pulled off `cards` via `pick`. */
@@ -579,13 +579,13 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // Dense grid geometry from the measured width. Falls back to a sane default pre-layout.
     const { numColumns, tileW, taxCols, taxTileW } = useMemo(() => {
         if (containerWidth <= 0) {
-            return { numColumns: 4, tileW: cardTileWidth, taxCols: 3, taxTileW: TARGET_TAX_TILE_W };
+            return { numColumns: 4, tileW: cardTileWidth, taxCols: 2, taxTileW: TARGET_TAX_TILE_W };
         }
         // Card grid columns/width for the Size step — the shared kit norm (see cardSize.ts).
         const cCols = cardGridColumns(containerWidth, cardTileWidth, cardSize, GRID_GAP);
         const cW = cardTileWidthFor(containerWidth, cCols, GRID_GAP);
-        // Series/set tiles: 3–5 columns depending on page width (a bigger target than card tiles).
-        const tCols = Math.max(3, Math.min(5, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
+        // Series/set tiles: 2–4 wide columns (bigger cover art than the card tiles).
+        const tCols = Math.max(2, Math.min(4, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
         const tW = Math.floor((containerWidth - GRID_GAP * (tCols - 1)) / tCols);
         return { numColumns: cCols, tileW: cW, taxCols: tCols, taxTileW: tW };
     }, [containerWidth, cardTileWidth, cardSize]);
@@ -1267,7 +1267,10 @@ function makeStyles(t, taxTileHeight) {
             ...tileShadow,
         },
         taxLogoWrap: {
-            height: 52,
+            // Fill the tile's free height so cover art is large (grows if taxTileHeight grows); the name
+            // + meta below stay at their intrinsic height.
+            flex: 1,
+            minHeight: 84,
             borderRadius: 6,
             backgroundColor: t.imagePlaceholder,
             alignItems: 'center',
@@ -1275,9 +1278,10 @@ function makeStyles(t, taxTileHeight) {
             overflow: 'hidden',
         },
         taxLogo: { width: '100%', height: '100%' },
-        taxInitial: { fontSize: 22, fontWeight: '800', color: t.faint },
-        taxTitle: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15 },
-        taxMeta: { fontSize: 10, color: t.subtext, lineHeight: 13 },
+        taxInitial: { fontSize: 29, fontWeight: '800', color: t.faint },
+        // Series/set tile text — ~33% larger than the dense card labels.
+        taxTitle: { fontSize: 16, fontWeight: '700', color: t.text, lineHeight: 20 },
+        taxMeta: { fontSize: 13, color: t.subtext, lineHeight: 17 },
         // dense card tiles
         cardTile: { marginBottom: ROW_GAP },
         cardTileSelected: { backgroundColor: t.selected, borderRadius: 6 },
