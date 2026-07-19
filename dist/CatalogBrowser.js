@@ -243,7 +243,7 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages, cardSize: cardSizeProp, onCardSizeChange, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
     // Hydrate the content-hashed image manifest and repaint tiles when it lands —
@@ -274,8 +274,19 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const [selection, setSelection] = useState(browseState.selection);
     // UI sort control: null → follow the search box's `sort:` (else relevance).
     const [sortSel, setSortSel] = useState(browseState.sortSel);
-    // Card-tile size step (scales `cardTileWidth`); session-sticky via browseState.
-    const [cardSize, setCardSize] = useState(browseState.cardSize);
+    // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
+    // given, else the session-sticky browseState. The toolbar toggle overrides locally; when the
+    // global prop changes the browser follows it (global-default + local-override).
+    const [cardSize, setCardSize] = useState(cardSizeProp ?? browseState.cardSize);
+    useEffect(() => {
+        if (cardSizeProp)
+            setCardSize(cardSizeProp);
+    }, [cardSizeProp]);
+    // Local toggle: apply + lift to the app's global store (if wired).
+    const pickCardSize = (s) => {
+        setCardSize(s);
+        onCardSizeChange?.(s);
+    };
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [helpOpen, setHelpOpen] = useState(false);
     // "Find similar" mode: results of the data server's embedding RPC for one card.
@@ -990,7 +1001,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                             // Locked analytics: accent-ring the tab so the gated perk draws the eye.
                             const spotlight = t === 'analytics' && !!analyticsLocked && !on;
                             return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn, spotlight && styles.tabSpotlight], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn, spotlight && styles.tabTextSpotlight], children: spotlight ? `✨ ${label}` : label }) }, t));
-                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: setCardSize })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
+                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
                                         setMultiSelectMode(false);
                                         clearSelection();
                                     }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (

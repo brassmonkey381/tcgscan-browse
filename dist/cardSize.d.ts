@@ -15,6 +15,13 @@ export declare const CARD_SIZES: readonly CardSize[];
  * on a narrow phone.
  */
 export declare const CARD_SIZE_FRACTION: Record<CardSize, number>;
+/**
+ * Relative size multiplier per step — the general-purpose knob for surfaces that DON'T have a free
+ * column count (binder pages with fixed pockets, carousels, fixed-layout tiles). Multiply the
+ * surface's base tile dimension by this to render cards at the S/M/L norm. (Dense grids should use
+ * `cardGridColumns` instead, which produces the exact column steps.)
+ */
+export declare const CARD_SIZE_SCALE: Record<CardSize, number>;
 /** Default gap (px) between card tiles the column math assumes. */
 export declare const CARD_GRID_GAP = 6;
 /** Above this rendered tile width (px), request the 640px image tier so big cards stay sharp

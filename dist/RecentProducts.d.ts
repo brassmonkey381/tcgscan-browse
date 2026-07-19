@@ -1,4 +1,5 @@
 import { type CardLanguage, type Catalog, type CatalogCard } from './catalog';
+import type { CardSize } from './state';
 import { type BrowseTheme } from './theme';
 /** The set identity a feed tile carries — same fields warm (catalog) and cold (REST). */
 export interface FeedSet {
@@ -37,6 +38,9 @@ interface RecentProductsProps {
      * warm (catalog) and cold (server) paths; cold fetches are constrained server-side.
      */
     languages?: CardLanguage[];
+    /** Card-tile size (S/M/L) for the card carousel — scales tiles to the shared kit norm
+     *  (CARD_SIZE_SCALE). Omit → M (the base). Wire to the app's global size store. */
+    cardSize?: CardSize;
     /** Injected color contract (partial override merged over the light default). */
     theme?: Partial<BrowseTheme>;
     /** Header title. Default "Recent & Upcoming". */
@@ -65,5 +69,5 @@ interface RecentProductsProps {
      */
     onAddToBinder?: (card: CatalogCard) => void;
 }
-export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, rarityFilter, languages, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }: RecentProductsProps): import("react").JSX.Element | null;
+export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, rarityFilter, languages, cardSize, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }: RecentProductsProps): import("react").JSX.Element | null;
 export {};

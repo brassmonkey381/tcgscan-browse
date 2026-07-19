@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { type CardSize } from './state';
 import { type CardAction, type CardActionsFactory } from './actions';
 import { type Catalog, type CardLanguage, type CatalogCard } from './catalog';
 import { type BrowseTheme } from './theme';
@@ -94,10 +95,23 @@ interface CatalogBrowserProps {
      * bound. Honored on the warm (catalog) and cold (server-search) paths alike.
      */
     languages?: CardLanguage[];
+    /**
+     * Card-tile size (S/M/L) — the app's GLOBAL default for this browser. The in-toolbar Size toggle
+     * still overrides it locally; when the app changes this prop (e.g. a home-screen size control),
+     * the browser follows it. Omit to fall back to the session-sticky `browseState.cardSize` (default
+     * M). Pair with `onCardSizeChange` to lift a local toggle back up to the global.
+     */
+    cardSize?: CardSize;
+    /**
+     * Fired when the in-toolbar Size toggle changes — wire it to the app's global size store so the
+     * toolbar becomes another way to set the shared size (and other surfaces follow). Omit to keep
+     * the toggle purely local to this browser.
+     */
+    onCardSizeChange?: (size: CardSize) => void;
 }
 /**
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages, cardSize: cardSizeProp, onCardSizeChange, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

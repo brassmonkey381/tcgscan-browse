@@ -427,6 +427,19 @@ interface CatalogBrowserProps {
    * bound. Honored on the warm (catalog) and cold (server-search) paths alike.
    */
   languages?: CardLanguage[];
+  /**
+   * Card-tile size (S/M/L) — the app's GLOBAL default for this browser. The in-toolbar Size toggle
+   * still overrides it locally; when the app changes this prop (e.g. a home-screen size control),
+   * the browser follows it. Omit to fall back to the session-sticky `browseState.cardSize` (default
+   * M). Pair with `onCardSizeChange` to lift a local toggle back up to the global.
+   */
+  cardSize?: CardSize;
+  /**
+   * Fired when the in-toolbar Size toggle changes — wire it to the app's global size store so the
+   * toolbar becomes another way to set the shared size (and other surfaces follow). Omit to keep
+   * the toggle purely local to this browser.
+   */
+  onCardSizeChange?: (size: CardSize) => void;
 }
 
 /**
@@ -451,6 +464,8 @@ export function CatalogBrowser({
   taxTileHeight = TAX_TILE_H,
   initialSimilar,
   languages,
+  cardSize: cardSizeProp,
+  onCardSizeChange,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
   const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
@@ -489,8 +504,18 @@ export function CatalogBrowser({
   const [sortSel, setSortSel] = useState<{ field: QuerySort; dir: SortDir } | null>(
     browseState.sortSel,
   );
-  // Card-tile size step (scales `cardTileWidth`); session-sticky via browseState.
-  const [cardSize, setCardSize] = useState<CardSize>(browseState.cardSize);
+  // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
+  // given, else the session-sticky browseState. The toolbar toggle overrides locally; when the
+  // global prop changes the browser follows it (global-default + local-override).
+  const [cardSize, setCardSize] = useState<CardSize>(cardSizeProp ?? browseState.cardSize);
+  useEffect(() => {
+    if (cardSizeProp) setCardSize(cardSizeProp);
+  }, [cardSizeProp]);
+  // Local toggle: apply + lift to the app's global store (if wired).
+  const pickCardSize = (s: CardSize) => {
+    setCardSize(s);
+    onCardSizeChange?.(s);
+  };
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // "Find similar" mode: results of the data server's embedding RPC for one card.
@@ -1408,7 +1433,7 @@ export function CatalogBrowser({
             onPick={pickSort}
             onToggleDir={toggleSortDir}
             size={cardSize}
-            onPickSize={setCardSize}
+            onPickSize={pickCardSize}
           />
         ) : null}
         {isCardLevel && canMultiSelect && !analyticsView ? (

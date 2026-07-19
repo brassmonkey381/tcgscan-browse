@@ -162,6 +162,7 @@ export {
 export {
   CARD_SIZES,
   CARD_SIZE_FRACTION,
+  CARD_SIZE_SCALE,
   CARD_GRID_GAP,
   CARD_HIRES_TILE_W,
   cardGridColumns,

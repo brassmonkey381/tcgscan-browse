@@ -31,7 +31,9 @@ import {
 } from 'react-native';
 
 import { CardActionModal } from './CardActionModal';
+import { CARD_SIZE_SCALE } from './cardSize';
 import { formatSetDate, type CardLanguage, type Catalog, type CatalogCard } from './catalog';
+import type { CardSize } from './state';
 import { cardThumbUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
@@ -87,6 +89,9 @@ interface RecentProductsProps {
    * warm (catalog) and cold (server) paths; cold fetches are constrained server-side.
    */
   languages?: CardLanguage[];
+  /** Card-tile size (S/M/L) for the card carousel — scales tiles to the shared kit norm
+   *  (CARD_SIZE_SCALE). Omit → M (the base). Wire to the app's global size store. */
+  cardSize?: CardSize;
   /** Injected color contract (partial override merged over the light default). */
   theme?: Partial<BrowseTheme>;
   /** Header title. Default "Recent & Upcoming". */
@@ -133,6 +138,7 @@ export function RecentProducts({
   cardLimit = 40,
   rarityFilter,
   languages,
+  cardSize = 'M',
   theme: themeProp,
   title = 'Recent & Upcoming',
   onFindSimilar,
@@ -337,7 +343,9 @@ export function RecentProducts({
     const w = e.nativeEvent.layout.width;
     if (w > 0 && Math.abs(w - width) > 0.5) setWidth(w);
   };
-  const cardsPerView = width > 0 ? Math.max(3, Math.min(9, Math.floor(width / CARD_TARGET_W))) : 4;
+  // Scale the per-tile target by the shared size norm (bigger size → wider target → fewer/larger).
+  const cardTarget = CARD_TARGET_W * CARD_SIZE_SCALE[cardSize];
+  const cardsPerView = width > 0 ? Math.max(2, Math.min(9, Math.floor(width / cardTarget))) : 4;
 
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
 

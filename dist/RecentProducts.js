@@ -24,6 +24,7 @@ import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View, } from 'react-native';
 import { CardActionModal } from './CardActionModal';
+import { CARD_SIZE_SCALE } from './cardSize';
 import { formatSetDate } from './catalog';
 import { cardThumbUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
@@ -37,7 +38,7 @@ const TILE_GAP = 10;
 const SETS_PER_VIEW = 4;
 /** Card carousels pack to roughly this tile width, then show as many as fit. */
 const CARD_TARGET_W = 104;
-export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, rarityFilter, languages, theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }) {
+export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, rarityFilter, languages, cardSize = 'M', theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme), [theme]);
     // Card thumbs resolve by id via the content-hashed manifest; repaint when it lands.
@@ -217,7 +218,9 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
         if (w > 0 && Math.abs(w - width) > 0.5)
             setWidth(w);
     };
-    const cardsPerView = width > 0 ? Math.max(3, Math.min(9, Math.floor(width / CARD_TARGET_W))) : 4;
+    // Scale the per-tile target by the shared size norm (bigger size → wider target → fewer/larger).
+    const cardTarget = CARD_TARGET_W * CARD_SIZE_SCALE[cardSize];
+    const cardsPerView = width > 0 ? Math.max(2, Math.min(9, Math.floor(width / cardTarget))) : 4;
     const [actionCard, setActionCard] = useState(null);
     const open = (url) => {
         if (url)
