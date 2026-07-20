@@ -171,6 +171,15 @@ export {
 } from './query';
 
 export {
+  isSearchSaved,
+  listSavedSearches,
+  removeSavedSearch,
+  subscribeSavedSearches,
+  toggleSavedSearch,
+  type SavedSearch,
+} from './savedSearches';
+
+export {
   browseState,
   sendBrowseCommand,
   subscribeBrowseCommand,

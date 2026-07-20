@@ -27,6 +27,7 @@ import { Animated, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, 
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, sortCards, } from './query';
 import { CARD_GRID_GAP, cardGridColumns, cardTierFor, cardTileWidthFor, } from './cardSize';
 import { browseState, subscribeBrowseCommand } from './state';
+import { isSearchSaved, listSavedSearches, removeSavedSearch, subscribeSavedSearches, toggleSavedSearch, } from './savedSearches';
 import { CardActionModal, MultiCardActionModal } from './CardActionModal';
 import { SeriesAnalytics, SetAnalytics } from './analytics';
 import { resolveActions, } from './actions';
@@ -229,6 +230,57 @@ const FACETS = [
 ];
 /** Synthetic Size facet value that switches the browse to V-UNION group tiles. */
 const VUNION_SIZE = 'V-UNION';
+// ---------------------------------------------------------------------------
+// SHAREABLE URL STATE (web only)
+// ---------------------------------------------------------------------------
+/** Query-param carrying the serialized browse view (?browse=…). */
+const URL_PARAM = 'browse';
+/** Web only: hydrate the session browseState from a shared ?browse= link — runs once per page
+ *  load (module scope), before any browser mounts, so the deep-linked view is the first paint. */
+function hydrateFromUrl() {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.location)
+        return;
+    try {
+        const raw = new URLSearchParams(window.location.search).get(URL_PARAM);
+        if (!raw)
+            return;
+        const s = JSON.parse(raw);
+        browseState.cardQuery = typeof s.q === 'string' ? s.q : '';
+        browseState.seriesId = typeof s.sr === 'string' ? s.sr : null;
+        browseState.setId = typeof s.st === 'string' ? s.st : null;
+        browseState.selection = s.f && typeof s.f === 'object' ? s.f : {};
+        browseState.sortSel = s.o && typeof s.o === 'object' ? s.o : null;
+    }
+    catch {
+        // malformed link — start clean
+    }
+}
+hydrateFromUrl();
+/** Web only: mirror the current view into the address bar (replaceState — no history spam), so
+ *  copying the URL shares this exact search/drill-down/filters/sort. Cleared at the default root. */
+function writeUrlState() {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.history?.replaceState)
+        return;
+    try {
+        const url = new URL(window.location.href);
+        const s = browseState;
+        const atRoot = !s.cardQuery && !s.seriesId && !s.setId && Object.keys(s.selection).length === 0 && !s.sortSel;
+        if (atRoot)
+            url.searchParams.delete(URL_PARAM);
+        else
+            url.searchParams.set(URL_PARAM, JSON.stringify({
+                q: s.cardQuery || undefined,
+                sr: s.seriesId ?? undefined,
+                st: s.setId ?? undefined,
+                f: Object.keys(s.selection).length ? s.selection : undefined,
+                o: s.sortSel ?? undefined,
+            }));
+        window.history.replaceState(window.history.state, '', url.toString());
+    }
+    catch {
+        // URL manipulation unavailable — non-fatal
+    }
+}
 /** Apply the current selection: AND across facets, OR within one facet's values. */
 function applyFacets(cards, selection) {
     const active = FACETS.filter((f) => (selection[f.key]?.length ?? 0) > 0);
@@ -301,6 +353,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     };
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [helpOpen, setHelpOpen] = useState(false);
+    // Saved searches — starred query+facets+sort combos, shared across every mounted browser
+    // (see savedSearches.ts for the per-platform persistence story).
+    const [savedList, setSavedList] = useState(listSavedSearches());
+    useEffect(() => subscribeSavedSearches(() => setSavedList([...listSavedSearches()])), []);
     // "Find similar" mode: results of the data server's embedding RPC for one card.
     const [similarTo, setSimilarTo] = useState(browseState.similarTo);
     const [similarCards, setSimilarCards] = useState(browseState.similarCards);
@@ -392,6 +448,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             similarCards,
             similarSteps,
         });
+        writeUrlState();
     }, [cardQuery, seriesId, setId, selection, sortSel, cardSize, similarTo, similarCards, similarSteps]);
     // Tapping a card opens the action sheet (app-supplied actions + built-ins)
     // instead of silently replacing the pocket's occupant.
@@ -410,6 +467,56 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     selectedIdsRef.current = selectedIds;
     const clearSelection = () => setSelectedIds([]);
     const toggleSelected = (id) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    // Keyboard navigation (WEB ONLY): arrow keys move a focus ring through the grid, Enter opens
+    // the focused item (card sheet / drill into series-set), Escape closes the sheet or drops the
+    // ring. The window listener is registered once; `keyNavRef` is refreshed every render so the
+    // handler always sees the live grid without re-binding.
+    const [focusIdx, setFocusIdx] = useState(-1);
+    const listRef = useRef(null);
+    const keyNavRef = useRef({ count: 0, cols: 1, focus: -1, modalOpen: false, enter: () => { }, escape: () => { } });
+    useEffect(() => {
+        if (Platform.OS !== 'web')
+            return;
+        const g = globalThis;
+        if (!g.addEventListener)
+            return;
+        const onKey = (e) => {
+            // Never hijack typing — the search box (or any input) keeps its keys.
+            const tag = e.target?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA')
+                return;
+            const nav = keyNavRef.current;
+            if (e.key === 'Escape') {
+                nav.escape();
+                return;
+            }
+            if (nav.modalOpen || nav.count === 0)
+                return; // modals own their keys
+            const delta = e.key === 'ArrowRight' ? 1
+                : e.key === 'ArrowLeft' ? -1
+                    : e.key === 'ArrowDown' ? nav.cols
+                        : e.key === 'ArrowUp' ? -nav.cols
+                            : null;
+            if (delta != null) {
+                e.preventDefault?.();
+                const next = Math.max(0, Math.min(nav.count - 1, nav.focus < 0 ? 0 : nav.focus + delta));
+                setFocusIdx(next);
+                try {
+                    listRef.current?.scrollToIndex({ index: next, viewPosition: 0.5 });
+                }
+                catch {
+                    // out-of-window index — the list will land close enough on the next batch
+                }
+                return;
+            }
+            if (e.key === 'Enter' && nav.focus >= 0) {
+                e.preventDefault?.();
+                nav.enter(nav.focus);
+            }
+        };
+        g.addEventListener('keydown', onKey);
+        return () => g.removeEventListener?.('keydown', onKey);
+    }, []);
     useEffect(() => {
         if (Platform.OS !== 'web')
             return;
@@ -470,6 +577,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                         ? 'sets'
                         : 'series';
     const isCardLevel = level === 'cards' || level === 'search' || level === 'similar';
+    // A new view (drill, search, similar) invalidates the keyboard-focus index.
+    useEffect(() => {
+        setFocusIdx(-1);
+    }, [level, seriesId, setId, q]);
     // Series + sets are language-tagged (explicit field, else derived) — constrain the taxonomy
     // drill-down to the allowed language(s), same as the card lists, so an EN-only browser never
     // shows JP series/set tiles.
@@ -666,6 +777,22 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         setSimilarTo(null);
         setSimilarCards([]);
         setSimilarSteps([]);
+    };
+    // The current search as a saveable snapshot (query text + facet chips + sort control).
+    const currentSearch = () => ({
+        label: cardQuery.trim() || 'Filters',
+        query: cardQuery,
+        selection,
+        sortSel,
+    });
+    // Only offer the star when there's something worth saving.
+    const canSaveSearch = cardQuery.trim().length > 0 || Object.values(selection).some((v) => v.length > 0) || !!sortSel;
+    const searchSaved = canSaveSearch && isSearchSaved(currentSearch());
+    const applySaved = (s) => {
+        clearSimilar();
+        setCardQuery(s.query);
+        setSelection(s.selection);
+        setSortSel(s.sortSel);
     };
     // "· refined +2 −1" summary for the similar-mode header (counts of more/less steps).
     const moreCount = similarSteps.filter((st) => st.kind === 'more').length;
@@ -966,7 +1093,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             : item.kind === 'vunion'
                 ? `vu-${item.group.pieces.join('-')}`
                 : `card-${item.card.id}`;
-    const renderItem = ({ item }) => {
+    const renderItem = ({ item, index }) => {
         if (item.kind === 'series') {
             const s = item.series;
             const meta = [seriesDateRange(s), `${s.cardCount.toLocaleString()} cards`, `${s.setIds.length} sets`]
@@ -989,7 +1116,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         const value = priceOf(c.id);
         return (_jsx(CardTile, { styles: styles, card: c, width: tileW, 
             // Big tiles pull the 640px thumb so they don't upscale a 245px webp.
-            tier: cardTierFor(tileW), selected: c.id === selectedCardId, 
+            tier: cardTierFor(tileW), selected: c.id === selectedCardId, focused: index === focusIdx, 
             // In select mode (toggle, or web Ctrl/Shift) a tap toggles selection; else it opens
             // the single-card sheet.
             onPress: () => (isSelecting() ? toggleSelected(c.id) : setActionCard(c)), multiSelected: selectedIds.includes(c.id), 
@@ -997,6 +1124,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             label: effParsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name, 
             // headline value under the name, only when pricing is surfaced
             value: analytics ? value : undefined, 
+            // latest market value as a corner tag (skipped when the label already IS the value)
+            priceTag: effParsed.sort === 'value' && value > 0 ? undefined : value, 
             // app-injected inline quick action (＋add / quick-place), if any
             quickAction: quickAction?.(c) }));
     };
@@ -1017,7 +1146,35 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const selectedCards = multiOpen
         ? selectedIds.map((id) => findCard(id)).filter((c) => Boolean(c))
         : [];
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [onColorSearch ? (_jsxs(View, { style: styles.triColorRow, children: [_jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: "Tri-Color Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Tri-Color Search" }) }), _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards — ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), isCardLevel || !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? '⚡ On-device search — instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+    // Refresh the keyboard-nav snapshot every render (the window listener reads it, never rebinds).
+    keyNavRef.current = {
+        count: analyticsView ? 0 : visibleData.length,
+        cols,
+        focus: focusIdx,
+        modalOpen: !!actionCard || multiOpen,
+        enter: (index) => {
+            const it = visibleData[index];
+            if (!it)
+                return;
+            if (it.kind === 'card')
+                setActionCard(it.card);
+            else if (it.kind === 'series')
+                openSeries(it.series.id);
+            else if (it.kind === 'set')
+                openSet(it.set.id);
+            else if (it.kind === 'vunion')
+                onPickVUnion?.(it.group.pieces);
+        },
+        escape: () => {
+            if (actionCard)
+                setActionCard(null);
+            else if (multiOpen)
+                setMultiOpen(false);
+            else
+                setFocusIdx(-1);
+        },
+    };
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [onColorSearch ? (_jsxs(View, { style: styles.triColorRow, children: [_jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: "Tri-Color Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Tri-Color Search" }) }), _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards — ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), savedList.length > 0 ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, isCardLevel || !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? '⚡ On-device search — instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
                         !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [warm
                                         ? filteredCards.length === viewCards.length
@@ -1043,15 +1200,17 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                             // Locked analytics: accent-ring the tab so the gated perk draws the eye.
                             const spotlight = t === 'analytics' && !!analyticsLocked && !on;
                             return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn, spotlight && styles.tabSpotlight], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn, spotlight && styles.tabTextSpotlight], children: spotlight ? `✨ ${label}` : label }) }, t));
-                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
+                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, 
+                        // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
+                        // up while a color result set (similarTo.injected) is what's on screen.
+                        onColorSearch: onColorSearch, colorActive: !!similarTo?.injected })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
                                         setMultiSelectMode(false);
                                         clearSelection();
                                     }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
                 // Gated (e.g. guest): the app-supplied CTA replaces the analytics panels.
-                analyticsLocked) : catalog && analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : catalog && analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : (_jsx(FlatList
-            // Remount when the level or column count changes so numColumns/getItemLayout stay
-            // consistent (FlatList can't change numColumns in place).
-            , { style: styles.list, 
+                analyticsLocked) : catalog && analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : catalog && analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : (_jsx(FlatList, { ref: listRef, 
+                // Keyboard nav scrolls by index; a miss (virtualized far jump) is non-fatal.
+                onScrollToIndexFailed: () => { }, style: styles.list, 
                 // Render a growing window of the (uncapped) results — reveal more as you scroll.
                 data: visibleData, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, 
                 // Hide the scrollbar indicator (scroll still works) — the grid reads cleaner without it.
@@ -1093,10 +1252,16 @@ function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, }) {
  * small. Cards with no local image show a neutral fallback, never a crash. Images use the
  * same memory-disk cache + recyclingKey pattern as BinderGrid.
  */
-function CardTile({ styles, card, width, tier = 245, selected, multiSelected, onPress, label, value, quickAction, }) {
+function CardTile({ styles, card, width, tier = 245, selected, multiSelected, focused, onPress, label, value, priceTag, quickAction, }) {
     // Grid tier: the 245px webp (~20KB) by default; large tiles request 640px so they stay sharp.
     const uri = cardThumbUrl(card.id, tier);
-    return (_jsxs(Pressable, { style: [styles.cardTile, { width }, selected && styles.cardTileSelected, multiSelected && styles.cardTileMulti], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : null, card.language === 'ja' ? (_jsx(View, { style: styles.cardLangBadge, children: _jsx(Text, { style: styles.cardLangBadgeText, children: "JP" }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
+    return (_jsxs(Pressable, { style: [
+            styles.cardTile,
+            { width },
+            selected && styles.cardTileSelected,
+            multiSelected && styles.cardTileMulti,
+            focused && styles.cardTileFocused,
+        ], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : null, card.language === 'ja' ? (_jsx(View, { style: styles.cardLangBadge, children: _jsx(Text, { style: styles.cardLangBadgeText, children: "JP" }) })) : null, priceTag != null && priceTag > 0 ? (_jsx(View, { style: styles.cardPriceTag, children: _jsx(Text, { style: styles.cardPriceTagText, children: formatUsd(priceTag) }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
 }
 /**
  * A V-UNION group tile (Size=V-UNION): the assembled art (its top-left piece thumb) with a
@@ -1134,8 +1299,8 @@ function SortBar({ styles, field, dir, onPick, onToggleDir, size, onPickSize, })
  * count + Clear); expanded it reveals one horizontal multi-select chip row per populated
  * facet — so it never eats the card viewport.
  */
-function FacetBar({ styles, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, }) {
-    return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.facetHeader, children: [_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, activeCount > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', activeCount > 0 ? ` · ${activeCount}` : ''] }) }), activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] }), open ? (_jsx(View, { style: styles.facetRows, children: options.map(({ facet, values }) => (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: facet.label }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: values.map((v) => {
+function FacetBar({ styles, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, onColorSearch, colorActive, }) {
+    return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.facetHeader, children: [_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, activeCount > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', activeCount > 0 ? ` · ${activeCount}` : ''] }) }), onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: [styles.facetToggle, colorActive && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, colorActive && styles.facetToggleTextOn], children: "Color" }) })) : null, activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] }), open ? (_jsx(View, { style: styles.facetRows, children: options.map(({ facet, values }) => (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: facet.label }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: values.map((v) => {
                                 const on = (selection[facet.key] ?? []).includes(v);
                                 return (_jsx(Pressable, { onPress: () => onToggleValue(facet.key, v), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: v }) }, v));
                             }) })] }, facet.key))) })) : null] }));
@@ -1344,6 +1509,8 @@ function makeStyles(t, taxTileHeight) {
         // dense card tiles
         cardTile: { marginBottom: ROW_GAP },
         cardTileSelected: { backgroundColor: t.selected, borderRadius: 6 },
+        // Keyboard-focus ring (web arrow keys) — outline, not layout: row geometry stays fixed.
+        cardTileFocused: { borderRadius: 6, borderWidth: 2, borderColor: t.accent },
         cardImageWrap: {
             width: '100%',
             aspectRatio: 63 / 88,
@@ -1395,6 +1562,17 @@ function makeStyles(t, taxTileHeight) {
             backgroundColor: t.accent,
         },
         cardLangBadgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', lineHeight: 12 },
+        // Latest-value corner tag on the thumb (bottom-left; JP badge keeps bottom-right).
+        cardPriceTag: {
+            position: 'absolute',
+            bottom: 3,
+            left: 3,
+            backgroundColor: 'rgba(0,0,0,0.62)',
+            borderRadius: 4,
+            paddingHorizontal: 3,
+            paddingVertical: 1,
+        },
+        cardPriceTagText: { color: '#fff', fontSize: 9, fontWeight: '800', lineHeight: 12 },
         // V-UNION group tile badge (bottom-left of the thumb)
         vunionTag: {
             position: 'absolute',

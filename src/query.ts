@@ -620,6 +620,17 @@ export const QUERY_MANUAL: ManualSection[] = [
       ['≈ similar', 'select a card, then tap ≈ similar for visual look-alikes'],
       ['View <artist>', "tap a card → View <artist> to see all of that illustrator's cards"],
       ['Filters', 'the chip filters combine with any search'],
+      ['Color', 'Tri-Color Search: pick up to 3 weighted colors to find cards by palette'],
+      ['☆ save', 'star a search to pin it as a one-tap chip (long-press the chip to remove)'],
+      ['price tag', "the corner tag on each card is its latest market value"],
+    ],
+  },
+  {
+    title: 'On the web',
+    rows: [
+      ['↑ ↓ ← →', 'arrow keys move the card focus; Enter opens it, Esc closes'],
+      ['Ctrl/Shift-click', 'select several cards, release to act on all of them'],
+      ['share the URL', 'the address bar tracks your search — copy the link to share this exact view'],
     ],
   },
 ];

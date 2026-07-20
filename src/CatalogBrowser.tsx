@@ -52,6 +52,14 @@ import {
   cardTileWidthFor,
 } from './cardSize';
 import { browseState, subscribeBrowseCommand, type CardSize } from './state';
+import {
+  isSearchSaved,
+  listSavedSearches,
+  removeSavedSearch,
+  subscribeSavedSearches,
+  toggleSavedSearch,
+  type SavedSearch,
+} from './savedSearches';
 import { CardActionModal, MultiCardActionModal } from './CardActionModal';
 import { SeriesAnalytics, SetAnalytics } from './analytics';
 import {
@@ -308,6 +316,65 @@ const FACETS: Facet[] = [
 /** Synthetic Size facet value that switches the browse to V-UNION group tiles. */
 const VUNION_SIZE = 'V-UNION';
 
+// ---------------------------------------------------------------------------
+// SHAREABLE URL STATE (web only)
+// ---------------------------------------------------------------------------
+
+/** Query-param carrying the serialized browse view (?browse=…). */
+const URL_PARAM = 'browse';
+
+/** Web only: hydrate the session browseState from a shared ?browse= link — runs once per page
+ *  load (module scope), before any browser mounts, so the deep-linked view is the first paint. */
+function hydrateFromUrl(): void {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.location) return;
+  try {
+    const raw = new URLSearchParams(window.location.search).get(URL_PARAM);
+    if (!raw) return;
+    const s = JSON.parse(raw) as Partial<{
+      q: string;
+      sr: string;
+      st: string;
+      f: Record<string, string[]>;
+      o: { field: QuerySort; dir: SortDir };
+    }>;
+    browseState.cardQuery = typeof s.q === 'string' ? s.q : '';
+    browseState.seriesId = typeof s.sr === 'string' ? s.sr : null;
+    browseState.setId = typeof s.st === 'string' ? s.st : null;
+    browseState.selection = s.f && typeof s.f === 'object' ? s.f : {};
+    browseState.sortSel = s.o && typeof s.o === 'object' ? s.o : null;
+  } catch {
+    // malformed link — start clean
+  }
+}
+hydrateFromUrl();
+
+/** Web only: mirror the current view into the address bar (replaceState — no history spam), so
+ *  copying the URL shares this exact search/drill-down/filters/sort. Cleared at the default root. */
+function writeUrlState(): void {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.history?.replaceState) return;
+  try {
+    const url = new URL(window.location.href);
+    const s = browseState;
+    const atRoot =
+      !s.cardQuery && !s.seriesId && !s.setId && Object.keys(s.selection).length === 0 && !s.sortSel;
+    if (atRoot) url.searchParams.delete(URL_PARAM);
+    else
+      url.searchParams.set(
+        URL_PARAM,
+        JSON.stringify({
+          q: s.cardQuery || undefined,
+          sr: s.seriesId ?? undefined,
+          st: s.setId ?? undefined,
+          f: Object.keys(s.selection).length ? s.selection : undefined,
+          o: s.sortSel ?? undefined,
+        }),
+      );
+    window.history.replaceState(window.history.state, '', url.toString());
+  } catch {
+    // URL manipulation unavailable — non-fatal
+  }
+}
+
 /** Selection state: facet key → the values OR-ed together for that facet. */
 type FacetSelection = Record<string, string[]>;
 
@@ -333,6 +400,9 @@ type BrowseItem =
 
 /** Modifier flags read off a web keyboard event (DOM lib isn't in the RN typings). */
 type KeyModifiers = { ctrlKey: boolean; shiftKey: boolean; metaKey: boolean };
+
+/** The slice of a web keydown event the grid's arrow-key navigation reads. */
+type KeyNavEvent = { key: string; target?: unknown; preventDefault?: () => void };
 
 type Styles = ReturnType<typeof makeStyles>;
 
@@ -540,6 +610,10 @@ export function CatalogBrowser({
   };
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  // Saved searches — starred query+facets+sort combos, shared across every mounted browser
+  // (see savedSearches.ts for the per-platform persistence story).
+  const [savedList, setSavedList] = useState<SavedSearch[]>(listSavedSearches());
+  useEffect(() => subscribeSavedSearches(() => setSavedList([...listSavedSearches()])), []);
   // "Find similar" mode: results of the data server's embedding RPC for one card.
   const [similarTo, setSimilarTo] = useState<{ ids: string[]; name: string; injected?: boolean } | null>(
     browseState.similarTo,
@@ -635,6 +709,7 @@ export function CatalogBrowser({
       similarCards,
       similarSteps,
     });
+    writeUrlState();
   }, [cardQuery, seriesId, setId, selection, sortSel, cardSize, similarTo, similarCards, similarSteps]);
   // Tapping a card opens the action sheet (app-supplied actions + built-ins)
   // instead of silently replacing the pocket's occupant.
@@ -655,6 +730,63 @@ export function CatalogBrowser({
   const clearSelection = () => setSelectedIds([]);
   const toggleSelected = (id: string) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  // Keyboard navigation (WEB ONLY): arrow keys move a focus ring through the grid, Enter opens
+  // the focused item (card sheet / drill into series-set), Escape closes the sheet or drops the
+  // ring. The window listener is registered once; `keyNavRef` is refreshed every render so the
+  // handler always sees the live grid without re-binding.
+  const [focusIdx, setFocusIdx] = useState(-1);
+  const listRef = useRef<FlatList<BrowseItem>>(null);
+  const keyNavRef = useRef<{
+    count: number;
+    cols: number;
+    focus: number;
+    modalOpen: boolean;
+    enter: (index: number) => void;
+    escape: () => void;
+  }>({ count: 0, cols: 1, focus: -1, modalOpen: false, enter: () => {}, escape: () => {} });
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const g = globalThis as {
+      addEventListener?: (t: string, cb: (e: KeyNavEvent) => void) => void;
+      removeEventListener?: (t: string, cb: (e: KeyNavEvent) => void) => void;
+    };
+    if (!g.addEventListener) return;
+    const onKey = (e: KeyNavEvent) => {
+      // Never hijack typing — the search box (or any input) keeps its keys.
+      const tag = (e.target as { tagName?: string } | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const nav = keyNavRef.current;
+      if (e.key === 'Escape') {
+        nav.escape();
+        return;
+      }
+      if (nav.modalOpen || nav.count === 0) return; // modals own their keys
+      const delta =
+        e.key === 'ArrowRight' ? 1
+        : e.key === 'ArrowLeft' ? -1
+        : e.key === 'ArrowDown' ? nav.cols
+        : e.key === 'ArrowUp' ? -nav.cols
+        : null;
+      if (delta != null) {
+        e.preventDefault?.();
+        const next = Math.max(0, Math.min(nav.count - 1, nav.focus < 0 ? 0 : nav.focus + delta));
+        setFocusIdx(next);
+        try {
+          listRef.current?.scrollToIndex({ index: next, viewPosition: 0.5 });
+        } catch {
+          // out-of-window index — the list will land close enough on the next batch
+        }
+        return;
+      }
+      if (e.key === 'Enter' && nav.focus >= 0) {
+        e.preventDefault?.();
+        nav.enter(nav.focus);
+      }
+    };
+    g.addEventListener('keydown', onKey);
+    return () => g.removeEventListener?.('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -717,6 +849,10 @@ export function CatalogBrowser({
             ? 'sets'
             : 'series';
   const isCardLevel = level === 'cards' || level === 'search' || level === 'similar';
+  // A new view (drill, search, similar) invalidates the keyboard-focus index.
+  useEffect(() => {
+    setFocusIdx(-1);
+  }, [level, seriesId, setId, q]);
 
   // Series + sets are language-tagged (explicit field, else derived) — constrain the taxonomy
   // drill-down to the allowed language(s), same as the card lists, so an EN-only browser never
@@ -935,6 +1071,22 @@ export function CatalogBrowser({
     setSimilarTo(null);
     setSimilarCards([]);
     setSimilarSteps([]);
+  };
+  // The current search as a saveable snapshot (query text + facet chips + sort control).
+  const currentSearch = (): SavedSearch => ({
+    label: cardQuery.trim() || 'Filters',
+    query: cardQuery,
+    selection,
+    sortSel,
+  });
+  // Only offer the star when there's something worth saving.
+  const canSaveSearch = cardQuery.trim().length > 0 || Object.values(selection).some((v) => v.length > 0) || !!sortSel;
+  const searchSaved = canSaveSearch && isSearchSaved(currentSearch());
+  const applySaved = (s: SavedSearch) => {
+    clearSimilar();
+    setCardQuery(s.query);
+    setSelection(s.selection);
+    setSortSel(s.sortSel);
   };
   // "· refined +2 −1" summary for the similar-mode header (counts of more/less steps).
   const moreCount = similarSteps.filter((st) => st.kind === 'more').length;
@@ -1249,7 +1401,7 @@ export function CatalogBrowser({
           ? `vu-${item.group.pieces.join('-')}`
           : `card-${item.card.id}`;
 
-  const renderItem = ({ item }: { item: BrowseItem }) => {
+  const renderItem = ({ item, index }: { item: BrowseItem; index: number }) => {
     if (item.kind === 'series') {
       const s = item.series;
       const meta = [seriesDateRange(s), `${s.cardCount.toLocaleString()} cards`, `${s.setIds.length} sets`]
@@ -1282,6 +1434,7 @@ export function CatalogBrowser({
         // Big tiles pull the 640px thumb so they don't upscale a 245px webp.
         tier={cardTierFor(tileW)}
         selected={c.id === selectedCardId}
+        focused={index === focusIdx}
         // In select mode (toggle, or web Ctrl/Shift) a tap toggles selection; else it opens
         // the single-card sheet.
         onPress={() => (isSelecting() ? toggleSelected(c.id) : setActionCard(c))}
@@ -1290,6 +1443,8 @@ export function CatalogBrowser({
         label={effParsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name}
         // headline value under the name, only when pricing is surfaced
         value={analytics ? value : undefined}
+        // latest market value as a corner tag (skipped when the label already IS the value)
+        priceTag={effParsed.sort === 'value' && value > 0 ? undefined : value}
         // app-injected inline quick action (＋add / quick-place), if any
         quickAction={quickAction?.(c)}
       />
@@ -1316,6 +1471,27 @@ export function CatalogBrowser({
   const selectedCards = multiOpen
     ? selectedIds.map((id) => findCard(id)).filter((c): c is CatalogCard => Boolean(c))
     : [];
+
+  // Refresh the keyboard-nav snapshot every render (the window listener reads it, never rebinds).
+  keyNavRef.current = {
+    count: analyticsView ? 0 : visibleData.length,
+    cols,
+    focus: focusIdx,
+    modalOpen: !!actionCard || multiOpen,
+    enter: (index: number) => {
+      const it = visibleData[index];
+      if (!it) return;
+      if (it.kind === 'card') setActionCard(it.card);
+      else if (it.kind === 'series') openSeries(it.series.id);
+      else if (it.kind === 'set') openSet(it.set.id);
+      else if (it.kind === 'vunion') onPickVUnion?.(it.group.pieces);
+    },
+    escape: () => {
+      if (actionCard) setActionCard(null);
+      else if (multiOpen) setMultiOpen(false);
+      else setFocusIdx(-1);
+    },
+  };
 
   return (
     <View style={styles.browser} onLayout={onLayout}>
@@ -1345,6 +1521,17 @@ export function CatalogBrowser({
             clearButtonMode="while-editing"
             style={[styles.search, styles.searchFlex]}
           />
+          {canSaveSearch ? (
+            <Pressable
+              onPress={() => toggleSavedSearch(currentSearch())}
+              style={[styles.helpBtn, searchSaved && styles.helpBtnOn]}
+              hitSlop={6}
+              accessibilityLabel={searchSaved ? 'Unsave this search' : 'Save this search'}>
+              <Text style={[styles.helpBtnText, searchSaved && styles.helpBtnTextOn]}>
+                {searchSaved ? '★' : '☆'}
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={() => setHelpOpen((v) => !v)}
             style={[styles.helpBtn, helpOpen && styles.helpBtnOn]}
@@ -1353,6 +1540,26 @@ export function CatalogBrowser({
             <Text style={[styles.helpBtnText, helpOpen && styles.helpBtnTextOn]}>?</Text>
           </Pressable>
         </View>
+        {/* Saved-search chips: one tap re-runs the starred search; long-press removes it. */}
+        {savedList.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+            keyboardShouldPersistTaps="handled">
+            {savedList.map((s, i) => (
+              <Pressable
+                key={`${s.label}-${i}`}
+                onPress={() => applySaved(s)}
+                onLongPress={() => removeSavedSearch(s)}
+                style={styles.chip}>
+                <Text style={styles.chipText} numberOfLines={1}>
+                  ★ {s.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
         {/* Search-source badge: ⚡ on-device (catalog in memory) once warm, else ☁ server search
             with a tqdm-style download bar (% · MB · ETA) while the catalog loads. */}
         {isCardLevel || !warm ? (
@@ -1489,6 +1696,10 @@ export function CatalogBrowser({
             onToggleOpen={() => setFiltersOpen((v) => !v)}
             onToggleValue={toggleFacetValue}
             onClear={clearFilters}
+            // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
+            // up while a color result set (similarTo.injected) is what's on screen.
+            onColorSearch={onColorSearch}
+            colorActive={!!similarTo?.injected}
           />
         ) : null}
         {isCardLevel && !analyticsView ? (
@@ -1546,9 +1757,12 @@ export function CatalogBrowser({
         </ScrollView>
       ) : (
       <FlatList
+        ref={listRef}
         // Remount when the level or column count changes so numColumns/getItemLayout stay
         // consistent (FlatList can't change numColumns in place).
         key={`lvl-${level}-c${cols}`}
+        // Keyboard nav scrolls by index; a miss (virtualized far jump) is non-fatal.
+        onScrollToIndexFailed={() => {}}
         style={styles.list}
         // Render a growing window of the (uncapped) results — reveal more as you scroll.
         data={visibleData}
@@ -1684,9 +1898,11 @@ function CardTile({
   tier = 245,
   selected,
   multiSelected,
+  focused,
   onPress,
   label,
   value,
+  priceTag,
   quickAction,
 }: {
   styles: Styles;
@@ -1697,11 +1913,16 @@ function CardTile({
   selected: boolean;
   /** Checked in multi-select mode (Ctrl/Shift-click / select mode). */
   multiSelected?: boolean;
+  /** Keyboard-focus ring (web arrow-key navigation). */
+  focused?: boolean;
   onPress: () => void;
   /** Text under the thumb; defaults to the card name (value when sorting by value). */
   label?: string;
   /** Headline value shown under the name (when pricing is surfaced); hidden if 0/absent. */
   value?: number;
+  /** Latest market value shown as a corner tag on the thumb (an overlay — the row geometry the
+   *  grid's getItemLayout assumes never changes); hidden if 0/absent. */
+  priceTag?: number;
   /** Inline quick action pill (app-injected); its onPress fires without opening the sheet. */
   quickAction?: CardAction;
 }) {
@@ -1709,7 +1930,13 @@ function CardTile({
   const uri = cardThumbUrl(card.id, tier);
   return (
     <Pressable
-      style={[styles.cardTile, { width }, selected && styles.cardTileSelected, multiSelected && styles.cardTileMulti]}
+      style={[
+        styles.cardTile,
+        { width },
+        selected && styles.cardTileSelected,
+        multiSelected && styles.cardTileMulti,
+        focused && styles.cardTileFocused,
+      ]}
       onPress={onPress}>
       <View style={styles.cardImageWrap}>
         {uri ? (
@@ -1734,6 +1961,11 @@ function CardTile({
         {card.language === 'ja' ? (
           <View style={styles.cardLangBadge}>
             <Text style={styles.cardLangBadgeText}>JP</Text>
+          </View>
+        ) : null}
+        {priceTag != null && priceTag > 0 ? (
+          <View style={styles.cardPriceTag}>
+            <Text style={styles.cardPriceTagText}>{formatUsd(priceTag)}</Text>
           </View>
         ) : null}
         {quickAction ? (
@@ -1940,6 +2172,8 @@ function FacetBar({
   onToggleOpen,
   onToggleValue,
   onClear,
+  onColorSearch,
+  colorActive,
 }: {
   styles: Styles;
   options: FacetOption[];
@@ -1949,6 +2183,10 @@ function FacetBar({
   onToggleOpen: () => void;
   onToggleValue: (key: string, value: string) => void;
   onClear: () => void;
+  /** When set, a "Color" chip joins the filter row (opens the tri-color picker). */
+  onColorSearch?: () => void;
+  /** True while an injected color result set is what's on screen (chip lights up). */
+  colorActive?: boolean;
 }) {
   return (
     <View style={styles.facetBar}>
@@ -1959,6 +2197,11 @@ function FacetBar({
             {activeCount > 0 ? ` · ${activeCount}` : ''}
           </Text>
         </Pressable>
+        {onColorSearch ? (
+          <Pressable onPress={onColorSearch} style={[styles.facetToggle, colorActive && styles.facetToggleOn]}>
+            <Text style={[styles.facetToggleText, colorActive && styles.facetToggleTextOn]}>Color</Text>
+          </Pressable>
+        ) : null}
         {activeCount > 0 ? (
           <Pressable onPress={onClear} hitSlop={8}>
             <Text style={styles.clear}>Clear</Text>
@@ -2201,6 +2444,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     // dense card tiles
     cardTile: { marginBottom: ROW_GAP },
     cardTileSelected: { backgroundColor: t.selected, borderRadius: 6 },
+    // Keyboard-focus ring (web arrow keys) — outline, not layout: row geometry stays fixed.
+    cardTileFocused: { borderRadius: 6, borderWidth: 2, borderColor: t.accent },
     cardImageWrap: {
       width: '100%',
       aspectRatio: 63 / 88,
@@ -2252,6 +2497,17 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       backgroundColor: t.accent,
     },
     cardLangBadgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', lineHeight: 12 },
+    // Latest-value corner tag on the thumb (bottom-left; JP badge keeps bottom-right).
+    cardPriceTag: {
+      position: 'absolute',
+      bottom: 3,
+      left: 3,
+      backgroundColor: 'rgba(0,0,0,0.62)',
+      borderRadius: 4,
+      paddingHorizontal: 3,
+      paddingVertical: 1,
+    },
+    cardPriceTagText: { color: '#fff', fontSize: 9, fontWeight: '800', lineHeight: 12 },
     // V-UNION group tile badge (bottom-left of the thumb)
     vunionTag: {
       position: 'absolute',
