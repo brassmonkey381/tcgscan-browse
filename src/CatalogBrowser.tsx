@@ -23,6 +23,7 @@
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  Animated,
   FlatList,
   type LayoutChangeEvent,
   Platform,
@@ -481,6 +482,20 @@ export function CatalogBrowser({
   useImageManifest();
   // Catalog load phase — drives the search-source badge (on-device vs, later, server search).
   const catalogStatus = useCatalogStatus();
+
+  // Oscillating "NEW!" nudge next to the Tri-Color Search button (only while it's shown).
+  const newWiggle = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!onColorSearch) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(newWiggle, { toValue: 1, duration: 480, useNativeDriver: false }),
+        Animated.timing(newWiggle, { toValue: 0, duration: 480, useNativeDriver: false }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [onColorSearch, newWiggle]);
 
   // Upstream language constraint → a stable Set (null = unconstrained). Keyed by the sorted codes
   // so an inline array prop doesn't thrash memo identity. `langOk` gates the warm/local card lists;
@@ -1305,7 +1320,21 @@ export function CatalogBrowser({
   return (
     <View style={styles.browser} onLayout={onLayout}>
       <View style={styles.controls}>
-        <Text style={styles.sectionLabel}>Cards · 1×1</Text>
+        {onColorSearch ? (
+          <View style={styles.triColorRow}>
+            <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel="Tri-Color Search">
+              <Text style={styles.triColorBtnText}>Tri-Color Search</Text>
+            </Pressable>
+            <Animated.View
+              style={[styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }]}
+              pointerEvents="none">
+              <Text style={styles.newArrow}>←</Text>
+              <Text style={styles.newText}>NEW!</Text>
+            </Animated.View>
+          </View>
+        ) : (
+          <Text style={styles.sectionLabel}>Cards · 1×1</Text>
+        )}
         <View style={styles.searchRow}>
           <TextInput
             value={cardQuery}
@@ -1323,11 +1352,6 @@ export function CatalogBrowser({
             accessibilityLabel="Search syntax help">
             <Text style={[styles.helpBtnText, helpOpen && styles.helpBtnTextOn]}>?</Text>
           </Pressable>
-          {onColorSearch ? (
-            <Pressable onPress={onColorSearch} style={styles.colorBtn} hitSlop={6} accessibilityLabel="Search by color">
-              <Text style={styles.colorBtnText}>Color</Text>
-            </Pressable>
-          ) : null}
         </View>
         {/* Search-source badge: ⚡ on-device (catalog in memory) once warm, else ☁ server search
             with a tqdm-style download bar (% · MB · ETA) while the catalog loads. */}
@@ -2044,16 +2068,19 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     helpBtnOn: { backgroundColor: t.accent, borderColor: t.accent },
     helpBtnText: { fontSize: 14, fontWeight: '700', color: t.subtext },
     helpBtnTextOn: { color: t.accentText },
-    colorBtn: {
-      height: 30,
-      borderRadius: 15,
-      borderWidth: 1,
-      borderColor: t.border,
-      paddingHorizontal: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
+    // Tri-Color Search — prominent, above the search box, with an oscillating "NEW!" nudge.
+    triColorRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+    triColorBtn: {
+      backgroundColor: t.accent,
+      borderRadius: 9,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      ...tileShadow,
     },
-    colorBtnText: { fontSize: 12, fontWeight: '700', color: t.subtext },
+    triColorBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.3, color: t.accentText },
+    newNudge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+    newArrow: { fontSize: 18, fontWeight: '900', color: t.accent, lineHeight: 20 },
+    newText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.5, color: t.accent },
     // search manual panel
     manual: {
       borderWidth: 1,
