@@ -440,6 +440,12 @@ interface CatalogBrowserProps {
    * the toggle purely local to this browser.
    */
   onCardSizeChange?: (size: CardSize) => void;
+  /**
+   * Open a color search (app-supplied UI). When set, a "Color" button appears in the search row;
+   * the app opens its color picker and returns results via `sendBrowseCommand({type:'showCards'})`.
+   * Omitted → no color button. Lives in the browser so every surface (browse + binder picker) has it.
+   */
+  onColorSearch?: () => void;
 }
 
 /**
@@ -466,6 +472,7 @@ export function CatalogBrowser({
   languages,
   cardSize: cardSizeProp,
   onCardSizeChange,
+  onColorSearch,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
   const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
@@ -1316,6 +1323,11 @@ export function CatalogBrowser({
             accessibilityLabel="Search syntax help">
             <Text style={[styles.helpBtnText, helpOpen && styles.helpBtnTextOn]}>?</Text>
           </Pressable>
+          {onColorSearch ? (
+            <Pressable onPress={onColorSearch} style={styles.colorBtn} hitSlop={6} accessibilityLabel="Search by color">
+              <Text style={styles.colorBtnText}>Color</Text>
+            </Pressable>
+          ) : null}
         </View>
         {/* Search-source badge: ⚡ on-device (catalog in memory) once warm, else ☁ server search
             with a tqdm-style download bar (% · MB · ETA) while the catalog loads. */}
@@ -2032,6 +2044,16 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     helpBtnOn: { backgroundColor: t.accent, borderColor: t.accent },
     helpBtnText: { fontSize: 14, fontWeight: '700', color: t.subtext },
     helpBtnTextOn: { color: t.accentText },
+    colorBtn: {
+      height: 30,
+      borderRadius: 15,
+      borderWidth: 1,
+      borderColor: t.border,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    colorBtnText: { fontSize: 12, fontWeight: '700', color: t.subtext },
     // search manual panel
     manual: {
       borderWidth: 1,

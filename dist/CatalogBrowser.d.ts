@@ -108,10 +108,16 @@ interface CatalogBrowserProps {
      * the toggle purely local to this browser.
      */
     onCardSizeChange?: (size: CardSize) => void;
+    /**
+     * Open a color search (app-supplied UI). When set, a "Color" button appears in the search row;
+     * the app opens its color picker and returns results via `sendBrowseCommand({type:'showCards'})`.
+     * Omitted → no color button. Lives in the browser so every surface (browse + binder picker) has it.
+     */
+    onColorSearch?: () => void;
 }
 /**
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages, cardSize: cardSizeProp, onCardSizeChange, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};
