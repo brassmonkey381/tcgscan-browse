@@ -489,8 +489,8 @@ export function CatalogBrowser({
     if (!onColorSearch) return;
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(newWiggle, { toValue: 1, duration: 480, useNativeDriver: false }),
-        Animated.timing(newWiggle, { toValue: 0, duration: 480, useNativeDriver: false }),
+        Animated.timing(newWiggle, { toValue: 1, duration: 1600, useNativeDriver: false }),
+        Animated.timing(newWiggle, { toValue: 0, duration: 1600, useNativeDriver: false }),
       ]),
     );
     anim.start();
