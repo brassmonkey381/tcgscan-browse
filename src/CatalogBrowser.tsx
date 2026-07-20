@@ -519,7 +519,7 @@ export function CatalogBrowser({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // "Find similar" mode: results of the data server's embedding RPC for one card.
-  const [similarTo, setSimilarTo] = useState<{ ids: string[]; name: string } | null>(
+  const [similarTo, setSimilarTo] = useState<{ ids: string[]; name: string; injected?: boolean } | null>(
     browseState.similarTo,
   );
   const [similarCards, setSimilarCards] = useState<CatalogCard[]>(browseState.similarCards);
@@ -994,6 +994,25 @@ export function CatalogBrowser({
     runSimilar(steps);
   };
 
+  /** Display an EXACT pre-ranked id list as a result set (e.g. a color search) — resolved to cards
+   *  (warm/cold) and shown in the grid with facets / multi-select / actions / sort, but no embedding
+   *  refine (`injected`). The order of `ids` is the ranking; keep it (relevance sort = input order). */
+  const openCards = (ids: string[], label: string) => {
+    setCardQuery('');
+    setCardQueryDebounced('');
+    clearFilters();
+    setSimilarSteps([]);
+    setSimilarTo({ ids: [], name: label, injected: true });
+    setSimilarCards([]);
+    const token = ++similarReq.current;
+    setSimilarBusy(true);
+    resolveIds(ids).then((cards) => {
+      if (similarReq.current !== token) return;
+      setSimilarCards(cards);
+      setSimilarBusy(false);
+    });
+  };
+
   /** "More / less like this" — extend the ONGOING similarity session and re-rank against the
    *  weighted (Rocchio) history: seed 1.0, each more-group +0.8, each less-group −0.5, split
    *  across group members (see similar.ts refineWeights). Seed chips stay; the grid re-ranks. */
@@ -1026,6 +1045,10 @@ export function CatalogBrowser({
     return subscribeBrowseCommand((cmd) => {
       if (cmd.type === 'similarMany') {
         openSimilarMany(cmd.cardIds);
+        return;
+      }
+      if (cmd.type === 'showCards') {
+        openCards(cmd.ids, cmd.label);
         return;
       }
       if (cmd.type === 'viewSetById') {
@@ -1113,9 +1136,10 @@ export function CatalogBrowser({
           },
         }
       : undefined,
-    // Refinements exist only while similarity results are on screen — they extend the session.
+    // Refinements exist only while EMBEDDING similarity results are on screen — they extend the
+    // session. Injected result sets (color search) aren't an embedding session, so skip them.
     moreLikeThis:
-      similarAvailable() && similarTo
+      similarAvailable() && similarTo && !similarTo.injected
         ? {
             key: 'more-like-this',
             label: '⊕ More like this',
@@ -1126,7 +1150,7 @@ export function CatalogBrowser({
           }
         : undefined,
     lessLikeThis:
-      similarAvailable() && similarTo
+      similarAvailable() && similarTo && !similarTo.injected
         ? {
             key: 'less-like-this',
             label: '⊖ Less like this',
@@ -1343,13 +1367,19 @@ export function CatalogBrowser({
           <View style={styles.similarBar}>
             <View style={styles.metaRow}>
               <Text style={styles.meta} numberOfLines={1}>
-                {similarCards.length > 0
-                  ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}${refineNote}:`
-                  : similarBusy
-                    ? 'Finding similar cards…'
-                    : 'No similar cards found.'}
+                {similarTo.injected
+                  ? similarCards.length > 0
+                    ? `${filteredCards.length} cards · ${similarTo.name}`
+                    : similarBusy
+                      ? 'Loading…'
+                      : `No matches · ${similarTo.name}`
+                  : similarCards.length > 0
+                    ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}${refineNote}:`
+                    : similarBusy
+                      ? 'Finding similar cards…'
+                      : 'No similar cards found.'}
               </Text>
-              {!similarBusy && similarCards.length === 0 ? (
+              {!similarTo.injected && !similarBusy && similarCards.length === 0 ? (
                 <Pressable onPress={() => runSimilar(similarSteps)} hitSlop={8}>
                   <Text style={styles.clear}>Retry</Text>
                 </Pressable>
@@ -1515,7 +1545,9 @@ export function CatalogBrowser({
                 : level === 'similar'
                   ? similarBusy
                     ? 'Searching…'
-                    : 'No similar cards found — tap Retry above.'
+                    : similarTo?.injected
+                      ? 'No color matches.'
+                      : 'No similar cards found — tap Retry above.'
                   : level === 'cards'
                     ? !catalog && coldSetLoading
                       ? 'Loading set…'
@@ -1544,10 +1576,10 @@ export function CatalogBrowser({
           addAllLabel={pickCardsLabel}
           onFindSimilarAll={similarAvailable() ? () => openSimilarMany(selectedIds) : undefined}
           onMoreLikeAll={
-            similarAvailable() && similarTo ? () => refineSimilar('more', selectedIds) : undefined
+            similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined
           }
           onLessLikeAll={
-            similarAvailable() && similarTo ? () => refineSimilar('less', selectedIds) : undefined
+            similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined
           }
           onClose={() => {
             setMultiOpen(false);

@@ -25,10 +25,13 @@ export interface BrowseState {
     } | null;
     /** Card-tile size step chosen via the Size control (scales `cardTileWidth`). */
     cardSize: CardSize;
-    /** The source card(s) a similarity search was run on: their ids + a short label. */
+    /** The source card(s) a similarity search was run on: their ids + a short label. `injected` marks
+     *  a result set pushed in from outside (e.g. a color search) — shown like similar results but with
+     *  no embedding-refine controls. */
     similarTo: {
         ids: string[];
         name: string;
+        injected?: boolean;
     } | null;
     similarCards: CatalogCard[];
     /**
@@ -66,6 +69,14 @@ export type BrowseCommand = {
     type: 'viewSetById';
     setId: string;
     seriesId?: string;
+}
+/** Display an EXACT, pre-ranked card-id list as a result set (e.g. a color search) — shown in the
+ *  grid with the full facet / multi-select / action treatment, no embedding refine. `label` heads
+ *  the results bar. Ids resolve warm (catalog) or cold (server), so it works for guests too. */
+ | {
+    type: 'showCards';
+    ids: string[];
+    label: string;
 };
 /** Deliver a command to the mounted browser(s), or hold it for the next subscriber. */
 export declare function sendBrowseCommand(cmd: BrowseCommand): void;

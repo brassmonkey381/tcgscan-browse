@@ -24,8 +24,10 @@ export interface BrowseState {
   sortSel: { field: QuerySort; dir: SortDir } | null;
   /** Card-tile size step chosen via the Size control (scales `cardTileWidth`). */
   cardSize: CardSize;
-  /** The source card(s) a similarity search was run on: their ids + a short label. */
-  similarTo: { ids: string[]; name: string } | null;
+  /** The source card(s) a similarity search was run on: their ids + a short label. `injected` marks
+   *  a result set pushed in from outside (e.g. a color search) — shown like similar results but with
+   *  no embedding-refine controls. */
+  similarTo: { ids: string[]; name: string; injected?: boolean } | null;
   similarCards: CatalogCard[];
   /**
    * The ongoing similarity session — the seed search plus every "more / less like this"
@@ -63,7 +65,11 @@ export type BrowseCommand =
   | { type: 'similarMany'; cardIds: string[] }
   /** Open a set directly by its id (catalog-free — works in cold mode; ids are the catalog's
    *  string set ids). `seriesId` (the series NAME) positions the drill-down breadcrumb. */
-  | { type: 'viewSetById'; setId: string; seriesId?: string };
+  | { type: 'viewSetById'; setId: string; seriesId?: string }
+  /** Display an EXACT, pre-ranked card-id list as a result set (e.g. a color search) — shown in the
+   *  grid with the full facet / multi-select / action treatment, no embedding refine. `label` heads
+   *  the results bar. Ids resolve warm (catalog) or cold (server), so it works for guests too. */
+  | { type: 'showCards'; ids: string[]; label: string };
 
 const commandListeners = new Set<(cmd: BrowseCommand) => void>();
 let pendingCommand: BrowseCommand | null = null;

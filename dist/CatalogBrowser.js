@@ -733,6 +733,25 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         setSimilarSteps(steps);
         runSimilar(steps);
     };
+    /** Display an EXACT pre-ranked id list as a result set (e.g. a color search) — resolved to cards
+     *  (warm/cold) and shown in the grid with facets / multi-select / actions / sort, but no embedding
+     *  refine (`injected`). The order of `ids` is the ranking; keep it (relevance sort = input order). */
+    const openCards = (ids, label) => {
+        setCardQuery('');
+        setCardQueryDebounced('');
+        clearFilters();
+        setSimilarSteps([]);
+        setSimilarTo({ ids: [], name: label, injected: true });
+        setSimilarCards([]);
+        const token = ++similarReq.current;
+        setSimilarBusy(true);
+        resolveIds(ids).then((cards) => {
+            if (similarReq.current !== token)
+                return;
+            setSimilarCards(cards);
+            setSimilarBusy(false);
+        });
+    };
     /** "More / less like this" — extend the ONGOING similarity session and re-rank against the
      *  weighted (Rocchio) history: seed 1.0, each more-group +0.8, each less-group −0.5, split
      *  across group members (see similar.ts refineWeights). Seed chips stay; the grid re-ranks. */
@@ -761,6 +780,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         return subscribeBrowseCommand((cmd) => {
             if (cmd.type === 'similarMany') {
                 openSimilarMany(cmd.cardIds);
+                return;
+            }
+            if (cmd.type === 'showCards') {
+                openCards(cmd.ids, cmd.label);
                 return;
             }
             if (cmd.type === 'viewSetById') {
@@ -846,8 +869,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 },
             }
             : undefined,
-        // Refinements exist only while similarity results are on screen — they extend the session.
-        moreLikeThis: similarAvailable() && similarTo
+        // Refinements exist only while EMBEDDING similarity results are on screen — they extend the
+        // session. Injected result sets (color search) aren't an embedding session, so skip them.
+        moreLikeThis: similarAvailable() && similarTo && !similarTo.injected
             ? {
                 key: 'more-like-this',
                 label: '⊕ More like this',
@@ -857,7 +881,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 },
             }
             : undefined,
-        lessLikeThis: similarAvailable() && similarTo
+        lessLikeThis: similarAvailable() && similarTo && !similarTo.injected
             ? {
                 key: 'less-like-this',
                 label: '⊖ Less like this',
@@ -987,11 +1011,17 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                         ? filteredCards.length === viewCards.length
                                             ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
                                             : `${filteredCards.length} of ${viewCards.length}`
-                                        : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarCards.length > 0
-                                            ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}${refineNote}:`
-                                            : similarBusy
-                                                ? 'Finding similar cards…'
-                                                : 'No similar cards found.' }), !similarBusy && similarCards.length === 0 ? (_jsx(Pressable, { onPress: () => runSimilar(similarSteps), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Retry" }) })) : null, _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.similarThumbs, keyboardShouldPersistTaps: "handled", children: similarTo.ids.map((sid) => {
+                                        : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarTo.injected
+                                            ? similarCards.length > 0
+                                                ? `${filteredCards.length} cards · ${similarTo.name}`
+                                                : similarBusy
+                                                    ? 'Loading…'
+                                                    : `No matches · ${similarTo.name}`
+                                            : similarCards.length > 0
+                                                ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}${refineNote}:`
+                                                : similarBusy
+                                                    ? 'Finding similar cards…'
+                                                    : 'No similar cards found.' }), !similarTo.injected && !similarBusy && similarCards.length === 0 ? (_jsx(Pressable, { onPress: () => runSimilar(similarSteps), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Retry" }) })) : null, _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.similarThumbs, keyboardShouldPersistTaps: "handled", children: similarTo.ids.map((sid) => {
                                     const src = findCard(sid);
                                     const uri = cardThumbUrl(sid, 245);
                                     return (_jsx(Pressable, { style: styles.similarThumb, onPress: () => src && setActionCard(src), children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: sid, transition: 80 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: src?.name?.slice(0, 1) ?? '?' }) })) }, sid));
@@ -1024,12 +1054,14 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                             : level === 'similar'
                                 ? similarBusy
                                     ? 'Searching…'
-                                    : 'No similar cards found — tap Retry above.'
+                                    : similarTo?.injected
+                                        ? 'No color matches.'
+                                        : 'No similar cards found — tap Retry above.'
                                 : level === 'cards'
                                     ? !catalog && coldSetLoading
                                         ? 'Loading set…'
                                         : 'No cards in this set.'
-                                    : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
+                                    : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
                     setMultiOpen(false);
                     setMultiSelectMode(false);
                     clearSelection();
