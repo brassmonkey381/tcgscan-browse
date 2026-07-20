@@ -261,6 +261,53 @@ export async function searchFacets(
  * Every card in the recent release window (release_date >= cutoff, upcoming included),
  * newest first — powers the catalog-FREE Recent & Upcoming feed. Fails soft ([]).
  */
+/** Per-card heavy fields NOT shipped in the slim catalog — fetched on demand (rpc/card_detail,
+ *  tcgscan-data migration 32). Today: the evolution line (only the card action sheet reads it). */
+export interface CardDetail {
+  evolvesFrom: string;
+  evolutionLine: string[];
+}
+
+const cardDetailCache = new Map<string, CardDetail>();
+
+/**
+ * Resolve per-card detail fields by id (batched ≤50 per the RPC's cap, cached forever — the
+ * fields are immutable per printing). Fails soft to whatever the cache already holds.
+ */
+export async function fetchCardDetail(ids: string[]): Promise<Record<string, CardDetail>> {
+  const wanted = [...new Set(ids)];
+  const misses = wanted.filter((id) => !cardDetailCache.has(id));
+  if (misses.length > 0 && serverSearchAvailable()) {
+    try {
+      const res = await fetch(`${getApiUrl()}/rpc/card_detail`, {
+        method: 'POST',
+        headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_ids: misses.slice(0, 50) }),
+      });
+      if (res.ok) {
+        for (const r of (await res.json()) as {
+          id: string | number;
+          evolves_from?: string | null;
+          evolution_line?: string[] | null;
+        }[]) {
+          cardDetailCache.set(String(r.id), {
+            evolvesFrom: r.evolves_from ?? '',
+            evolutionLine: r.evolution_line ?? [],
+          });
+        }
+      }
+    } catch {
+      // offline / not configured — evolution facts just stay absent
+    }
+  }
+  const out: Record<string, CardDetail> = {};
+  for (const id of wanted) {
+    const d = cardDetailCache.get(id);
+    if (d) out[id] = d;
+  }
+  return out;
+}
+
 export async function fetchRecentWindow(
   cutoff: string,
   languages?: CardLanguage[],

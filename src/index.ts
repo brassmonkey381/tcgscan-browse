@@ -129,11 +129,13 @@ export {
 } from './color';
 
 export {
+  fetchCardDetail,
   fetchCardsByIds,
   fetchSetCards,
   searchCards,
   searchFacets,
   serverSearchAvailable,
+  type CardDetail,
   type SearchPage,
   type ServerFacetSelection,
 } from './search';

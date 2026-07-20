@@ -9,6 +9,7 @@
  * only), so the sheet image would otherwise fail to load.
  */
 import { Image } from 'expo-image';
+import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { CardAction } from './actions';
@@ -16,6 +17,7 @@ import { resolveLabel } from './actions';
 import { evolutionNeighbors, type CatalogCard } from './catalog';
 import { cardThumbUrl } from './config';
 import { formatUsd } from './prices';
+import { fetchCardDetail, type CardDetail } from './search';
 import { lightTheme, type BrowseTheme } from './theme';
 
 interface CardActionModalProps {
@@ -39,7 +41,25 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
     value > 0 ? `Value ${formatUsd(value)}` : '',
   ].filter(Boolean);
   // Evolution neighbours (from the authoritative evolves_from + the ordered evolution line).
-  const evo = evolutionNeighbors(card);
+  // The slim catalog no longer ships evolution_line (P4 lazy-load) — when the card arrives
+  // without one, fetch it per card on open (rpc/card_detail, cached in the search module).
+  const [detail, setDetail] = useState<CardDetail | null>(null);
+  useEffect(() => {
+    setDetail(null);
+    if (card.evolutionLine.length > 0) return;
+    let stale = false;
+    fetchCardDetail([card.id]).then((d) => {
+      if (!stale && d[card.id]) setDetail(d[card.id]);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [card.id, card.evolutionLine.length]);
+  const evo = evolutionNeighbors(
+    detail
+      ? { ...card, evolvesFrom: card.evolvesFrom || detail.evolvesFrom, evolutionLine: detail.evolutionLine }
+      : card,
+  );
   const evoLine = [
     evo.from ? `↑ Evolves from ${evo.from}` : '',
     evo.to ? `↓ Evolves to ${evo.to}` : '',

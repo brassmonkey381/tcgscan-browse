@@ -16,7 +16,7 @@ export { resolveActions, resolveLabel, type BrowserBuiltins, type CardAction, ty
 export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE, type BrowseTheme } from './theme';
 export { findSimilar, findSimilarToMany, findSimilarWeighted, refineWeights, similarAvailable, type SimilarHit, type SimilarStep, } from './similar';
 export { ColorIndex, colorSearchAvailable, colorServerAvailable, findSimilarByColor, findSimilarByColorServer, getColorIndex, labToSrgb, loadColorIndex, searchByColor, searchByColorServer, searchByColors, searchByColorsServer, srgbToLab, useColorIndex, type ColorHit, type ColorRegion, type Lab, } from './color';
-export { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, type SearchPage, type ServerFacetSelection, } from './search';
+export { fetchCardDetail, fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, type CardDetail, type SearchPage, type ServerFacetSelection, } from './search';
 export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, type SealedCatalog, type SealedProduct, type SealedSet, } from './sealed';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, type CompareField, type CompareOp, type Comparison, type FieldKey, type ManualSection, type ParsedQuery, type QueryableCard, type QuerySort, type SortDir, } from './query';

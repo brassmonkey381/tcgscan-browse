@@ -210,10 +210,42 @@ export async function searchFacets(parsed, facets, languages) {
         return {};
     }
 }
+const cardDetailCache = new Map();
 /**
- * Every card in the recent release window (release_date >= cutoff, upcoming included),
- * newest first — powers the catalog-FREE Recent & Upcoming feed. Fails soft ([]).
+ * Resolve per-card detail fields by id (batched ≤50 per the RPC's cap, cached forever — the
+ * fields are immutable per printing). Fails soft to whatever the cache already holds.
  */
+export async function fetchCardDetail(ids) {
+    const wanted = [...new Set(ids)];
+    const misses = wanted.filter((id) => !cardDetailCache.has(id));
+    if (misses.length > 0 && serverSearchAvailable()) {
+        try {
+            const res = await fetch(`${getApiUrl()}/rpc/card_detail`, {
+                method: 'POST',
+                headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ p_ids: misses.slice(0, 50) }),
+            });
+            if (res.ok) {
+                for (const r of (await res.json())) {
+                    cardDetailCache.set(String(r.id), {
+                        evolvesFrom: r.evolves_from ?? '',
+                        evolutionLine: r.evolution_line ?? [],
+                    });
+                }
+            }
+        }
+        catch {
+            // offline / not configured — evolution facts just stay absent
+        }
+    }
+    const out = {};
+    for (const id of wanted) {
+        const d = cardDetailCache.get(id);
+        if (d)
+            out[id] = d;
+    }
+    return out;
+}
 export async function fetchRecentWindow(cutoff, languages, limit = 1500) {
     if (!serverSearchAvailable())
         return [];

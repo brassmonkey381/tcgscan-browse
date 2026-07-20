@@ -16,7 +16,7 @@ export { resolveActions, resolveLabel, } from './actions';
 export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE } from './theme';
 export { findSimilar, findSimilarToMany, findSimilarWeighted, refineWeights, similarAvailable, } from './similar';
 export { ColorIndex, colorSearchAvailable, colorServerAvailable, findSimilarByColor, findSimilarByColorServer, getColorIndex, labToSrgb, loadColorIndex, searchByColor, searchByColorServer, searchByColors, searchByColorsServer, srgbToLab, useColorIndex, } from './color';
-export { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, } from './search';
+export { fetchCardDetail, fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, } from './search';
 export { loadTaxonomy, useTaxonomy } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, } from './sealed';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, } from './query';

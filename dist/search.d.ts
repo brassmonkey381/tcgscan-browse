@@ -60,6 +60,17 @@ export declare function searchFacets(parsed: ParsedQuery, facets?: ServerFacetSe
  * Every card in the recent release window (release_date >= cutoff, upcoming included),
  * newest first — powers the catalog-FREE Recent & Upcoming feed. Fails soft ([]).
  */
+/** Per-card heavy fields NOT shipped in the slim catalog — fetched on demand (rpc/card_detail,
+ *  tcgscan-data migration 32). Today: the evolution line (only the card action sheet reads it). */
+export interface CardDetail {
+    evolvesFrom: string;
+    evolutionLine: string[];
+}
+/**
+ * Resolve per-card detail fields by id (batched ≤50 per the RPC's cap, cached forever — the
+ * fields are immutable per printing). Fails soft to whatever the cache already holds.
+ */
+export declare function fetchCardDetail(ids: string[]): Promise<Record<string, CardDetail>>;
 export declare function fetchRecentWindow(cutoff: string, languages?: CardLanguage[], limit?: number): Promise<CatalogCard[]>;
 /** Set metadata for feed tiles (names, counts, official logos). The table is small (~200 rows). */
 export interface SetMeta {
