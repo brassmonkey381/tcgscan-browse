@@ -10,6 +10,9 @@ export interface FeedSet {
     cardCount: number;
     /** Official set logo, '' when unknown. */
     coverUri: string;
+    /** Printing language (a set is single-language) — routes the TCGPlayer shop link (JP sets live
+     *  under the `pokemon-japan` category). Defaults 'en' when unknown. */
+    language?: CardLanguage;
 }
 interface RecentProductsProps {
     /** The loaded catalog, or null to run catalog-FREE (the feed fetches its own slim data

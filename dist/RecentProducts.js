@@ -83,7 +83,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
         // The set's TCGPlayer category page. TCGPlayer's slug is derivable from the set name with
         // one rule — `&` becomes "and" (verified against the sets table); setShopUrl handles the
         // rest (lowercase, non-alphanumeric → dashes).
-        const shopFor = (name) => setShopUrl(name.replace(/&/g, ' and '));
+        const shopFor = (name, language) => setShopUrl(name.replace(/&/g, ' and '), language);
         const tile = (set, cards) => {
             // Language bound + rarity gate (e.g. "double rares and higher") apply to the montage AND the
             // card pool. (Cold cards arrive already language-filtered from the server; langOk is then a
@@ -94,7 +94,8 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
                 set,
                 cards: priced,
                 montage: priced.slice(0, montageCount),
-                shopUrl: shopFor(set.name),
+                // A set is single-language: prefer the set's own language, else infer from its cards.
+                shopUrl: shopFor(set.name, set.language ?? cards[0]?.language),
                 upcoming: set.releaseDate > today,
             };
         };
@@ -109,6 +110,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
                 releaseDate: set.releaseDate,
                 cardCount: set.cardCount,
                 coverUri: set.coverUri ?? '',
+                language: set.language,
             }, catalog.listCards(set.id)))
                 .filter((t) => t.montage.length > 0);
         }
@@ -134,6 +136,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
                 releaseDate,
                 cardCount: meta?.cardCount ?? cards.length,
                 coverUri: meta?.logoUrl ?? '',
+                language: cards[0]?.language,
             }, cards);
         })
             .filter((t) => t.montage.length > 0)

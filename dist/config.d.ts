@@ -7,7 +7,7 @@
  * apps' src/lib/catalogConfig.ts). Every fetch in this package reads the config
  * lazily, so configure-at-import is always early enough.
  */
-import type { RawCatalog } from './catalog';
+import type { CardLanguage, RawCatalog } from './catalog';
 import { type ManifestCache } from './images';
 /**
  * App-supplied catalog loader — the seam for a GATED/ENCRYPTED catalog (see
@@ -77,8 +77,12 @@ export declare function productUrl(id: string): string;
 /**
  * TCGPlayer category page for a SET, from the sets table's `url_name`
  * ("ME05 Pitch Black" → …/pokemon/me05-pitch-black). '' when the name is empty.
+ *
+ * Japanese sets live under a SEPARATE TCGPlayer category — `pokemon-japan` (e.g.
+ * …/pokemon-japan/m3-nihil-zero) — so pass the set's `language` to route JP there; anything
+ * other than 'ja' (default) uses the English `pokemon` category.
  */
-export declare function setShopUrl(urlName: string): string;
+export declare function setShopUrl(urlName: string, language?: CardLanguage): string;
 /**
  * TCGPlayer CDN image for a card — a pure `{id}` template (the `<id>_in_NxN.jpg` convention).
  *

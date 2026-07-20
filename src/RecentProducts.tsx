@@ -62,6 +62,9 @@ export interface FeedSet {
   cardCount: number;
   /** Official set logo, '' when unknown. */
   coverUri: string;
+  /** Printing language (a set is single-language) — routes the TCGPlayer shop link (JP sets live
+   *  under the `pokemon-japan` category). Defaults 'en' when unknown. */
+  language?: CardLanguage;
 }
 
 interface RecentProductsProps {
@@ -203,7 +206,8 @@ export function RecentProducts({
     // The set's TCGPlayer category page. TCGPlayer's slug is derivable from the set name with
     // one rule — `&` becomes "and" (verified against the sets table); setShopUrl handles the
     // rest (lowercase, non-alphanumeric → dashes).
-    const shopFor = (name: string) => setShopUrl(name.replace(/&/g, ' and '));
+    const shopFor = (name: string, language?: CardLanguage) =>
+      setShopUrl(name.replace(/&/g, ' and '), language);
     const tile = (set: FeedSet, cards: CatalogCard[]): SetTile => {
       // Language bound + rarity gate (e.g. "double rares and higher") apply to the montage AND the
       // card pool. (Cold cards arrive already language-filtered from the server; langOk is then a
@@ -214,7 +218,8 @@ export function RecentProducts({
         set,
         cards: priced,
         montage: priced.slice(0, montageCount),
-        shopUrl: shopFor(set.name),
+        // A set is single-language: prefer the set's own language, else infer from its cards.
+        shopUrl: shopFor(set.name, set.language ?? cards[0]?.language),
         upcoming: set.releaseDate > today,
       };
     };
@@ -231,6 +236,7 @@ export function RecentProducts({
               releaseDate: set.releaseDate,
               cardCount: set.cardCount,
               coverUri: set.coverUri ?? '',
+              language: set.language,
             },
             catalog.listCards(set.id),
           ),
@@ -261,6 +267,7 @@ export function RecentProducts({
             releaseDate,
             cardCount: meta?.cardCount ?? cards.length,
             coverUri: meta?.logoUrl ?? '',
+            language: cards[0]?.language,
           },
           cards,
         );

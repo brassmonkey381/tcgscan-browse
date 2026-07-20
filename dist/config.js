@@ -83,14 +83,19 @@ export function productUrl(id) {
 /**
  * TCGPlayer category page for a SET, from the sets table's `url_name`
  * ("ME05 Pitch Black" → …/pokemon/me05-pitch-black). '' when the name is empty.
+ *
+ * Japanese sets live under a SEPARATE TCGPlayer category — `pokemon-japan` (e.g.
+ * …/pokemon-japan/m3-nihil-zero) — so pass the set's `language` to route JP there; anything
+ * other than 'ja' (default) uses the English `pokemon` category.
  */
-export function setShopUrl(urlName) {
+export function setShopUrl(urlName, language) {
     const slug = urlName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
+    const category = language === 'ja' ? 'pokemon-japan' : 'pokemon';
     return slug
-        ? `https://www.tcgplayer.com/categories/trading-and-collectible-card-games/pokemon/${slug}`
+        ? `https://www.tcgplayer.com/categories/trading-and-collectible-card-games/${category}/${slug}`
         : '';
 }
 /**
