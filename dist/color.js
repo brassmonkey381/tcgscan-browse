@@ -149,6 +149,24 @@ export class ColorIndex {
         }
         return out.sort((x, y) => x.score - y.score).slice(0, topN);
     }
+    /**
+     * MULTI-COLOR PICKER: cards whose palette best matches a WEIGHTED query palette (up to 3 colors
+     * with weights). Uses the SAME symmetric weighted set-distance as findSimilar — the query palette
+     * plays the role of a card. Weights need not sum to 1 (the metric is coverage-weighted either way).
+     */
+    searchByColors(query, region, topN = 60) {
+        const q = query.filter((c) => c.w > 0);
+        if (!q.length)
+            return [];
+        const out = [];
+        for (const id of this.ids) {
+            const cs = this.colors(id, region);
+            if (!cs.length)
+                continue;
+            out.push({ id, score: ColorIndex.setDist(q, cs) });
+        }
+        return out.sort((x, y) => x.score - y.score).slice(0, topN);
+    }
 }
 // Load-once module index (Path A). Null until loaded / after a failed load.
 let indexPromise = null;
@@ -215,6 +233,26 @@ export async function searchByColorServer(pick, region, { limit = 60, lambda = 2
         return [];
     }
 }
+/** MULTI-COLOR PICKER via the server: cards matching a weighted query palette. Fails soft ([]). */
+export async function searchByColorsServer(query, region, { limit = 60 } = {}) {
+    const q = query.filter((c) => c.w > 0);
+    if (!colorServerAvailable() || !q.length)
+        return [];
+    try {
+        const res = await fetchWithTimeout(`${getApiUrl()}/rpc/search_by_colors`, {
+            method: 'POST',
+            headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ p_region: region, p_colors: q.map((c) => [c.L, c.a, c.b, c.w]), p_limit: limit }),
+        });
+        if (!res.ok)
+            return [];
+        const rows = (await res.json());
+        return rows.map((r) => ({ id: r.product_id, score: r.dist }));
+    }
+    catch {
+        return [];
+    }
+}
 /** MODAL via the server: cards with the nearest palette to `productId`. Fails soft ([]). */
 export async function findSimilarByColorServer(productId, region, { limit = 30 } = {}) {
     if (!colorServerAvailable() || !productId)
@@ -247,6 +285,15 @@ export async function searchByColor(pick, region, opts = {}) {
     if (indexLoaded)
         return indexLoaded.searchByColor(pick, region, opts.limit ?? 60, opts.lambda ?? 25).map((h) => h.id);
     return (await searchByColorServer(pick, region, opts)).map((h) => h.id);
+}
+/**
+ * MULTI-COLOR PICKER (hybrid): ids of cards best matching a weighted query palette (up to 3 colors
+ * with weights), nearest first. On-device when the index is loaded, else the server RPC.
+ */
+export async function searchByColors(query, region, opts = {}) {
+    if (indexLoaded)
+        return indexLoaded.searchByColors(query, region, opts.limit ?? 60).map((h) => h.id);
+    return (await searchByColorsServer(query, region, opts)).map((h) => h.id);
 }
 /**
  * MODAL (hybrid): ids of cards with the palette nearest `productId`, nearest first. On-device when

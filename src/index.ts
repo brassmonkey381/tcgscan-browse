@@ -119,6 +119,8 @@ export {
   loadColorIndex,
   searchByColor,
   searchByColorServer,
+  searchByColors,
+  searchByColorsServer,
   srgbToLab,
   useColorIndex,
   type ColorHit,

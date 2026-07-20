@@ -57,6 +57,12 @@ export declare class ColorIndex {
         a: number;
         b: number;
     }, region: ColorRegion, topN?: number, lambda?: number): ColorHit[];
+    /**
+     * MULTI-COLOR PICKER: cards whose palette best matches a WEIGHTED query palette (up to 3 colors
+     * with weights). Uses the SAME symmetric weighted set-distance as findSimilar — the query palette
+     * plays the role of a card. Weights need not sum to 1 (the metric is coverage-weighted either way).
+     */
+    searchByColors(query: Lab[], region: ColorRegion, topN?: number): ColorHit[];
 }
 /** Load-once on-device color index from the configured color URL. Fails soft → null. */
 export declare function loadColorIndex(): Promise<ColorIndex | null>;
@@ -77,6 +83,10 @@ export declare function searchByColorServer(pick: {
     limit?: number;
     lambda?: number;
 }): Promise<ColorHit[]>;
+/** MULTI-COLOR PICKER via the server: cards matching a weighted query palette. Fails soft ([]). */
+export declare function searchByColorsServer(query: Lab[], region: ColorRegion, { limit }?: {
+    limit?: number;
+}): Promise<ColorHit[]>;
 /** MODAL via the server: cards with the nearest palette to `productId`. Fails soft ([]). */
 export declare function findSimilarByColorServer(productId: string, region: ColorRegion, { limit }?: {
     limit?: number;
@@ -94,6 +104,13 @@ export declare function searchByColor(pick: {
 }, region: ColorRegion, opts?: {
     limit?: number;
     lambda?: number;
+}): Promise<string[]>;
+/**
+ * MULTI-COLOR PICKER (hybrid): ids of cards best matching a weighted query palette (up to 3 colors
+ * with weights), nearest first. On-device when the index is loaded, else the server RPC.
+ */
+export declare function searchByColors(query: Lab[], region: ColorRegion, opts?: {
+    limit?: number;
 }): Promise<string[]>;
 /**
  * MODAL (hybrid): ids of cards with the palette nearest `productId`, nearest first. On-device when
