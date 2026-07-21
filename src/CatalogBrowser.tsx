@@ -517,6 +517,15 @@ interface CatalogBrowserProps {
    * Omitted → no color button. Lives in the browser so every surface (browse + binder picker) has it.
    */
   onColorSearch?: () => void;
+  /**
+   * The set of card ids the user OWNS (own ≥ 1 copy) — a collection-aware overlay layer the app
+   * supplies (kit stays source-agnostic). When present: card tiles show an owned check, set tiles
+   * show "X / Y · N%" completion, and the `have:` search token (have:yes / have:no, via the
+   * Collection chip) filters by ownership. Omit → no collection UI (guests / no inventory). It's a
+   * warm concept — ownership is client-side data, so it applies to the catalog (warm) path; cold
+   * server search can't filter by it.
+   */
+  ownedIds?: ReadonlySet<string>;
 }
 
 /**
@@ -544,6 +553,7 @@ export function CatalogBrowser({
   cardSize: cardSizeProp,
   onCardSizeChange,
   onColorSearch,
+  ownedIds,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
   const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
@@ -866,6 +876,24 @@ export function CatalogBrowser({
     [tax, seriesId, langSet],
   );
 
+  // Collection completion: owned-card counts per set + series, for the "X/Y · N%" tile overlays.
+  // Warm-only (needs the catalog to map a card id -> its set/series); one pass over ownedIds via
+  // the catalog, memoized so it only recomputes when the inventory or catalog changes. setId is
+  // language-specific, so counts stay correct under an EN/JP language bound with no extra work.
+  const ownedCounts = useMemo(() => {
+    const bySet = new Map<string, number>();
+    const bySeries = new Map<string, number>();
+    if (catalog && ownedIds && ownedIds.size > 0) {
+      for (const c of catalog.listAll()) {
+        if (!ownedIds.has(c.id)) continue;
+        bySet.set(c.setId, (bySet.get(c.setId) ?? 0) + 1);
+        bySeries.set(c.seriesId, (bySeries.get(c.seriesId) ?? 0) + 1);
+      }
+    }
+    return { bySet, bySeries };
+  }, [catalog, ownedIds]);
+  const showCompletion = Boolean(catalog && ownedIds && ownedIds.size > 0);
+
   // The parsed search-box query (grammar: words, key:value fields, price bounds, sort).
   const parsed = useMemo(() => parseQuery(q), [q]);
   // Effective sort: the UI sort control wins; otherwise the search box's `sort:` (or relevance).
@@ -887,7 +915,7 @@ export function CatalogBrowser({
     // Cold search: the accumulated server-search pages (already language-constrained server-side).
     if (!catalog && searching) return serverCards;
     if (catalog && searching)
-      return runQuery(catalog.listAll().filter(langOk), effParsed, priceOf, Infinity);
+      return runQuery(catalog.listAll().filter(langOk), effParsed, priceOf, Infinity, ownedIds);
     // Set cards / similar results (warm from the catalog, cold from the per-set fetch): keep
     // their natural order (collector number / best-match) until the UI sort control asks for
     // something else, then re-sort by the chosen field. The language bound applies to every local
@@ -897,7 +925,7 @@ export function CatalogBrowser({
     if (effSort.field === 'relevance' || base.length === 0) return base;
     return sortCards(base, effParsed, priceOf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, searching, serverCards, coldSetCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary, langSet]);
+  }, [catalog, searching, serverCards, coldSetCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary, langSet, ownedIds]);
   viewCardsRef.current = viewCards;
 
   // Cold search: (re)fetch page 0 when the query/sort/facet selection changes; the token guard
@@ -1269,6 +1297,18 @@ export function CatalogBrowser({
     setCardQueryDebounced(q);
   };
 
+  // Collection chip: cycle All → Missing → Owned → All by rewriting just the `have:` token, keeping
+  // the rest of the query so ownership composes with search + facets ("return the ids like a query
+  // so we can still filter down"). Doesn't clear filters, unlike viewIllustrator.
+  const cycleOwnedFilter = () => {
+    const cur = parseQuery(cardQuery).owned; // null | false | true
+    const next = cur === null ? false : cur === false ? true : null;
+    const cleaned = cardQuery.replace(/(?:have|owned|own|collection):[^\s"]+/gi, '').replace(/\s+/g, ' ').trim();
+    const q2 = next === null ? cleaned : `${cleaned} have:${next ? 'yes' : 'no'}`.trim();
+    setCardQuery(q2);
+    setCardQueryDebounced(q2);
+  };
+
   const toggleFacetValue = (key: string, value: string) =>
     setSelection((prev) => {
       const current = prev[key] ?? [];
@@ -1408,7 +1448,15 @@ export function CatalogBrowser({
         .filter(Boolean)
         .join(' · ');
       return (
-        <TaxonomyTile styles={styles} title={s.name} meta={meta} coverUri={s.coverUri} width={taxTileW} onPress={() => openSeries(s.id)} />
+        <TaxonomyTile
+          styles={styles}
+          title={s.name}
+          meta={meta}
+          coverUri={s.coverUri}
+          width={taxTileW}
+          onPress={() => openSeries(s.id)}
+          completion={showCompletion ? { owned: ownedCounts.bySeries.get(s.id) ?? 0, total: s.cardCount } : undefined}
+        />
       );
     }
     if (item.kind === 'set') {
@@ -1417,7 +1465,15 @@ export function CatalogBrowser({
         .filter(Boolean)
         .join(' · ');
       return (
-        <TaxonomyTile styles={styles} title={s.name} meta={meta} coverUri={s.coverUri} width={taxTileW} onPress={() => openSet(s.id)} />
+        <TaxonomyTile
+          styles={styles}
+          title={s.name}
+          meta={meta}
+          coverUri={s.coverUri}
+          width={taxTileW}
+          onPress={() => openSet(s.id)}
+          completion={showCompletion ? { owned: ownedCounts.bySet.get(s.id) ?? 0, total: s.cardCount } : undefined}
+        />
       );
     }
     if (item.kind === 'vunion') {
@@ -1447,6 +1503,8 @@ export function CatalogBrowser({
         priceTag={effParsed.sort === 'value' && value > 0 ? undefined : value}
         // app-injected inline quick action (＋add / quick-place), if any
         quickAction={quickAction?.(c)}
+        // collection-aware: a green check when the user owns this card
+        owned={ownedIds?.has(c.id)}
       />
     );
   };
@@ -1686,7 +1744,7 @@ export function CatalogBrowser({
             })}
           </View>
         ) : null}
-        {isCardLevel && facetOptions.length > 0 && !analyticsView ? (
+        {isCardLevel && !analyticsView && (facetOptions.length > 0 || !!onColorSearch || !!ownedIds) ? (
           <FacetBar
             styles={styles}
             options={facetOptions}
@@ -1700,6 +1758,10 @@ export function CatalogBrowser({
             // up while a color result set (similarTo.injected) is what's on screen.
             onColorSearch={onColorSearch}
             colorActive={!!similarTo?.injected}
+            // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
+            // injecting the have: token so it composes with the rest of the filters.
+            onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
+            ownedState={parsed.owned}
           />
         ) : null}
         {isCardLevel && !analyticsView ? (
@@ -1857,6 +1919,7 @@ function TaxonomyTile({
   coverUri,
   width,
   onPress,
+  completion,
 }: {
   styles: Styles;
   title: string;
@@ -1864,7 +1927,13 @@ function TaxonomyTile({
   coverUri?: string;
   width: number;
   onPress: () => void;
+  /** Collection completion for this set/series — renders "X/Y" + a % badge + progress bar. */
+  completion?: { owned: number; total: number };
 }) {
+  const pct =
+    completion && completion.total > 0
+      ? Math.round((completion.owned / completion.total) * 100)
+      : null;
   return (
     <Pressable style={[styles.taxTile, { width }]} onPress={onPress}>
       <View style={styles.taxLogoWrap}>
@@ -1873,6 +1942,11 @@ function TaxonomyTile({
         ) : (
           <Text style={styles.taxInitial}>{title.trim().charAt(0).toUpperCase()}</Text>
         )}
+        {pct != null ? (
+          <View style={styles.taxPctBadge}>
+            <Text style={styles.taxPctBadgeText}>{pct}%</Text>
+          </View>
+        ) : null}
       </View>
       <Text style={styles.taxTitle} numberOfLines={2}>
         {title}
@@ -1881,6 +1955,16 @@ function TaxonomyTile({
         <Text style={styles.taxMeta} numberOfLines={2}>
           {meta}
         </Text>
+      ) : null}
+      {completion && completion.total > 0 ? (
+        <>
+          <Text style={styles.taxCompletion} numberOfLines={1}>
+            {completion.owned.toLocaleString()} / {completion.total.toLocaleString()} owned
+          </Text>
+          <View style={styles.taxProgressTrack}>
+            <View style={[styles.taxProgressFill, { width: `${pct ?? 0}%` as `${number}%` }]} />
+          </View>
+        </>
       ) : null}
     </Pressable>
   );
@@ -1904,6 +1988,7 @@ function CardTile({
   value,
   priceTag,
   quickAction,
+  owned,
 }: {
   styles: Styles;
   card: CatalogCard;
@@ -1925,6 +2010,8 @@ function CardTile({
   priceTag?: number;
   /** Inline quick action pill (app-injected); its onPress fires without opening the sheet. */
   quickAction?: CardAction;
+  /** In the user's collection (own ≥ 1) — shows a corner check (an overlay; row geometry fixed). */
+  owned?: boolean;
 }) {
   // Grid tier: the 245px webp (~20KB) by default; large tiles request 640px so they stay sharp.
   const uri = cardThumbUrl(card.id, tier);
@@ -1956,6 +2043,11 @@ function CardTile({
         {multiSelected ? (
           <View style={styles.cardCheck}>
             <Text style={styles.cardCheckText}>✓</Text>
+          </View>
+        ) : owned ? (
+          // Owned marker (top-left) — yields the corner to the multi-select check when selecting.
+          <View style={styles.cardOwnedBadge}>
+            <Text style={styles.cardOwnedBadgeText}>✓</Text>
           </View>
         ) : null}
         {card.language === 'ja' ? (
@@ -2174,6 +2266,8 @@ function FacetBar({
   onClear,
   onColorSearch,
   colorActive,
+  onCycleOwned,
+  ownedState,
 }: {
   styles: Styles;
   options: FacetOption[];
@@ -2187,6 +2281,10 @@ function FacetBar({
   onColorSearch?: () => void;
   /** True while an injected color result set is what's on screen (chip lights up). */
   colorActive?: boolean;
+  /** When set, a Collection chip joins the row and cycles All / Missing / Owned on tap. */
+  onCycleOwned?: () => void;
+  /** Current collection filter: true=owned, false=missing, null=all (drives the chip label). */
+  ownedState?: boolean | null;
 }) {
   return (
     <View style={styles.facetBar}>
@@ -2200,6 +2298,13 @@ function FacetBar({
         {onColorSearch ? (
           <Pressable onPress={onColorSearch} style={[styles.facetToggle, colorActive && styles.facetToggleOn]}>
             <Text style={[styles.facetToggleText, colorActive && styles.facetToggleTextOn]}>Color</Text>
+          </Pressable>
+        ) : null}
+        {onCycleOwned ? (
+          <Pressable onPress={onCycleOwned} style={[styles.facetToggle, ownedState != null && styles.facetToggleOn]}>
+            <Text style={[styles.facetToggleText, ownedState != null && styles.facetToggleTextOn]}>
+              {ownedState === true ? '✓ Owned' : ownedState === false ? '◇ Missing' : 'Collection'}
+            </Text>
           </Pressable>
         ) : null}
         {activeCount > 0 ? (
@@ -2441,6 +2546,26 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     // Series/set tile text — ~33% larger than the dense card labels.
     taxTitle: { fontSize: 16, fontWeight: '700', color: t.text, lineHeight: 20 },
     taxMeta: { fontSize: 13, color: t.subtext, lineHeight: 17 },
+    // collection completion overlay on a set/series tile: a % badge on the cover + count + bar
+    taxPctBadge: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      backgroundColor: 'rgba(0,0,0,0.66)',
+      borderRadius: 5,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+    },
+    taxPctBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800', lineHeight: 14 },
+    taxCompletion: { fontSize: 12, color: t.subtext, lineHeight: 15, marginTop: 1 },
+    taxProgressTrack: {
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: t.imagePlaceholder,
+      marginTop: 3,
+      overflow: 'hidden',
+    },
+    taxProgressFill: { height: 4, borderRadius: 2, backgroundColor: '#2e9e5b' },
     // dense card tiles
     cardTile: { marginBottom: ROW_GAP },
     cardTileSelected: { backgroundColor: t.selected, borderRadius: 6 },
@@ -2486,6 +2611,20 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       justifyContent: 'center',
     },
     cardCheckText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+    // Owned marker (top-left) — a green check so "in my collection" reads at a glance, distinct
+    // from the accent-colored multi-select check that shares this corner.
+    cardOwnedBadge: {
+      position: 'absolute',
+      top: 3,
+      left: 3,
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: '#2e9e5b',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cardOwnedBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', lineHeight: 12 },
     // Japanese-printing badge (bottom-right of the thumb; EN cards show nothing)
     cardLangBadge: {
       position: 'absolute',

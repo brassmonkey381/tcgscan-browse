@@ -295,7 +295,7 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
     // Hydrate the content-hashed image manifest and repaint tiles when it lands —
@@ -586,6 +586,24 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // shows JP series/set tiles.
     const series = useMemo(() => (tax?.listSeries() ?? []).filter((s) => !langSet || langSet.has(s.language)), [tax, langSet]);
     const sets = useMemo(() => (tax && seriesId ? tax.listSets(seriesId) : []).filter((s) => !langSet || langSet.has(s.language)), [tax, seriesId, langSet]);
+    // Collection completion: owned-card counts per set + series, for the "X/Y · N%" tile overlays.
+    // Warm-only (needs the catalog to map a card id -> its set/series); one pass over ownedIds via
+    // the catalog, memoized so it only recomputes when the inventory or catalog changes. setId is
+    // language-specific, so counts stay correct under an EN/JP language bound with no extra work.
+    const ownedCounts = useMemo(() => {
+        const bySet = new Map();
+        const bySeries = new Map();
+        if (catalog && ownedIds && ownedIds.size > 0) {
+            for (const c of catalog.listAll()) {
+                if (!ownedIds.has(c.id))
+                    continue;
+                bySet.set(c.setId, (bySet.get(c.setId) ?? 0) + 1);
+                bySeries.set(c.seriesId, (bySeries.get(c.seriesId) ?? 0) + 1);
+            }
+        }
+        return { bySet, bySeries };
+    }, [catalog, ownedIds]);
+    const showCompletion = Boolean(catalog && ownedIds && ownedIds.size > 0);
     // The parsed search-box query (grammar: words, key:value fields, price bounds, sort).
     const parsed = useMemo(() => parseQuery(q), [q]);
     // Effective sort: the UI sort control wins; otherwise the search box's `sort:` (or relevance).
@@ -606,7 +624,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         if (!catalog && searching)
             return serverCards;
         if (catalog && searching)
-            return runQuery(catalog.listAll().filter(langOk), effParsed, priceOf, Infinity);
+            return runQuery(catalog.listAll().filter(langOk), effParsed, priceOf, Infinity, ownedIds);
         // Set cards / similar results (warm from the catalog, cold from the per-set fetch): keep
         // their natural order (collector number / best-match) until the UI sort control asks for
         // something else, then re-sort by the chosen field. The language bound applies to every local
@@ -617,7 +635,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             return base;
         return sortCards(base, effParsed, priceOf);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [catalog, searching, serverCards, coldSetCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary, langSet]);
+    }, [catalog, searching, serverCards, coldSetCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary, langSet, ownedIds]);
     viewCardsRef.current = viewCards;
     // Cold search: (re)fetch page 0 when the query/sort/facet selection changes; the token guard
     // drops stale responses. A page's `total` + prices land in state for the header/tiles.
@@ -971,6 +989,17 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         setCardQuery(q);
         setCardQueryDebounced(q);
     };
+    // Collection chip: cycle All → Missing → Owned → All by rewriting just the `have:` token, keeping
+    // the rest of the query so ownership composes with search + facets ("return the ids like a query
+    // so we can still filter down"). Doesn't clear filters, unlike viewIllustrator.
+    const cycleOwnedFilter = () => {
+        const cur = parseQuery(cardQuery).owned; // null | false | true
+        const next = cur === null ? false : cur === false ? true : null;
+        const cleaned = cardQuery.replace(/(?:have|owned|own|collection):[^\s"]+/gi, '').replace(/\s+/g, ' ').trim();
+        const q2 = next === null ? cleaned : `${cleaned} have:${next ? 'yes' : 'no'}`.trim();
+        setCardQuery(q2);
+        setCardQueryDebounced(q2);
+    };
     const toggleFacetValue = (key, value) => setSelection((prev) => {
         const current = prev[key] ?? [];
         const next = current.includes(value)
@@ -1099,14 +1128,14 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             const meta = [seriesDateRange(s), `${s.cardCount.toLocaleString()} cards`, `${s.setIds.length} sets`]
                 .filter(Boolean)
                 .join(' · ');
-            return (_jsx(TaxonomyTile, { styles: styles, title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSeries(s.id) }));
+            return (_jsx(TaxonomyTile, { styles: styles, title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSeries(s.id), completion: showCompletion ? { owned: ownedCounts.bySeries.get(s.id) ?? 0, total: s.cardCount } : undefined }));
         }
         if (item.kind === 'set') {
             const s = item.set;
             const meta = [s.code, `${s.cardCount.toLocaleString()} cards`, formatSetDate(s.releaseDate)]
                 .filter(Boolean)
                 .join(' · ');
-            return (_jsx(TaxonomyTile, { styles: styles, title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSet(s.id) }));
+            return (_jsx(TaxonomyTile, { styles: styles, title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSet(s.id), completion: showCompletion ? { owned: ownedCounts.bySet.get(s.id) ?? 0, total: s.cardCount } : undefined }));
         }
         if (item.kind === 'vunion') {
             const g = item.group;
@@ -1127,7 +1156,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             // latest market value as a corner tag (skipped when the label already IS the value)
             priceTag: effParsed.sort === 'value' && value > 0 ? undefined : value, 
             // app-injected inline quick action (＋add / quick-place), if any
-            quickAction: quickAction?.(c) }));
+            quickAction: quickAction?.(c), 
+            // collection-aware: a green check when the user owns this card
+            owned: ownedIds?.has(c.id) }));
     };
     // Analytics is offered at the set level (over the set's cards) and the series level
     // (over every card in the series). `analyticsScope` is the target of the current toggle,
@@ -1200,10 +1231,13 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                             // Locked analytics: accent-ring the tab so the gated perk draws the eye.
                             const spotlight = t === 'analytics' && !!analyticsLocked && !on;
                             return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn, spotlight && styles.tabSpotlight], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn, spotlight && styles.tabTextSpotlight], children: spotlight ? `✨ ${label}` : label }) }, t));
-                        }) })) : null, isCardLevel && facetOptions.length > 0 && !analyticsView ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, 
+                        }) })) : null, isCardLevel && !analyticsView && (facetOptions.length > 0 || !!onColorSearch || !!ownedIds) ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, 
                         // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
                         // up while a color result set (similarTo.injected) is what's on screen.
-                        onColorSearch: onColorSearch, colorActive: !!similarTo?.injected })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
+                        onColorSearch: onColorSearch, colorActive: !!similarTo?.injected, 
+                        // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
+                        // injecting the have: token so it composes with the rest of the filters.
+                        onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
                                         setMultiSelectMode(false);
                                         clearSelection();
                                     }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
@@ -1244,15 +1278,18 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
  * has no cover, which is most), the name, and a meta line. Fixed height so getItemLayout can
  * skip offscreen rows.
  */
-function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, }) {
-    return (_jsxs(Pressable, { style: [styles.taxTile, { width }], onPress: onPress, children: [_jsx(View, { style: styles.taxLogoWrap, children: coverUri ? (_jsx(Image, { source: { uri: coverUri }, style: styles.taxLogo, contentFit: "contain", transition: 100 })) : (_jsx(Text, { style: styles.taxInitial, children: title.trim().charAt(0).toUpperCase() })) }), _jsx(Text, { style: styles.taxTitle, numberOfLines: 2, children: title }), meta ? (_jsx(Text, { style: styles.taxMeta, numberOfLines: 2, children: meta })) : null] }));
+function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, completion, }) {
+    const pct = completion && completion.total > 0
+        ? Math.round((completion.owned / completion.total) * 100)
+        : null;
+    return (_jsxs(Pressable, { style: [styles.taxTile, { width }], onPress: onPress, children: [_jsxs(View, { style: styles.taxLogoWrap, children: [coverUri ? (_jsx(Image, { source: { uri: coverUri }, style: styles.taxLogo, contentFit: "contain", transition: 100 })) : (_jsx(Text, { style: styles.taxInitial, children: title.trim().charAt(0).toUpperCase() })), pct != null ? (_jsx(View, { style: styles.taxPctBadge, children: _jsxs(Text, { style: styles.taxPctBadgeText, children: [pct, "%"] }) })) : null] }), _jsx(Text, { style: styles.taxTitle, numberOfLines: 2, children: title }), meta ? (_jsx(Text, { style: styles.taxMeta, numberOfLines: 2, children: meta })) : null, completion && completion.total > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.taxCompletion, numberOfLines: 1, children: [completion.owned.toLocaleString(), " / ", completion.total.toLocaleString(), " owned"] }), _jsx(View, { style: styles.taxProgressTrack, children: _jsx(View, { style: [styles.taxProgressFill, { width: `${pct ?? 0}%` }] }) })] })) : null] }));
 }
 /**
  * A single dense catalog-card tile. Width is driven by the measured grid so tiles stay
  * small. Cards with no local image show a neutral fallback, never a crash. Images use the
  * same memory-disk cache + recyclingKey pattern as BinderGrid.
  */
-function CardTile({ styles, card, width, tier = 245, selected, multiSelected, focused, onPress, label, value, priceTag, quickAction, }) {
+function CardTile({ styles, card, width, tier = 245, selected, multiSelected, focused, onPress, label, value, priceTag, quickAction, owned, }) {
     // Grid tier: the 245px webp (~20KB) by default; large tiles request 640px so they stay sharp.
     const uri = cardThumbUrl(card.id, tier);
     return (_jsxs(Pressable, { style: [
@@ -1261,7 +1298,7 @@ function CardTile({ styles, card, width, tier = 245, selected, multiSelected, fo
             selected && styles.cardTileSelected,
             multiSelected && styles.cardTileMulti,
             focused && styles.cardTileFocused,
-        ], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : null, card.language === 'ja' ? (_jsx(View, { style: styles.cardLangBadge, children: _jsx(Text, { style: styles.cardLangBadgeText, children: "JP" }) })) : null, priceTag != null && priceTag > 0 ? (_jsx(View, { style: styles.cardPriceTag, children: _jsx(Text, { style: styles.cardPriceTagText, children: formatUsd(priceTag) }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
+        ], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : owned ? (_jsx(View, { style: styles.cardOwnedBadge, children: _jsx(Text, { style: styles.cardOwnedBadgeText, children: "\u2713" }) })) : null, card.language === 'ja' ? (_jsx(View, { style: styles.cardLangBadge, children: _jsx(Text, { style: styles.cardLangBadgeText, children: "JP" }) })) : null, priceTag != null && priceTag > 0 ? (_jsx(View, { style: styles.cardPriceTag, children: _jsx(Text, { style: styles.cardPriceTagText, children: formatUsd(priceTag) }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
 }
 /**
  * A V-UNION group tile (Size=V-UNION): the assembled art (its top-left piece thumb) with a
@@ -1299,8 +1336,8 @@ function SortBar({ styles, field, dir, onPick, onToggleDir, size, onPickSize, })
  * count + Clear); expanded it reveals one horizontal multi-select chip row per populated
  * facet — so it never eats the card viewport.
  */
-function FacetBar({ styles, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, onColorSearch, colorActive, }) {
-    return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.facetHeader, children: [_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, activeCount > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', activeCount > 0 ? ` · ${activeCount}` : ''] }) }), onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: [styles.facetToggle, colorActive && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, colorActive && styles.facetToggleTextOn], children: "Color" }) })) : null, activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] }), open ? (_jsx(View, { style: styles.facetRows, children: options.map(({ facet, values }) => (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: facet.label }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: values.map((v) => {
+function FacetBar({ styles, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, onColorSearch, colorActive, onCycleOwned, ownedState, }) {
+    return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.facetHeader, children: [_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, activeCount > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', activeCount > 0 ? ` · ${activeCount}` : ''] }) }), onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: [styles.facetToggle, colorActive && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, colorActive && styles.facetToggleTextOn], children: "Color" }) })) : null, onCycleOwned ? (_jsx(Pressable, { onPress: onCycleOwned, style: [styles.facetToggle, ownedState != null && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, ownedState != null && styles.facetToggleTextOn], children: ownedState === true ? '✓ Owned' : ownedState === false ? '◇ Missing' : 'Collection' }) })) : null, activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] }), open ? (_jsx(View, { style: styles.facetRows, children: options.map(({ facet, values }) => (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: facet.label }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: values.map((v) => {
                                 const on = (selection[facet.key] ?? []).includes(v);
                                 return (_jsx(Pressable, { onPress: () => onToggleValue(facet.key, v), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: v }) }, v));
                             }) })] }, facet.key))) })) : null] }));
@@ -1506,6 +1543,26 @@ function makeStyles(t, taxTileHeight) {
         // Series/set tile text — ~33% larger than the dense card labels.
         taxTitle: { fontSize: 16, fontWeight: '700', color: t.text, lineHeight: 20 },
         taxMeta: { fontSize: 13, color: t.subtext, lineHeight: 17 },
+        // collection completion overlay on a set/series tile: a % badge on the cover + count + bar
+        taxPctBadge: {
+            position: 'absolute',
+            top: 4,
+            right: 4,
+            backgroundColor: 'rgba(0,0,0,0.66)',
+            borderRadius: 5,
+            paddingHorizontal: 5,
+            paddingVertical: 1,
+        },
+        taxPctBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800', lineHeight: 14 },
+        taxCompletion: { fontSize: 12, color: t.subtext, lineHeight: 15, marginTop: 1 },
+        taxProgressTrack: {
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: t.imagePlaceholder,
+            marginTop: 3,
+            overflow: 'hidden',
+        },
+        taxProgressFill: { height: 4, borderRadius: 2, backgroundColor: '#2e9e5b' },
         // dense card tiles
         cardTile: { marginBottom: ROW_GAP },
         cardTileSelected: { backgroundColor: t.selected, borderRadius: 6 },
@@ -1551,6 +1608,20 @@ function makeStyles(t, taxTileHeight) {
             justifyContent: 'center',
         },
         cardCheckText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+        // Owned marker (top-left) — a green check so "in my collection" reads at a glance, distinct
+        // from the accent-colored multi-select check that shares this corner.
+        cardOwnedBadge: {
+            position: 'absolute',
+            top: 3,
+            left: 3,
+            width: 16,
+            height: 16,
+            borderRadius: 8,
+            backgroundColor: '#2e9e5b',
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        cardOwnedBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', lineHeight: 12 },
         // Japanese-printing badge (bottom-right of the thumb; EN cards show nothing)
         cardLangBadge: {
             position: 'absolute',

@@ -61,6 +61,18 @@ const SORT_DEFAULT_DIR = {
 };
 /** Keys that address the release date via a comparison (`date>2023`, `year>=2010`). */
 const DATE_COMPARE_KEYS = new Set(['date', 'release_date', 'releasedate', 'released', 'year']);
+/** Collection-membership keys (`have:`, `owned:`, `collection:`, `own:`) and their value words. */
+const OWNED_KEYS = new Set(['have', 'owned', 'own', 'collection']);
+const OWNED_TRUE = new Set(['yes', 'y', 'true', 'owned', 'own', 'mine', 'have', '1']);
+const OWNED_FALSE = new Set(['no', 'n', 'false', 'missing', 'miss', 'need', 'unowned', '0']);
+/** Resolve an ownership value word to true (owned) / false (missing) / null (unrecognized). */
+function parseOwned(v) {
+    if (OWNED_TRUE.has(v))
+        return true;
+    if (OWNED_FALSE.has(v))
+        return false;
+    return null;
+}
 /**
  * Normalize a (possibly partial) date to a comparable yyyy[-mm[-dd]] prefix, so a lexical
  * string compare against a card's yyyy-mm-dd release date behaves like a real date compare:
@@ -104,6 +116,7 @@ export function parseQuery(raw) {
         comparisons: [],
         minPrice: null,
         maxPrice: null,
+        owned: null,
         sort: 'relevance',
         sortDir: 'desc',
         hasStructure: false,
@@ -140,6 +153,16 @@ export function parseQuery(raw) {
                 }
                 out.hasStructure = true;
                 continue;
+            }
+            // Collection membership: have:yes / owned:no / collection:missing (warm-only, needs the
+            // app's owned-id set at query time; see runQuery). Unrecognized value -> treat as a word.
+            if (OWNED_KEYS.has(rawKey)) {
+                const o = parseOwned(value);
+                if (o !== null) {
+                    out.owned = o;
+                    out.hasStructure = true;
+                    continue;
+                }
             }
             // Colon form of a numeric/date field means "equals": hp:120, date:2023.
             if (value && addComparison(out, rawKey, '=', value)) {
@@ -350,6 +373,12 @@ export function scoreCard(card, q, priceOf, opts) {
         if (q.maxPrice !== null && price > q.maxPrice)
             return 0;
     }
+    // Collection filter — only when the caller supplied an owned-id set (warm/signed-in). Without
+    // it the predicate can't be evaluated, so it's silently ignored rather than rejecting all.
+    if (q.owned !== null && opts?.ownedIds) {
+        if (opts.ownedIds.has(card.id) !== q.owned)
+            return 0;
+    }
     return score;
 }
 /** Does `card` satisfy the query? (scoreCard > 0.) */
@@ -360,12 +389,12 @@ export function matchCard(card, q, priceOf) {
  * The one-call search: filter + rank + cap. Relevance = score desc (stable
  * within ties); explicit sort:value/newest/name overrides.
  */
-export function runQuery(cards, q, priceOf, limit = 200) {
+export function runQuery(cards, q, priceOf, limit = 200, ownedIds) {
     // Flag which bare words are really card names, so their set/series matches don't pollute.
     const nameWords = classifyNameWords(cards, q.words);
     const scored = [];
     for (const card of cards) {
-        const s = scoreCard(card, q, priceOf, { nameWords });
+        const s = scoreCard(card, q, priceOf, { nameWords, ownedIds });
         if (s > 0)
             scored.push({ card, score: s });
     }
@@ -465,6 +494,8 @@ export function describeQuery(q, matched = []) {
     else if (q.maxPrice !== null) {
         parts.push(`(value ≤ ${usd(q.maxPrice)})`);
     }
+    if (q.owned !== null)
+        parts.push(q.owned ? 'owned' : 'missing');
     if (q.sort !== 'relevance')
         parts.push(`sort=${q.sort}${q.sortDir === 'asc' ? '↑' : '↓'}`);
     return parts.join(' & ');
@@ -511,6 +542,14 @@ export const QUERY_MANUAL = [
             ['sort:stage', 'Basic → most evolved'],
             ['sort:name', 'alphabetical (sort:name:desc for Z→A)'],
             ['…:asc / …:desc', 'add to any sort to flip its direction'],
+        ],
+    },
+    {
+        title: 'Your collection',
+        rows: [
+            ['have:no', 'cards you’re missing — combine with set:… to fill a set'],
+            ['have:yes', 'cards you already own (alias: owned:, collection:)'],
+            ['✓ Owned / Missing', 'the collection chip toggles have:yes / have:no'],
         ],
     },
     {

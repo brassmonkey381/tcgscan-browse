@@ -57,6 +57,9 @@ export interface ParsedQuery {
     comparisons: Comparison[];
     minPrice: number | null;
     maxPrice: number | null;
+    /** Collection filter: true = own it, false = missing it, null = no filter. Evaluated only
+     *  when the caller supplies an owned-id set (a warm, signed-in concept); ignored otherwise. */
+    owned: boolean | null;
     sort: QuerySort;
     sortDir: SortDir;
     /** True when anything beyond bare name words is present. */
@@ -73,6 +76,7 @@ export declare function parseQuery(raw: string): ParsedQuery;
  */
 export declare function scoreCard(card: QueryableCard, q: ParsedQuery, priceOf: (id: string) => number, opts?: {
     nameWords?: Set<string>;
+    ownedIds?: ReadonlySet<string>;
 }): number;
 /** Does `card` satisfy the query? (scoreCard > 0.) */
 export declare function matchCard(card: QueryableCard, q: ParsedQuery, priceOf: (id: string) => number): boolean;
@@ -80,7 +84,7 @@ export declare function matchCard(card: QueryableCard, q: ParsedQuery, priceOf: 
  * The one-call search: filter + rank + cap. Relevance = score desc (stable
  * within ties); explicit sort:value/newest/name overrides.
  */
-export declare function runQuery<T extends QueryableCard>(cards: T[], q: ParsedQuery, priceOf: (id: string) => number, limit?: number): T[];
+export declare function runQuery<T extends QueryableCard>(cards: T[], q: ParsedQuery, priceOf: (id: string) => number, limit?: number, ownedIds?: ReadonlySet<string>): T[];
 /** Order results per the query's sort field + direction (relevance = input order). */
 export declare function sortCards<T extends QueryableCard>(cards: T[], q: ParsedQuery, priceOf: (id: string) => number): T[];
 /**

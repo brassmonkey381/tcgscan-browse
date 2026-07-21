@@ -114,10 +114,19 @@ interface CatalogBrowserProps {
      * Omitted → no color button. Lives in the browser so every surface (browse + binder picker) has it.
      */
     onColorSearch?: () => void;
+    /**
+     * The set of card ids the user OWNS (own ≥ 1 copy) — a collection-aware overlay layer the app
+     * supplies (kit stays source-agnostic). When present: card tiles show an owned check, set tiles
+     * show "X / Y · N%" completion, and the `have:` search token (have:yes / have:no, via the
+     * Collection chip) filters by ownership. Omit → no collection UI (guests / no inventory). It's a
+     * warm concept — ownership is client-side data, so it applies to the catalog (warm) path; cold
+     * server search can't filter by it.
+     */
+    ownedIds?: ReadonlySet<string>;
 }
 /**
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};
