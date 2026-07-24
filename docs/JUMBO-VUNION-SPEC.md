@@ -1,7 +1,10 @@
 # Re-spec: jumbo (oversized) + V-UNION handling
 
-Status: **spec** · Owner repos: `tcgscan-browse` (kit read) + `tcgscan-data` (what the
-catalog emits) · Consumers: `poke-michi`, `tcgscan-expo`
+Status: **DONE** — both recommendations shipped: the kit derives `kind` from the
+per-card `jumbo` flag (`RawCard.jumbo`, legacy `kind` fallback), and the pipeline emits
+`vunionGroups` into the catalog, which `vunionGroups()` consumes for the assembled 2×2
+group tiles. Kept as the data-model reference. · Owner repos: `tcgscan-browse` (kit read)
++ `tcgscan-data` (what the catalog emits) · Consumers: `poke-michi`, `tcgscan-expo`
 
 Re-spec'd 2026-07-08 against the **live** `catalog.json`
 (`…supabase.co/storage/v1/object/public/browse/catalog.json`, 28,176 cards), because
@@ -95,10 +98,10 @@ seam, not scattered heuristics in the kit.
 
 ## Checklist
 
-- [ ] Kit: `RawCard.jumbo?: boolean`; `normalizeKind`/build derives `kind` from `jumbo`
+- [x] Kit: `RawCard.jumbo?: boolean`; `normalizeKind`/build derives `kind` from `jumbo`
       (fallback to `kind`). Verify `listJumbo()` → 334.
-- [ ] Pipeline: emit `vunionGroups` (base, label, ordered `pieces`) into `catalog.json`,
+- [x] Pipeline: emit `vunionGroups` (base, label, ordered `pieces`) into `catalog.json`,
       excluding `[Set of 4]` bundles and jumbo singles.
-- [ ] Kit: confirm `vunionGroups()` populates once the key is present (already wired).
+- [x] Kit: confirm `vunionGroups()` populates once the key is present (already wired).
 - [ ] Keep the [[server-search-rollout]] note in mind — `subtypes` is available server-side
       if we later want richer V-UNION / oversized filtering via the RPC.

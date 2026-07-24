@@ -32,13 +32,18 @@ grammar — and it's called out at the end.
 
 Lives here:
 
-- The **wire artifacts**: `catalog.json`, `prices-summary.json`, the image
-  manifest, `alternates.json` — snake_case, denormalized for transport.
+- The **wire artifacts**: `catalog.json` (now gated/encrypted — see
+  `DATA-PROTECTION-PLAN.md`), the public `taxonomy.json`, `prices-summary.json`
+  (+ the sealed variant), `sealed.json`, the image manifest (`images.json`),
+  the color blobs — snake_case, denormalized for transport.
 - The **image buckets** (`card-imgs` / `card-thumbs`, content-hashed) and the
   id→hash manifest.
-- **Server-side compute** the client shouldn't do: the `find_similar` embedding
-  RPC, precomputed set/series value-over-time series (the v0.3.4 fan-out fix),
-  and the server search RPC (see `SERVER-SEARCH-PLAN.md`).
+- **Server-side compute** the client shouldn't do: the `find_similar` /
+  `find_similar_weighted` embedding RPCs, the color-similarity RPCs,
+  precomputed set/series value-over-time series (the v0.3.4 fan-out fix), the
+  server search RPCs `search_cards` / `search_facets` (see
+  `SERVER-SEARCH-PLAN.md`), and the per-card `card_detail` RPC (lazy evolution
+  fields).
 - The **enrichment pipeline** that produces fields like `illustrator`, `types`,
   `stage`.
 
@@ -55,8 +60,11 @@ app-behavior on the other — the only layer that touches both.**
 Lives here:
 
 - **Data-access clients** that hide the wire format: `loadCatalog`,
-  `getPriceSummary`, `findSimilar`. Load-once, promise-cached, subscribe,
-  degrade-to-empty. The app never calls `fetch` for card data.
+  `getPriceSummary`, `findSimilar` — and the COLD-mode clients (`searchCards`,
+  `searchFacets`, `fetchSetCards`, `fetchCardsByIds`, `fetchCardDetail`,
+  `loadTaxonomy`) that browse without the catalog in memory. Load-once,
+  promise-cached, subscribe, degrade-to-empty. The app never calls `fetch` for
+  card data.
 - **The normalization boundary** — `RawCard` (snake_case wire) → `CatalogCard`
   (camelCase domain). *All* data-shape knowledge lives in `catalog.ts`. This is
   the single most important line in the system: the firewall that keeps a
@@ -105,9 +113,9 @@ stays maintainable.
 
 | Seam | Between | Mechanism | The coupling |
 |---|---|---|---|
-| **1. Config injection** | app → kit → datasource | `configureBrowse({browseUrl, imgBase, apiUrl, apiKey, cache})` | App owns env; kit owns lazy reads; datasource owns the origins. One function, called once. |
+| **1. Config injection** | app → kit → datasource | `configureBrowse({browseUrl, imgBase, apiUrl, apiKey, cache, catalogSource, colorUrl})` | App owns env (and, via `catalogSource`, auth + decryption of the gated catalog); kit owns lazy reads; datasource owns the origins. One function, called once. |
 | **2. Normalization** | datasource → kit | `Raw*` types + `catalog.ts` mappers | The *only* place snake_case wire shape is known. A pipeline field rename dies here instead of spreading. |
-| **3. Action factory** | app → kit | `cardActions(card, builtins)` + `BrowserBuiltins` | App supplies verbs; kit supplies the two verbs it *must* own (`findSimilar`, `viewSet`) because they drive kit state / the data server. App composes `[...appActions, builtins.findSimilar]`. |
+| **3. Action factory** | app → kit | `cardActions(card, builtins)` + `BrowserBuiltins` | App supplies verbs; kit supplies the verbs it *must* own (`findSimilar`, `moreLikeThis`/`lessLikeThis`, `viewSet`, `viewIllustrator`) because they drive kit state / the data server. App composes `[...appActions, builtins.findSimilar, …]`. |
 | **4. Theme injection** | app → kit | `BrowseTheme` prop (default `lightTheme`) | Kit ships a working default; app overrides tokens without forking components. |
 
 ---
@@ -134,7 +142,9 @@ pipeline↔kit mismatch. Treat it with a checklist rather than trusting memory.
 4. `fieldValues()` exposes it for facet/value enumeration.
 5. `WORD_FIELDS` lists it if bare words should match it.
 6. `QUERY_MANUAL` documents it (the search box "?" content).
-7. Rebuild (`npm run build`) so `dist/` reflects the change before commit.
+7. The `search_cards` RPC (tcgscan-data) mirrors the new semantics, so the
+   cold/server path stays at exact parity with the warm/on-device path.
+8. Rebuild (`npm run build`) so `dist/` reflects the change before commit.
 
 ---
 

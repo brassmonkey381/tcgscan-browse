@@ -1,6 +1,13 @@
 # Plan: server-side card search (RPC) + async pagination
 
-Status: **spec** · Owner repos: `tcgscan-data` (the `search_cards` RPC + migration)
+Status: **SHIPPED** — P1 (search_cards + async paginated cold search), P2
+(`search_facets` restores the facet bar cold), P3 (warm-path preference), and the P4
+lazy-catalog direction are live: the cold drill-down runs on the public `taxonomy.json` +
+`fetchSetCards`, ids resolve via `fetchCardsByIds`, and per-card evolution detail moved to
+`rpc/card_detail` (`fetchCardDetail`, kit v0.5.43). Server/client parity validated 2026-07
+(see GUEST-VS-SIGNIN-AUDIT.md). Kept as the RPC contract reference — the "draft" migration
+below has long been applied, and the RPC has since grown `p_facets` + `p_lang` params.
+· Owner repos: `tcgscan-data` (the `search_cards` RPC + migration)
 + `tcgscan-browse` (async paginated search path) · Apps: `poke-michi`, `tcgscan-expo`
 
 ## Why
