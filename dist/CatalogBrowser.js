@@ -943,6 +943,17 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 openCards(cmd.ids, cmd.label);
                 return;
             }
+            if (cmd.type === 'search') {
+                // Run a text query fresh: leave any similar / drill-down / facet state so the grammar in
+                // the query is the whole search (sort:, have:, facets all parse from the text).
+                clearSimilar();
+                clearFilters();
+                setSeriesId(null);
+                setSetId(null);
+                setCardQuery(cmd.query);
+                setCardQueryDebounced(cmd.query);
+                return;
+            }
             if (cmd.type === 'viewSetById') {
                 // Catalog-free set jump (cold mode fetches the set's cards server-side).
                 setCardQuery('');

@@ -77,6 +77,13 @@ export type BrowseCommand = {
     type: 'showCards';
     ids: string[];
     label: string;
+}
+/** Run a text query in the search box (the full grammar — e.g. `have:yes sort:value`). Clears any
+ *  similar / drill-down / facet state first so the query runs clean. Used by the search-guide
+ *  "Try it" buttons; held for the next mounted browser if none is up yet (pending-command). */
+ | {
+    type: 'search';
+    query: string;
 };
 /** Deliver a command to the mounted browser(s), or hold it for the next subscriber. */
 export declare function sendBrowseCommand(cmd: BrowseCommand): void;

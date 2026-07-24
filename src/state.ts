@@ -69,7 +69,11 @@ export type BrowseCommand =
   /** Display an EXACT, pre-ranked card-id list as a result set (e.g. a color search) — shown in the
    *  grid with the full facet / multi-select / action treatment, no embedding refine. `label` heads
    *  the results bar. Ids resolve warm (catalog) or cold (server), so it works for guests too. */
-  | { type: 'showCards'; ids: string[]; label: string };
+  | { type: 'showCards'; ids: string[]; label: string }
+  /** Run a text query in the search box (the full grammar — e.g. `have:yes sort:value`). Clears any
+   *  similar / drill-down / facet state first so the query runs clean. Used by the search-guide
+   *  "Try it" buttons; held for the next mounted browser if none is up yet (pending-command). */
+  | { type: 'search'; query: string };
 
 const commandListeners = new Set<(cmd: BrowseCommand) => void>();
 let pendingCommand: BrowseCommand | null = null;
