@@ -57,6 +57,14 @@ export interface BrowseConfig {
    * default public fetch.
    */
   catalogSource?: CatalogSource;
+  /**
+   * Affiliate deep-link TEMPLATE for outbound TCGPlayer links (productUrl / setShopUrl). A tracking
+   * URL with a `{url}` token where the URL-ENCODED destination goes, e.g.
+   * `https://partner.tcgplayer.com/c/PUB/AD/CAMP?subId1=michi&u={url}`. Sub-IDs (per app / placement)
+   * live in the template, owned by the app. Omit/empty → links stay raw tcgplayer.com URLs (no
+   * affiliate wrapping), so unconfigured builds are unchanged.
+   */
+  affiliateDeeplink?: string;
 }
 
 const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource'>> = {
@@ -65,6 +73,7 @@ const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource'>> = {
   apiUrl: '',
   apiKey: '',
   colorUrl: '',
+  affiliateDeeplink: '',
 };
 let catalogSource: CatalogSource | null = null;
 
@@ -75,6 +84,7 @@ export function configureBrowse(next: BrowseConfig): void {
   config.apiUrl = next.apiUrl ?? deriveApiUrl(next.browseUrl);
   config.apiKey = next.apiKey ?? '';
   config.colorUrl = next.colorUrl ?? '';
+  config.affiliateDeeplink = next.affiliateDeeplink ?? '';
   catalogSource = next.catalogSource ?? null;
   setManifestCache(next.cache ?? null);
 }
@@ -129,11 +139,24 @@ const TIER_FIELD: Record<string, string> = {
 };
 
 /**
+ * Wrap a raw tcgplayer.com destination in the configured affiliate deep-link, or return it
+ * unchanged when no template is set. The template's `{url}` token receives the URL-ENCODED
+ * destination; a template without `{url}` gets the encoded destination appended (bare `?u=` style).
+ */
+export function affiliateUrl(destination: string): string {
+  const t = config.affiliateDeeplink;
+  if (!t || !destination) return destination;
+  const enc = encodeURIComponent(destination);
+  return t.includes('{url}') ? t.replace('{url}', enc) : `${t}${enc}`;
+}
+
+/**
  * TCGPlayer product page for a card — a pure function of its id (verified 100% of
- * the catalog). Stored per-card in the old fat catalog; derive it instead.
+ * the catalog). Stored per-card in the old fat catalog; derive it instead. Wrapped in the
+ * configured affiliate deep-link when one is set (see affiliateUrl / configureBrowse).
  */
 export function productUrl(id: string): string {
-  return id ? `https://www.tcgplayer.com/product/${id}` : '';
+  return id ? affiliateUrl(`https://www.tcgplayer.com/product/${id}`) : '';
 }
 
 /**
@@ -151,7 +174,9 @@ export function setShopUrl(urlName: string, language?: CardLanguage): string {
     .replace(/^-+|-+$/g, '');
   const category = language === 'ja' ? 'pokemon-japan' : 'pokemon';
   return slug
-    ? `https://www.tcgplayer.com/categories/trading-and-collectible-card-games/${category}/${slug}`
+    ? affiliateUrl(
+        `https://www.tcgplayer.com/categories/trading-and-collectible-card-games/${category}/${slug}`,
+      )
     : '';
 }
 

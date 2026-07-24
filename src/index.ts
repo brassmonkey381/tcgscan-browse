@@ -18,6 +18,7 @@ export {
   cdnImageUrl,
   productUrl,
   setShopUrl,
+  affiliateUrl,
   type BrowseConfig,
   type CatalogSource,
 } from './config';

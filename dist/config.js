@@ -14,6 +14,7 @@ const config = {
     apiUrl: '',
     apiKey: '',
     colorUrl: '',
+    affiliateDeeplink: '',
 };
 let catalogSource = null;
 /** Set the data-server origins. Call once from the app before any browse use. */
@@ -23,6 +24,7 @@ export function configureBrowse(next) {
     config.apiUrl = next.apiUrl ?? deriveApiUrl(next.browseUrl);
     config.apiKey = next.apiKey ?? '';
     config.colorUrl = next.colorUrl ?? '';
+    config.affiliateDeeplink = next.affiliateDeeplink ?? '';
     catalogSource = next.catalogSource ?? null;
     setManifestCache(next.cache ?? null);
 }
@@ -74,11 +76,24 @@ const TIER_FIELD = {
     full: 'image',
 };
 /**
+ * Wrap a raw tcgplayer.com destination in the configured affiliate deep-link, or return it
+ * unchanged when no template is set. The template's `{url}` token receives the URL-ENCODED
+ * destination; a template without `{url}` gets the encoded destination appended (bare `?u=` style).
+ */
+export function affiliateUrl(destination) {
+    const t = config.affiliateDeeplink;
+    if (!t || !destination)
+        return destination;
+    const enc = encodeURIComponent(destination);
+    return t.includes('{url}') ? t.replace('{url}', enc) : `${t}${enc}`;
+}
+/**
  * TCGPlayer product page for a card — a pure function of its id (verified 100% of
- * the catalog). Stored per-card in the old fat catalog; derive it instead.
+ * the catalog). Stored per-card in the old fat catalog; derive it instead. Wrapped in the
+ * configured affiliate deep-link when one is set (see affiliateUrl / configureBrowse).
  */
 export function productUrl(id) {
-    return id ? `https://www.tcgplayer.com/product/${id}` : '';
+    return id ? affiliateUrl(`https://www.tcgplayer.com/product/${id}`) : '';
 }
 /**
  * TCGPlayer category page for a SET, from the sets table's `url_name`
@@ -95,7 +110,7 @@ export function setShopUrl(urlName, language) {
         .replace(/^-+|-+$/g, '');
     const category = language === 'ja' ? 'pokemon-japan' : 'pokemon';
     return slug
-        ? `https://www.tcgplayer.com/categories/trading-and-collectible-card-games/${category}/${slug}`
+        ? affiliateUrl(`https://www.tcgplayer.com/categories/trading-and-collectible-card-games/${category}/${slug}`)
         : '';
 }
 /**

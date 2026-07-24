@@ -52,6 +52,14 @@ export interface BrowseConfig {
      * default public fetch.
      */
     catalogSource?: CatalogSource;
+    /**
+     * Affiliate deep-link TEMPLATE for outbound TCGPlayer links (productUrl / setShopUrl). A tracking
+     * URL with a `{url}` token where the URL-ENCODED destination goes, e.g.
+     * `https://partner.tcgplayer.com/c/PUB/AD/CAMP?subId1=michi&u={url}`. Sub-IDs (per app / placement)
+     * live in the template, owned by the app. Omit/empty → links stay raw tcgplayer.com URLs (no
+     * affiliate wrapping), so unconfigured builds are unchanged.
+     */
+    affiliateDeeplink?: string;
 }
 /** Set the data-server origins. Call once from the app before any browse use. */
 export declare function configureBrowse(next: BrowseConfig): void;
@@ -70,8 +78,15 @@ export declare function getColorUrl(): string;
  */
 export declare function resolveImageUrl(path: string): string;
 /**
+ * Wrap a raw tcgplayer.com destination in the configured affiliate deep-link, or return it
+ * unchanged when no template is set. The template's `{url}` token receives the URL-ENCODED
+ * destination; a template without `{url}` gets the encoded destination appended (bare `?u=` style).
+ */
+export declare function affiliateUrl(destination: string): string;
+/**
  * TCGPlayer product page for a card — a pure function of its id (verified 100% of
- * the catalog). Stored per-card in the old fat catalog; derive it instead.
+ * the catalog). Stored per-card in the old fat catalog; derive it instead. Wrapped in the
+ * configured affiliate deep-link when one is set (see affiliateUrl / configureBrowse).
  */
 export declare function productUrl(id: string): string;
 /**
