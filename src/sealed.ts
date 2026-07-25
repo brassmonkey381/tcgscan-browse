@@ -58,7 +58,7 @@ interface RawSealedProduct {
   image?: string;
   image_small?: string;
   image_medium?: string;
-  language?: string; // 'en' | 'ja' — stamped by the combined publish; absent on older artifacts
+  language?: string; // 'en' | 'ja', stamped by the combined publish; absent on older artifacts
 }
 interface RawSealed {
   products: Record<string, RawSealedProduct>;
@@ -141,7 +141,7 @@ export function loadSealedPrices(): Promise<Record<string, number>> {
         sealedPricesLoaded = out;
         return out;
       })
-      .catch(() => ({})); // prices are decoration — fail soft
+      .catch(() => ({})); // prices are decoration, fail soft
   }
   return sealedPricesPromise;
 }

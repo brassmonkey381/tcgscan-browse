@@ -716,7 +716,7 @@ export function loadCatalog(): Promise<Catalog> {
         return c;
       })
       .catch((e) => {
-        cache = null; // don't poison the cache — let a later mount retry the fetch
+        cache = null; // don't poison the cache, let a later mount retry the fetch
         setCatalogStatus('error', 0);
         throw e;
       });

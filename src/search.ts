@@ -134,7 +134,7 @@ export async function searchCards(
     for (const r of rows) priceById[String(r.id)] = Number(r.cur) || 0;
     return { cards, priceById, total: Number(rows[0].total_count) || cards.length };
   } catch {
-    return empty; // offline / not configured — the caller falls back to client runQuery
+    return empty; // offline / not configured, the caller falls back to client runQuery
   }
 }
 

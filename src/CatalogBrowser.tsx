@@ -202,10 +202,10 @@ function orderFacetValues(key: string, values: string[]): string[] {
 function loadLabel(s: CatalogLoadStatus, coldSearch: boolean): string {
   // No load in flight (e.g. guests: the app never requests the catalog) — server search IS the
   // mode, don't imply a download is coming.
-  if (s.status === 'idle') return coldSearch ? '☁ Server search — instant' : 'Loading cards…';
+  if (s.status === 'idle') return coldSearch ? 'Server search, instant' : 'Loading cards…';
   if (s.status === 'error')
-    return coldSearch ? '☁ Server search — instant' : 'Catalog failed to load — pull to retry';
-  const prefix = coldSearch ? '☁ Server search · full browse' : 'Loading cards';
+    return coldSearch ? 'Server search, instant' : 'Catalog failed to load, pull to retry';
+  const prefix = coldSearch ? 'Server search · full browse' : 'Loading cards';
   const pct = Math.round(s.progress * 100);
   const mb = (n: number) => (n / 1e6).toFixed(1);
   const bytes =
@@ -1584,7 +1584,7 @@ export function CatalogBrowser({
           <TextInput
             value={cardQuery}
             onChangeText={onChangeQuery}
-            placeholder={`Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards — ${QUERY_HINT}`}
+            placeholder={`Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`}
             placeholderTextColor={theme.faint}
             autoCorrect={false}
             clearButtonMode="while-editing"
@@ -1636,7 +1636,7 @@ export function CatalogBrowser({
             <View style={styles.modeBadge}>
               <View style={[styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading]} />
               <Text style={styles.modeText} numberOfLines={1}>
-                {warm ? '⚡ On-device search — instant' : loadLabel(catalogStatus, coldSearch)}
+                {warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch)}
               </Text>
             </View>
             {!warm && catalogStatus.status !== 'error' ? (
@@ -1660,7 +1660,7 @@ export function CatalogBrowser({
         ) : null}
         {searching ? (
           <View style={styles.metaRow}>
-            {/* Echo the PARSED query, not the raw text — the user sees exactly how
+            {/* Echo the PARSED query, not the raw text, the user sees exactly how
                 their input was interpreted and can tweak it precisely. */}
             <Text style={styles.meta} numberOfLines={1}>
               {warm
@@ -1748,7 +1748,7 @@ export function CatalogBrowser({
               return (
                 <Pressable key={t} onPress={() => setAnalyticsTab(t)} style={[styles.tab, on && styles.tabOn, spotlight && styles.tabSpotlight]}>
                   <Text style={[styles.tabText, on && styles.tabTextOn, spotlight && styles.tabTextSpotlight]}>
-                    {spotlight ? `✨ ${label}` : label}
+                    {label}
                   </Text>
                 </Pressable>
               );
@@ -1870,7 +1870,7 @@ export function CatalogBrowser({
                     ? 'Searching…'
                     : similarTo?.injected
                       ? 'No color matches.'
-                      : 'No similar cards found — tap Retry above.'
+                      : 'No similar cards found, tap Retry above.'
                   : level === 'cards'
                     ? !catalog && coldSetLoading
                       ? 'Loading set…'

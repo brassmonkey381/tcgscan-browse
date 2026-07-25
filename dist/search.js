@@ -90,7 +90,7 @@ export async function searchCards(parsed, { limit = 60, offset = 0, facets, lang
         return { cards, priceById, total: Number(rows[0].total_count) || cards.length };
     }
     catch {
-        return empty; // offline / not configured — the caller falls back to client runQuery
+        return empty; // offline / not configured, the caller falls back to client runQuery
     }
 }
 /** The card columns the direct PostgREST fetchers select (matches SearchRow minus cur/score). */

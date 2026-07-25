@@ -88,7 +88,7 @@ export function loadSealedPrices() {
             sealedPricesLoaded = out;
             return out;
         })
-            .catch(() => ({})); // prices are decoration — fail soft
+            .catch(() => ({})); // prices are decoration, fail soft
     }
     return sealedPricesPromise;
 }

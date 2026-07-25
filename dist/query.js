@@ -507,14 +507,14 @@ export const QUERY_MANUAL = [
         title: 'Just type words',
         rows: [
             ['charizard', 'matches names first, then artist, set, series, rarity, type, stage, number'],
-            ['arita fire', 'every word must match somewhere — combine freely'],
+            ['arita fire', 'every word must match somewhere, combine freely'],
         ],
     },
     {
         title: 'Target a field',
         rows: [
             ['artist:arita', 'illustrator (alias: illustrator:)'],
-            ['rarity:"holo rare"', 'rarity — quote multi-word values'],
+            ['rarity:"holo rare"', 'rarity, quote multi-word values'],
             ['set:base', 'set name'],
             ['series:sword', 'series name'],
             ['type:fire', 'energy type or card type (Pokemon / Trainer / …)'],
@@ -526,7 +526,7 @@ export const QUERY_MANUAL = [
         title: 'Compare numbers & dates',
         rows: [
             ['>$100', 'value at least $100 (also <$5, >=, <=, or value>100)'],
-            ['hp>200', 'printed HP — also hp<=60, hp:120 (exactly)'],
+            ['hp>200', 'printed HP, also hp<=60, hp:120 (exactly)'],
             ['stage>1', 'evolved forms (Basic = 1, Stage 1 = 2, …); stage:basic matches by name'],
             ['date>2023', 'released in 2023 or later (release_date: works too)'],
             ['date>=06-2024', 'partial dates ok: 2023, 06-2024, or 2024-06-15'],
@@ -536,7 +536,7 @@ export const QUERY_MANUAL = [
     {
         title: 'Sort',
         rows: [
-            ['sort:value', 'priciest first (tiles show values) — add :asc for cheapest'],
+            ['sort:value', 'priciest first (tiles show values), add :asc for cheapest'],
             ['sort:newest', 'newest release first (sort:oldest for oldest)'],
             ['sort:hp', 'highest HP first'],
             ['sort:stage', 'Basic → most evolved'],
@@ -547,7 +547,7 @@ export const QUERY_MANUAL = [
     {
         title: 'Your collection',
         rows: [
-            ['have:no', 'cards you’re missing — combine with set:… to fill a set'],
+            ['have:no', 'cards you’re missing, combine with set:… to fill a set'],
             ['have:yes', 'cards you already own (alias: owned:, collection:)'],
             ['✓ Owned / Missing', 'the collection chip toggles have:yes / have:no'],
         ],
@@ -555,7 +555,7 @@ export const QUERY_MANUAL = [
     {
         title: 'More',
         rows: [
-            ['grey line', 'shows how your search was understood — tweak from there'],
+            ['grey line', 'shows how your search was understood, tweak from there'],
             ['≈ similar', 'select a card, then tap ≈ similar for visual look-alikes'],
             ['View <artist>', "tap a card → View <artist> to see all of that illustrator's cards"],
             ['Filters', 'the chip filters combine with any search'],
@@ -569,7 +569,7 @@ export const QUERY_MANUAL = [
         rows: [
             ['↑ ↓ ← →', 'arrow keys move the card focus; Enter opens it, Esc closes'],
             ['Ctrl/Shift-click', 'select several cards, release to act on all of them'],
-            ['share the URL', 'the address bar tracks your search — copy the link to share this exact view'],
+            ['share the URL', 'the address bar tracks your search, copy the link to share this exact view'],
         ],
     },
 ];

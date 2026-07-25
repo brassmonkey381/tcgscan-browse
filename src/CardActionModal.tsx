@@ -99,7 +99,7 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
           ) : null}
           {card.imageSubstituted ? (
             <Text style={styles.caveat}>
-              This image may differ slightly from the real card — it could carry a stamp,
+              This image may differ slightly from the real card, it could carry a stamp,
               overlay, or signature we missed.
             </Text>
           ) : null}
