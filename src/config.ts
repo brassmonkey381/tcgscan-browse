@@ -65,6 +65,13 @@ export interface BrowseConfig {
    * affiliate wrapping), so unconfigured builds are unchanged.
    */
   affiliateDeeplink?: string;
+  /**
+   * eBay Partner Network campaign id for outbound "Find on eBay" search links. Omit/empty →
+   * `ebaySearchUrl` returns '' and callers hide eBay links, so unconfigured builds show none.
+   */
+  ebayCampaignId?: string;
+  /** EPN customid (sub-id) stamped on eBay links for per-surface attribution, e.g. 'michi-recent'. */
+  ebayCustomId?: string;
 }
 
 const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource'>> = {
@@ -74,6 +81,8 @@ const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource'>> = {
   apiKey: '',
   colorUrl: '',
   affiliateDeeplink: '',
+  ebayCampaignId: '',
+  ebayCustomId: '',
 };
 let catalogSource: CatalogSource | null = null;
 
@@ -85,6 +94,8 @@ export function configureBrowse(next: BrowseConfig): void {
   config.apiKey = next.apiKey ?? '';
   config.colorUrl = next.colorUrl ?? '';
   config.affiliateDeeplink = next.affiliateDeeplink ?? '';
+  config.ebayCampaignId = next.ebayCampaignId ?? '';
+  config.ebayCustomId = next.ebayCustomId ?? '';
   catalogSource = next.catalogSource ?? null;
   setManifestCache(next.cache ?? null);
 }
@@ -157,6 +168,39 @@ export function affiliateUrl(destination: string): string {
  */
 export function productUrl(id: string): string {
   return id ? affiliateUrl(`https://www.tcgplayer.com/product/${id}`) : '';
+}
+
+/** eBay's "Pokémon TCG" category — scoping a search to it keeps results on cards. */
+const EBAY_POKEMON_TCG_CATEGORY = '2536';
+
+/**
+ * A tracked eBay Partner Network search deep link for `query`, scoped to the Pokémon TCG category,
+ * using the configured campaign id + customid (see configureBrowse). Returns '' when no campaign id
+ * is configured, so callers hide eBay links on unconfigured builds. `mkevt=1` + `mkcid`/`mkrid` are
+ * what make EPN attribution fire — confirmed against EPN's link tool for the US marketplace.
+ */
+export function ebaySearchUrl(query: string): string {
+  const campid = config.ebayCampaignId;
+  const q = query.trim();
+  if (!campid || !q) return '';
+  const parts = [
+    `_nkw=${encodeURIComponent(q)}`,
+    `_sacat=${EBAY_POKEMON_TCG_CATEGORY}`,
+    'mkcid=1',
+    'mkrid=711-53200-19255-0',
+    'siteid=0',
+    `campid=${campid}`,
+    config.ebayCustomId ? `customid=${encodeURIComponent(config.ebayCustomId)}` : '',
+    'toolid=10001',
+    'mkevt=1',
+  ].filter(Boolean);
+  return `https://www.ebay.com/sch/i.html?${parts.join('&')}`;
+}
+
+/** eBay search link for a specific card (name + set + collector number → query). */
+export function ebayCardSearchUrl(card: { name: string; setName?: string; number?: string }): string {
+  const q = [card.name, card.setName, card.number].map((s) => (s ?? '').trim()).filter(Boolean).join(' ');
+  return ebaySearchUrl(q);
 }
 
 /**

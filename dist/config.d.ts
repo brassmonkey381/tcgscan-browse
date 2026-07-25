@@ -60,6 +60,13 @@ export interface BrowseConfig {
      * affiliate wrapping), so unconfigured builds are unchanged.
      */
     affiliateDeeplink?: string;
+    /**
+     * eBay Partner Network campaign id for outbound "Find on eBay" search links. Omit/empty →
+     * `ebaySearchUrl` returns '' and callers hide eBay links, so unconfigured builds show none.
+     */
+    ebayCampaignId?: string;
+    /** EPN customid (sub-id) stamped on eBay links for per-surface attribution, e.g. 'michi-recent'. */
+    ebayCustomId?: string;
 }
 /** Set the data-server origins. Call once from the app before any browse use. */
 export declare function configureBrowse(next: BrowseConfig): void;
@@ -89,6 +96,19 @@ export declare function affiliateUrl(destination: string): string;
  * configured affiliate deep-link when one is set (see affiliateUrl / configureBrowse).
  */
 export declare function productUrl(id: string): string;
+/**
+ * A tracked eBay Partner Network search deep link for `query`, scoped to the Pokémon TCG category,
+ * using the configured campaign id + customid (see configureBrowse). Returns '' when no campaign id
+ * is configured, so callers hide eBay links on unconfigured builds. `mkevt=1` + `mkcid`/`mkrid` are
+ * what make EPN attribution fire — confirmed against EPN's link tool for the US marketplace.
+ */
+export declare function ebaySearchUrl(query: string): string;
+/** eBay search link for a specific card (name + set + collector number → query). */
+export declare function ebayCardSearchUrl(card: {
+    name: string;
+    setName?: string;
+    number?: string;
+}): string;
 /**
  * TCGPlayer category page for a SET, from the sets table's `url_name`
  * ("ME05 Pitch Black" → …/pokemon/me05-pitch-black). '' when the name is empty.

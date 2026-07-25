@@ -34,7 +34,7 @@ import { CardActionModal } from './CardActionModal';
 import { CARD_SIZE_SCALE } from './cardSize';
 import { formatSetDate, type CardLanguage, type Catalog, type CatalogCard } from './catalog';
 import type { CardSize } from './state';
-import { cardThumbUrl, productUrl, setShopUrl } from './config';
+import { cardThumbUrl, ebayCardSearchUrl, ebaySearchUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
 import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable, type SetMeta } from './search';
@@ -370,12 +370,23 @@ export function RecentProducts({
     if (url) Linking.openURL(url).catch(() => {});
   };
 
-  // The store link shared by set + card tiles. Labeled "Shop" (store-agnostic); points at
-  // the card's TCGPlayer product page for now (productUrl). `centered` for the card tiles.
-  const shopLink = (url: string, centered = false): ReactNode => (
-    <Pressable onPress={() => open(url)} hitSlop={4} disabled={!url} accessibilityLabel="Shop this card">
-      <Text style={[styles.tileLink, centered && styles.tileLinkCenter]}>Shop →</Text>
-    </Pressable>
+  // Both affiliate stores side by side (TCGPlayer for market/NM price, eBay for singles + deals)
+  // shared by set + card tiles. Each is ONE link → ONE destination the user picks: never spawn two
+  // tabs from one tap (browsers popup-block the second). The eBay link is '' (hidden) when no EPN
+  // campaign id is configured (ebaySearchUrl), so unconfigured builds show TCGPlayer only.
+  const storeLinks = (tcgUrl: string, ebayUrl: string, centered = false): ReactNode => (
+    <View style={[styles.storeRow, centered && styles.storeRowCenter]}>
+      {tcgUrl ? (
+        <Pressable onPress={() => open(tcgUrl)} hitSlop={4} accessibilityLabel="Shop on TCGPlayer">
+          <Text style={styles.tileLink}>TCGPlayer ↗</Text>
+        </Pressable>
+      ) : null}
+      {ebayUrl ? (
+        <Pressable onPress={() => open(ebayUrl)} hitSlop={4} accessibilityLabel="Search on eBay">
+          <Text style={styles.tileLink}>eBay ↗</Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 
   // The modal's actions for a card: add-to-binder (host chooser) + drive-the-other-browser
@@ -423,6 +434,17 @@ export function RecentProducts({
         open(productUrl(c.id));
       },
     });
+    // Find on eBay — only when an EPN campaign is configured (ebayCardSearchUrl returns '').
+    if (ebayCardSearchUrl(card)) {
+      actions.push({
+        key: 'ebay',
+        label: 'Find on eBay ↗',
+        onPress: (c) => {
+          setActionCard(null);
+          open(ebayCardSearchUrl(c));
+        },
+      });
+    }
     return actions;
   };
 
@@ -471,7 +493,7 @@ export function RecentProducts({
               .filter(Boolean)
               .join(' · ')}
           </Text>
-          {shopLink(t.shopUrl)}
+          {storeLinks(t.shopUrl, ebaySearchUrl(t.set.name))}
         </View>
         {t.set.coverUri ? (
           // The set's official logo fills the footer's free corner.
@@ -502,7 +524,7 @@ export function RecentProducts({
           {card.setName}
         </Text>
       ) : null}
-      {shopLink(productUrl(card.id), true)}
+      {storeLinks(productUrl(card.id), ebayCardSearchUrl(card), true)}
     </Pressable>
   );
 
@@ -843,6 +865,8 @@ function makeStyles(t: BrowseTheme) {
     tileMeta: { fontSize: 10, color: t.subtext, fontVariant: ['tabular-nums'] },
     tileLink: { fontSize: 11, fontWeight: '700', color: t.link, marginTop: 1 },
     tileLinkCenter: { textAlign: 'center' },
+    storeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 1 },
+    storeRowCenter: { justifyContent: 'center' },
 
     // card tile
     scard: { gap: 2 },

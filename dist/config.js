@@ -15,6 +15,8 @@ const config = {
     apiKey: '',
     colorUrl: '',
     affiliateDeeplink: '',
+    ebayCampaignId: '',
+    ebayCustomId: '',
 };
 let catalogSource = null;
 /** Set the data-server origins. Call once from the app before any browse use. */
@@ -25,6 +27,8 @@ export function configureBrowse(next) {
     config.apiKey = next.apiKey ?? '';
     config.colorUrl = next.colorUrl ?? '';
     config.affiliateDeeplink = next.affiliateDeeplink ?? '';
+    config.ebayCampaignId = next.ebayCampaignId ?? '';
+    config.ebayCustomId = next.ebayCustomId ?? '';
     catalogSource = next.catalogSource ?? null;
     setManifestCache(next.cache ?? null);
 }
@@ -94,6 +98,37 @@ export function affiliateUrl(destination) {
  */
 export function productUrl(id) {
     return id ? affiliateUrl(`https://www.tcgplayer.com/product/${id}`) : '';
+}
+/** eBay's "Pokémon TCG" category — scoping a search to it keeps results on cards. */
+const EBAY_POKEMON_TCG_CATEGORY = '2536';
+/**
+ * A tracked eBay Partner Network search deep link for `query`, scoped to the Pokémon TCG category,
+ * using the configured campaign id + customid (see configureBrowse). Returns '' when no campaign id
+ * is configured, so callers hide eBay links on unconfigured builds. `mkevt=1` + `mkcid`/`mkrid` are
+ * what make EPN attribution fire — confirmed against EPN's link tool for the US marketplace.
+ */
+export function ebaySearchUrl(query) {
+    const campid = config.ebayCampaignId;
+    const q = query.trim();
+    if (!campid || !q)
+        return '';
+    const parts = [
+        `_nkw=${encodeURIComponent(q)}`,
+        `_sacat=${EBAY_POKEMON_TCG_CATEGORY}`,
+        'mkcid=1',
+        'mkrid=711-53200-19255-0',
+        'siteid=0',
+        `campid=${campid}`,
+        config.ebayCustomId ? `customid=${encodeURIComponent(config.ebayCustomId)}` : '',
+        'toolid=10001',
+        'mkevt=1',
+    ].filter(Boolean);
+    return `https://www.ebay.com/sch/i.html?${parts.join('&')}`;
+}
+/** eBay search link for a specific card (name + set + collector number → query). */
+export function ebayCardSearchUrl(card) {
+    const q = [card.name, card.setName, card.number].map((s) => (s ?? '').trim()).filter(Boolean).join(' ');
+    return ebaySearchUrl(q);
 }
 /**
  * TCGPlayer category page for a SET, from the sets table's `url_name`

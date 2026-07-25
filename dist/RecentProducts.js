@@ -26,7 +26,7 @@ import { Linking, Pressable, StyleSheet, Text, View, } from 'react-native';
 import { CardActionModal } from './CardActionModal';
 import { CARD_SIZE_SCALE } from './cardSize';
 import { formatSetDate } from './catalog';
-import { cardThumbUrl, productUrl, setShopUrl } from './config';
+import { cardThumbUrl, ebayCardSearchUrl, ebaySearchUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
 import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable } from './search';
@@ -238,9 +238,11 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
         if (url)
             Linking.openURL(url).catch(() => { });
     };
-    // The store link shared by set + card tiles. Labeled "Shop" (store-agnostic); points at
-    // the card's TCGPlayer product page for now (productUrl). `centered` for the card tiles.
-    const shopLink = (url, centered = false) => (_jsx(Pressable, { onPress: () => open(url), hitSlop: 4, disabled: !url, accessibilityLabel: "Shop this card", children: _jsx(Text, { style: [styles.tileLink, centered && styles.tileLinkCenter], children: "Shop \u2192" }) }));
+    // Both affiliate stores side by side (TCGPlayer for market/NM price, eBay for singles + deals)
+    // shared by set + card tiles. Each is ONE link → ONE destination the user picks: never spawn two
+    // tabs from one tap (browsers popup-block the second). The eBay link is '' (hidden) when no EPN
+    // campaign id is configured (ebaySearchUrl), so unconfigured builds show TCGPlayer only.
+    const storeLinks = (tcgUrl, ebayUrl, centered = false) => (_jsxs(View, { style: [styles.storeRow, centered && styles.storeRowCenter], children: [tcgUrl ? (_jsx(Pressable, { onPress: () => open(tcgUrl), hitSlop: 4, accessibilityLabel: "Shop on TCGPlayer", children: _jsx(Text, { style: styles.tileLink, children: "TCGPlayer \u2197" }) })) : null, ebayUrl ? (_jsx(Pressable, { onPress: () => open(ebayUrl), hitSlop: 4, accessibilityLabel: "Search on eBay", children: _jsx(Text, { style: styles.tileLink, children: "eBay \u2197" }) })) : null] }));
     // The modal's actions for a card: add-to-binder (host chooser) + drive-the-other-browser
     // intents (when wired) + TCGPlayer.
     const actionsFor = (card) => {
@@ -286,6 +288,17 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
                 open(productUrl(c.id));
             },
         });
+        // Find on eBay — only when an EPN campaign is configured (ebayCardSearchUrl returns '').
+        if (ebayCardSearchUrl(card)) {
+            actions.push({
+                key: 'ebay',
+                label: 'Find on eBay ↗',
+                onPress: (c) => {
+                    setActionCard(null);
+                    open(ebayCardSearchUrl(c));
+                },
+            });
+        }
         return actions;
     };
     if (setTiles.length === 0 && cardRows.length === 0) {
@@ -293,8 +306,8 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     }
     const renderSet = (t, tileWidth) => (_jsxs(Pressable, { style: styles.tile, onPress: onOpenSet ? () => onOpenSet(t.set) : undefined, accessibilityRole: onOpenSet ? 'button' : undefined, accessibilityLabel: onOpenSet ? `Browse ${t.set.name}${t.upcoming ? ' (upcoming)' : ''}` : undefined, children: [_jsxs(View, { style: styles.montage, children: [t.montage.map((card) => (_jsx(Pressable, { style: styles.montageSlot, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions`, children: _jsx(Image, { source: { uri: cardThumbUrl(card.id, 245) }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 }) }, card.id))), t.upcoming ? (_jsx(View, { style: styles.badge, pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }), _jsxs(View, { style: styles.tileFooter, children: [_jsxs(View, { style: styles.tileFooterLeft, children: [_jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
                                     .filter(Boolean)
-                                    .join(' · ') }), shopLink(t.shopUrl)] }), t.set.coverUri ? (_jsx(Image, { source: { uri: t.set.coverUri }, style: styles.tileLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `logo-${t.set.id}`, transition: 100 })) : null] })] }));
-    const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions${card.releaseDate > today ? ' (upcoming)' : ''}`, children: [_jsx(CardThumb, { card: card, styles: styles, upcoming: !!card.releaseDate && card.releaseDate > today }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, shopLink(productUrl(card.id), true)] }));
+                                    .join(' · ') }), storeLinks(t.shopUrl, ebaySearchUrl(t.set.name))] }), t.set.coverUri ? (_jsx(Image, { source: { uri: t.set.coverUri }, style: styles.tileLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `logo-${t.set.id}`, transition: 100 })) : null] })] }));
+    const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions${card.releaseDate > today ? ' (upcoming)' : ''}`, children: [_jsx(CardThumb, { card: card, styles: styles, upcoming: !!card.releaseDate && card.releaseDate > today }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, storeLinks(productUrl(card.id), ebayCardSearchUrl(card), true)] }));
     // The "NEW SET / UPCOMING" filler that heads each set's run in the Cards carousel — the set's
     // logo + name + date, styled like the Sealed carousel's set headers. Tapping opens the set.
     const renderCardHeader = (set, upcoming) => (_jsxs(Pressable, { style: styles.cardHeader, onPress: onOpenSet ? () => onOpenSet(set) : undefined, accessibilityRole: onOpenSet ? 'button' : undefined, accessibilityLabel: onOpenSet ? `Browse ${set.name}${upcoming ? ' (upcoming)' : ''}` : undefined, children: [_jsx(Text, { style: [styles.cardHeaderKicker, upcoming && styles.cardHeaderKickerUpcoming], children: upcoming ? 'UPCOMING' : 'NEW SET' }), _jsx(Text, { style: styles.cardHeaderName, numberOfLines: 3, children: set.name }), set.releaseDate ? _jsx(Text, { style: styles.cardHeaderDate, children: formatSetDate(set.releaseDate) }) : null, set.coverUri ? (_jsx(Image, { source: { uri: set.coverUri }, style: styles.cardHeaderLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `ch-logo-${set.id}`, transition: 100 })) : null] }));
@@ -456,6 +469,8 @@ function makeStyles(t) {
         tileMeta: { fontSize: 10, color: t.subtext, fontVariant: ['tabular-nums'] },
         tileLink: { fontSize: 11, fontWeight: '700', color: t.link, marginTop: 1 },
         tileLinkCenter: { textAlign: 'center' },
+        storeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 1 },
+        storeRowCenter: { justifyContent: 'center' },
         // card tile
         scard: { gap: 2 },
         scardImg: {

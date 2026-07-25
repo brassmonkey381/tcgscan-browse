@@ -19,6 +19,8 @@ export {
   productUrl,
   setShopUrl,
   affiliateUrl,
+  ebaySearchUrl,
+  ebayCardSearchUrl,
   type BrowseConfig,
   type CatalogSource,
 } from './config';
