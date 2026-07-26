@@ -146,6 +146,27 @@ pipeline↔kit mismatch. Treat it with a checklist rather than trusting memory.
    cold/server path stays at exact parity with the warm/on-device path.
 8. Rebuild (`npm run build`) so `dist/` reflects the change before commit.
 
+**Exception — `lang:` does NOT have a `search_cards` case, deliberately.** A
+language term is a hard filter over the whole corpus, which is exactly what the
+RPC's `p_lang` argument already is. So `search.ts` (`foldLanguageTerms`) lifts
+any `lang:` field out of `p_fields` and merges it into `p_lang` instead, and
+`fieldValues(card, 'lang')` reaches the same answer warm. Parity holds without a
+second grammar living in SQL. Two consequences worth knowing:
+
+- Value synonyms (`jp`, `japanese`, `eng`, …) are resolved to the raw `en`/`ja`
+  code **in `parseQuery`**, so the server only ever compares exact codes. Add new
+  synonyms to `LANG_ALIASES` in `query.ts`, never to SQL.
+- A `lang:` term INTERSECTS the active bound (the EN/JP toggle and the Language
+  facet chip) like any other AND-ed term. An empty intersection is passed to the
+  clients as `[]` and short-circuits to no results — it must never be collapsed
+  to `undefined`, which the RPCs read as *unconstrained*.
+
+**The language bound itself spans more than search.** `p_lang` also exists on
+the similarity and colour RPCs (tcgscan-data migration 33). Anything that ranks
+a top-N over the corpus must take the bound as an ARGUMENT, not filter the
+result — a post-filtered top-24 rendered ~13 cards, because 46.7% of an EN
+card's nearest neighbours are JP printings.
+
 ---
 
 ## The rule of thumb, compressed

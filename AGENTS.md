@@ -24,6 +24,13 @@ an app.
   in `src/query.ts`) — plus the `search_cards` RPC in tcgscan-data, which must
   mirror the client semantics exactly (warm == cold parity). Checklist in
   `docs/ARCHITECTURE.md`.
+- **Language is a PRE-filter, never a post-filter.** The EN/JP bound
+  (`src/language.ts` — the shared preference, the `languages` prop, the Language
+  facet chip, and a `lang:` query term, all intersected) is passed to the server
+  as an argument on every ranking call: `p_lang` on search/facets, similarity,
+  and colour. Filtering a returned top-N instead throws away most of a page
+  (46.7% of an EN card's 24 nearest neighbours are JP). If you add a search
+  surface, thread the bound INTO the call — don't `.filter()` the results.
 - **Everything fails soft.** Server features (search, similarity, color,
   prices) degrade to empty results, never hard errors — keep it that way.
 
@@ -53,7 +60,9 @@ Do not commit or push unless the user asks.
   card_detail RPCs + PostgREST fetches), `prices.ts`, `similar.ts`, `color.ts`,
   `sealed.ts`, `taxonomy.ts`, `images.ts`.
 - `src/config.ts` — `configureBrowse` (the only config entry point),
-  `state.ts` / `savedSearches.ts` — session state + browse commands.
+  `state.ts` / `savedSearches.ts` — session state + browse commands,
+  `language.ts` / `LanguageToggle.tsx` — the shared EN/JP preference + its pills
+  (persistence is injected via `configureBrowse({ languageStore })`).
 - `docs/ARCHITECTURE.md` is the reference doc; the other docs are shipped
   plans/audits kept as history.
 

@@ -1,11 +1,23 @@
-/**
- * Visual similarity — the data server's find_similar RPC (pgvector over the
- * scanner's 64-d card embeddings). Given a catalog card id, returns the ids of
- * the most visually similar cards; the caller resolves them against the local
- * catalog for display. Fails soft (empty list) — similarity is a bonus feature,
- * never a dependency.
- */
 import { getApiKey, getApiUrl } from './config';
+import { effectiveLanguages } from './language';
+/**
+ * `p_lang` body fragment for a language bound.
+ *
+ * Every similarity call takes an optional `languages`; omitting it inherits the shared EN/JP
+ * preference (see `language.ts`). The bound is applied SERVER-SIDE, before the top-N cut, so a
+ * constrained search returns a full `limit` of in-language cards rather than a page thinned by
+ * client-side filtering (measured: 46.7% of an EN card's 24 nearest neighbours are JP printings).
+ *
+ * The SEED card is never language-bound — you can sit on a Japanese card and ask for English
+ * neighbours; only the results are constrained.
+ *
+ * Omitted entirely when unconstrained, so the RPC keeps its cheaper unbounded plan and a server
+ * predating tcgscan-data migration 33 still answers.
+ */
+function langArg(languages) {
+    const eff = effectiveLanguages(languages);
+    return eff ? { p_lang: eff } : {};
+}
 /** How long a similarity RPC may run before we abort and fail soft. A hung request without
  *  this left the browser's "Searching…" placeholder up forever. */
 const RPC_TIMEOUT_MS = 12000;
@@ -20,14 +32,14 @@ function fetchWithTimeout(url, init) {
 export function similarAvailable() {
     return Boolean(getApiUrl() && getApiKey());
 }
-export async function findSimilar(cardId, limit = 24) {
+export async function findSimilar(cardId, limit = 24, { languages } = {}) {
     if (!similarAvailable())
         return [];
     try {
         const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar`, {
             method: 'POST',
             headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ p_card_id: cardId, p_limit: limit }),
+            body: JSON.stringify({ p_card_id: cardId, p_limit: limit, ...langArg(languages) }),
         });
         if (!res.ok)
             return [];
@@ -44,14 +56,14 @@ export async function findSimilar(cardId, limit = 24) {
  * 64-d vector, means them, and returns nearest neighbors — the client never holds
  * embeddings. Fails soft (empty list). Requires the find_similar_to_cards migration.
  */
-export async function findSimilarToMany(cardIds, limit = 24) {
+export async function findSimilarToMany(cardIds, limit = 24, { languages } = {}) {
     if (!similarAvailable() || cardIds.length === 0)
         return [];
     try {
         const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_to_cards`, {
             method: 'POST',
             headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ p_card_ids: cardIds, p_limit: limit }),
+            body: JSON.stringify({ p_card_ids: cardIds, p_limit: limit, ...langArg(languages) }),
         });
         if (!res.ok)
             return [];
@@ -87,7 +99,7 @@ export function refineWeights(steps) {
  * embeddings (find_similar_weighted RPC — Rocchio over the whole more/less history; the
  * client never holds embeddings). Session ids are excluded server-side. Fails soft.
  */
-export async function findSimilarWeighted(steps, limit = 24) {
+export async function findSimilarWeighted(steps, limit = 24, { languages } = {}) {
     const { ids, weights } = refineWeights(steps);
     if (!similarAvailable() || ids.length === 0)
         return [];
@@ -95,7 +107,12 @@ export async function findSimilarWeighted(steps, limit = 24) {
         const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_weighted`, {
             method: 'POST',
             headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ p_card_ids: ids, p_weights: weights, p_limit: limit }),
+            body: JSON.stringify({
+                p_card_ids: ids,
+                p_weights: weights,
+                p_limit: limit,
+                ...langArg(languages),
+            }),
         });
         if (!res.ok)
             return [];

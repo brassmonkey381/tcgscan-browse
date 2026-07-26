@@ -12,7 +12,9 @@
  * Fails soft everywhere — color search is a bonus, never a dependency.
  */
 import { useEffect, useState } from 'react';
+import { getLoadedCatalog } from './catalog';
 import { getApiKey, getApiUrl, getColorUrl } from './config';
+import { effectiveLanguages } from './language';
 const RPC_TIMEOUT_MS = 12000;
 function fetchWithTimeout(url, init) {
     const controller = new AbortController();
@@ -22,6 +24,32 @@ function fetchWithTimeout(url, init) {
 /** True when the data server's REST API is reachable (the server color path can run). */
 export function colorServerAvailable() {
     return Boolean(getApiUrl() && getApiKey());
+}
+/**
+ * A per-id "is this card allowed?" test for the language bound, or null when unconstrained.
+ *
+ * Path B (server) sends the bound as `p_lang` and never needs this. Path A (the on-device blob)
+ * holds ids only — no language — so it resolves each id against the loaded catalog. Cards the
+ * catalog can't resolve are KEPT (fail-open): the kit's job is to never hard-fail a bonus feature,
+ * and CatalogBrowser's own language filter is still downstream of this as a backstop.
+ */
+function languageGate(languages) {
+    const eff = effectiveLanguages(languages);
+    if (!eff)
+        return null;
+    const catalog = getLoadedCatalog();
+    if (!catalog)
+        return null; // can't resolve languages locally — leave it to the downstream filter
+    const allowed = new Set(eff);
+    return (id) => {
+        const card = catalog.getCard(id);
+        return !card || allowed.has(card.language);
+    };
+}
+/** `p_lang` body fragment for the server colour RPCs; omitted when unconstrained. */
+function langArg(languages) {
+    const eff = effectiveLanguages(languages);
+    return eff ? { p_lang: eff } : {};
 }
 // ---- sRGB <-> CIELAB (mirror rgb_to_lab in tcgscan/analysis/colors.py) --------------------
 /** sRGB (0..255) → CIELAB. Feed a picked swatch through this before searchByColor. */
@@ -123,8 +151,14 @@ export class ColorIndex {
             c2q += b.w * Math.min(...A.map((a) => dE(a, b)));
         return 0.5 * (q2c + c2q);
     }
-    /** MODAL: cards with the palette most similar to `productId` (nearest first). */
-    findSimilar(productId, region, topN = 30) {
+    /**
+     * MODAL: cards with the palette most similar to `productId` (nearest first).
+     *
+     * `keep` is an optional per-id predicate (the language bound). It is applied during the scan,
+     * BEFORE the top-N slice, so a constrained search returns a full `topN` — filtering the slice
+     * afterwards would return however few of the top-N happened to qualify.
+     */
+    findSimilar(productId, region, topN = 30, keep) {
         const q = this.colors(productId, region);
         if (!q.length)
             return [];
@@ -132,15 +166,20 @@ export class ColorIndex {
         for (const id of this.ids) {
             if (id === productId)
                 continue;
+            if (keep && !keep(id))
+                continue;
             out.push({ id, score: ColorIndex.setDist(q, this.colors(id, region)) });
         }
         return out.sort((p, r) => p.score - r.score).slice(0, topN);
     }
-    /** PICKER: cards that prominently feature `pick` (LAB). `lambda` biases toward dominant colors. */
-    searchByColor(pick, region, topN = 60, lambda = 25) {
+    /** PICKER: cards that prominently feature `pick` (LAB). `lambda` biases toward dominant colors.
+     *  `keep` (the language bound) filters during the scan — see findSimilar. */
+    searchByColor(pick, region, topN = 60, lambda = 25, keep) {
         const p = { ...pick, w: 1 };
         const out = [];
         for (const id of this.ids) {
+            if (keep && !keep(id))
+                continue;
             const cs = this.colors(id, region);
             if (!cs.length)
                 continue;
@@ -153,13 +192,16 @@ export class ColorIndex {
      * MULTI-COLOR PICKER: cards whose palette best matches a WEIGHTED query palette (up to 3 colors
      * with weights). Uses the SAME symmetric weighted set-distance as findSimilar — the query palette
      * plays the role of a card. Weights need not sum to 1 (the metric is coverage-weighted either way).
+     * `keep` (the language bound) filters during the scan — see findSimilar.
      */
-    searchByColors(query, region, topN = 60) {
+    searchByColors(query, region, topN = 60, keep) {
         const q = query.filter((c) => c.w > 0);
         if (!q.length)
             return [];
         const out = [];
         for (const id of this.ids) {
+            if (keep && !keep(id))
+                continue;
             const cs = this.colors(id, region);
             if (!cs.length)
                 continue;
@@ -215,14 +257,22 @@ export function useColorIndex(enabled) {
 }
 // ---- Path B: server RPCs -----------------------------------------------------------------
 /** PICKER via the server: cards prominently featuring `pick`. Fails soft ([]). */
-export async function searchByColorServer(pick, region, { limit = 60, lambda = 25 } = {}) {
+export async function searchByColorServer(pick, region, { limit = 60, lambda = 25, languages } = {}) {
     if (!colorServerAvailable())
         return [];
     try {
         const res = await fetchWithTimeout(`${getApiUrl()}/rpc/search_by_color`, {
             method: 'POST',
             headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ p_region: region, p_l: pick.L, p_a: pick.a, p_b: pick.b, p_limit: limit, p_lambda: lambda }),
+            body: JSON.stringify({
+                p_region: region,
+                p_l: pick.L,
+                p_a: pick.a,
+                p_b: pick.b,
+                p_limit: limit,
+                p_lambda: lambda,
+                ...langArg(languages),
+            }),
         });
         if (!res.ok)
             return [];
@@ -234,7 +284,7 @@ export async function searchByColorServer(pick, region, { limit = 60, lambda = 2
     }
 }
 /** MULTI-COLOR PICKER via the server: cards matching a weighted query palette. Fails soft ([]). */
-export async function searchByColorsServer(query, region, { limit = 60 } = {}) {
+export async function searchByColorsServer(query, region, { limit = 60, languages } = {}) {
     const q = query.filter((c) => c.w > 0);
     if (!colorServerAvailable() || !q.length)
         return [];
@@ -242,7 +292,12 @@ export async function searchByColorsServer(query, region, { limit = 60 } = {}) {
         const res = await fetchWithTimeout(`${getApiUrl()}/rpc/search_by_colors`, {
             method: 'POST',
             headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ p_region: region, p_colors: q.map((c) => [c.L, c.a, c.b, c.w]), p_limit: limit }),
+            body: JSON.stringify({
+                p_region: region,
+                p_colors: q.map((c) => [c.L, c.a, c.b, c.w]),
+                p_limit: limit,
+                ...langArg(languages),
+            }),
         });
         if (!res.ok)
             return [];
@@ -254,14 +309,19 @@ export async function searchByColorsServer(query, region, { limit = 60 } = {}) {
     }
 }
 /** MODAL via the server: cards with the nearest palette to `productId`. Fails soft ([]). */
-export async function findSimilarByColorServer(productId, region, { limit = 30 } = {}) {
+export async function findSimilarByColorServer(productId, region, { limit = 30, languages } = {}) {
     if (!colorServerAvailable() || !productId)
         return [];
     try {
         const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_by_color`, {
             method: 'POST',
             headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ p_product_id: productId, p_region: region, p_limit: limit }),
+            body: JSON.stringify({
+                p_product_id: productId,
+                p_region: region,
+                p_limit: limit,
+                ...langArg(languages),
+            }),
         });
         if (!res.ok)
             return [];
@@ -282,8 +342,11 @@ export function colorSearchAvailable() {
  * index when loaded, else the server RPC. Returns ids only (resolve via catalog / fetchCardsByIds).
  */
 export async function searchByColor(pick, region, opts = {}) {
-    if (indexLoaded)
-        return indexLoaded.searchByColor(pick, region, opts.limit ?? 60, opts.lambda ?? 25).map((h) => h.id);
+    if (indexLoaded) {
+        return indexLoaded
+            .searchByColor(pick, region, opts.limit ?? 60, opts.lambda ?? 25, languageGate(opts.languages) ?? undefined)
+            .map((h) => h.id);
+    }
     return (await searchByColorServer(pick, region, opts)).map((h) => h.id);
 }
 /**
@@ -291,8 +354,11 @@ export async function searchByColor(pick, region, opts = {}) {
  * with weights), nearest first. On-device when the index is loaded, else the server RPC.
  */
 export async function searchByColors(query, region, opts = {}) {
-    if (indexLoaded)
-        return indexLoaded.searchByColors(query, region, opts.limit ?? 60).map((h) => h.id);
+    if (indexLoaded) {
+        return indexLoaded
+            .searchByColors(query, region, opts.limit ?? 60, languageGate(opts.languages) ?? undefined)
+            .map((h) => h.id);
+    }
     return (await searchByColorsServer(query, region, opts)).map((h) => h.id);
 }
 /**
@@ -300,7 +366,10 @@ export async function searchByColors(query, region, opts = {}) {
  * the index holds the card, else the server RPC. Returns ids only.
  */
 export async function findSimilarByColor(productId, region, opts = {}) {
-    if (indexLoaded?.has(productId))
-        return indexLoaded.findSimilar(productId, region, opts.limit ?? 30).map((h) => h.id);
+    if (indexLoaded?.has(productId)) {
+        return indexLoaded
+            .findSimilar(productId, region, opts.limit ?? 30, languageGate(opts.languages) ?? undefined)
+            .map((h) => h.id);
+    }
     return (await findSimilarByColorServer(productId, region, opts)).map((h) => h.id);
 }

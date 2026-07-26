@@ -50,14 +50,43 @@ function packFacets(facets) {
     return out;
 }
 /**
+ * Fold any `lang:` terms in the query into the LANGUAGE ARGUMENT, and hand back the query with
+ * those terms removed.
+ *
+ * `lang:ja` is a hard language filter, which is exactly what `p_lang` already is — so routing it
+ * to the argument rather than to `p_fields` gives warm/cold parity for free, with no new server
+ * grammar to keep in sync (the parity rule in AGENTS.md). The warm path reaches the same answer
+ * through `fieldValues(card, 'lang')` in query.ts.
+ *
+ * Composition is an INTERSECTION, like every other AND-ed query term: with the EN/JP toggle on
+ * English, `lang:ja` narrows to nothing rather than overriding the user's choice. `languages: []`
+ * is that empty case, and callers short-circuit on it instead of sending a request — omitting
+ * `p_lang` would mean "unconstrained" and quietly return the opposite of what was asked.
+ */
+function foldLanguageTerms(parsed, bound) {
+    const asked = parsed.fields.filter((f) => f.key === 'lang').map((f) => f.value);
+    if (asked.length === 0)
+        return { parsed, languages: bound };
+    const wanted = asked.filter((v) => v === 'en' || v === 'ja');
+    // An unrecognized value (lang:klingon) matches nothing, same as it does warm.
+    const merged = wanted.length === 0 ? [] : bound?.length ? bound.filter((l) => wanted.includes(l)) : wanted;
+    return {
+        parsed: { ...parsed, fields: parsed.fields.filter((f) => f.key !== 'lang') },
+        languages: merged,
+    };
+}
+/**
  * Run `parsed` against the server, one page at a time. `offset`/`limit` drive infinite scroll
  * (the caller accumulates pages); `facets` are exact-match chip selections (AND across facets,
  * OR within). Returns tile-ready cards + their prices + the real total.
  */
-export async function searchCards(parsed, { limit = 60, offset = 0, facets, languages, } = {}) {
+export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, languages: boundIn, } = {}) {
     const empty = { cards: [], priceById: {}, total: 0 };
     if (!serverSearchAvailable())
         return empty;
+    const { parsed, languages } = foldLanguageTerms(parsedIn, boundIn);
+    if (languages?.length === 0)
+        return empty; // contradictory bound (e.g. EN-only + lang:ja)
     try {
         const res = await fetch(`${getApiUrl()}/rpc/search_cards`, {
             method: 'POST',
@@ -176,9 +205,12 @@ export async function fetchCardsByIds(ids) {
  * Exclude-self per facet (server-side), mirroring the warm facetOptions. Returns facet key →
  * values in server order (the kit re-orders for display). Fails soft (empty map).
  */
-export async function searchFacets(parsed, facets, languages) {
+export async function searchFacets(parsedIn, facets, boundIn) {
     var _a;
     if (!serverSearchAvailable())
+        return {};
+    const { parsed, languages } = foldLanguageTerms(parsedIn, boundIn);
+    if (languages?.length === 0)
         return {};
     try {
         const res = await fetch(`${getApiUrl()}/rpc/search_facets`, {

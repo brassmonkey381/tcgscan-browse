@@ -19,6 +19,7 @@ const config = {
     ebayCustomId: '',
 };
 let catalogSource = null;
+let languageStore = null;
 /** Set the data-server origins. Call once from the app before any browse use. */
 export function configureBrowse(next) {
     config.browseUrl = next.browseUrl;
@@ -30,11 +31,16 @@ export function configureBrowse(next) {
     config.ebayCampaignId = next.ebayCampaignId ?? '';
     config.ebayCustomId = next.ebayCustomId ?? '';
     catalogSource = next.catalogSource ?? null;
+    languageStore = next.languageStore ?? null;
     setManifestCache(next.cache ?? null);
 }
 /** The app-supplied gated catalog loader, or null for the default public fetch. */
 export function getCatalogSource() {
     return catalogSource;
+}
+/** The app-supplied persistence for the EN/JP preference, or null for session-only. */
+export function getLanguageStore() {
+    return languageStore;
 }
 /** `https://<ref>.supabase.co/storage/...` -> `https://<ref>.supabase.co/rest/v1`. */
 function deriveApiUrl(browseUrl) {

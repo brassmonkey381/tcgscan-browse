@@ -82,6 +82,8 @@ import {
 } from './catalog';
 import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
+import { LANGUAGE_ORDER, languageLabel, useBrowseLanguages } from './language';
+import { LanguageToggle } from './LanguageToggle';
 import { formatUsd, usePriceSummary } from './prices';
 import { findSimilarWeighted, similarAvailable, type SimilarStep } from './similar';
 import {
@@ -492,12 +494,22 @@ interface CatalogBrowserProps {
   initialSimilar?: string[];
   /**
    * Constrain this browser instance to one or more printing languages — the upstream app decides
-   * which language(s) this browser shows (e.g. an EN-only or JP-only surface). `undefined`/empty =
-   * unconstrained (all languages), the default. When a single language is pinned, the in-UI
-   * language facet chip auto-hides; with both allowed it stays, letting the user toggle within the
-   * bound. Honored on the warm (catalog) and cold (server-search) paths alike.
+   * which language(s) this browser shows (e.g. an EN-only or JP-only surface). When a single
+   * language is pinned, the in-UI language facet chip auto-hides; with both allowed it stays,
+   * letting the user toggle within the bound. Honored on the warm (catalog) and cold
+   * (server-search) paths alike, and passed to the similarity + colour RPCs so THOSE results are
+   * cut before the top-N rather than thinned afterwards.
+   *
+   * Omit it to follow the SHARED, user-facing preference instead (`useBrowseLanguages` /
+   * `<LanguageToggle />`), which is the normal case — pass it only to pin a surface regardless of
+   * what the user picked. Either way the default is unconstrained (both languages).
    */
   languages?: CardLanguage[];
+  /**
+   * Show the EN/JP toggle in the browser's search row, bound to the shared preference. Apps that
+   * place their own `<LanguageToggle />` in a header (or that pin `languages`) leave this off.
+   */
+  showLanguageToggle?: boolean;
   /**
    * Card-tile size (S/M/L) — the app's GLOBAL default for this browser. The in-toolbar Size toggle
    * still overrides it locally; when the app changes this prop (e.g. a home-screen size control),
@@ -549,7 +561,8 @@ export function CatalogBrowser({
   cardTileWidth = TARGET_TILE_W,
   taxTileHeight = TAX_TILE_H,
   initialSimilar,
-  languages,
+  languages: languagesProp,
+  showLanguageToggle,
   cardSize: cardSizeProp,
   onCardSizeChange,
   onColorSearch,
@@ -577,17 +590,21 @@ export function CatalogBrowser({
     return () => anim.stop();
   }, [onColorSearch, newWiggle]);
 
-  // Upstream language constraint → a stable Set (null = unconstrained). Keyed by the sorted codes
+  // Printing-language bound: an explicit `languages` prop PINS this browser; otherwise it follows
+  // the shared, user-facing preference (the EN/JP toggle). Subscribing here is what makes a toggle
+  // rendered anywhere on the screen re-run this browser's searches.
+  const [sharedLanguages] = useBrowseLanguages();
+  const languages = languagesProp?.length ? languagesProp : sharedLanguages;
+
+  // → a stable Set (null = unconstrained, i.e. every language allowed). Keyed by the sorted codes
   // so an inline array prop doesn't thrash memo identity. `langOk` gates the warm/local card lists;
-  // the cold server path is constrained server-side via the `languages` arg to the RPC calls.
+  // every server path is constrained server-side via the `languages` arg to the RPC calls.
   const langSet = useMemo(
-    () => (languages && languages.length ? new Set(languages) : null),
+    () => (languages.length && languages.length < LANGUAGE_ORDER.length ? new Set(languages) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [languages?.join(',')],
+    [languages.join(',')],
   );
   const langOk = (c: CatalogCard) => !langSet || langSet.has(c.language);
-  // Stable array form of the same constraint for the cold server RPCs (undefined = unconstrained).
-  const langArg = useMemo(() => (langSet ? ([...langSet] as CardLanguage[]) : undefined), [langSet]);
 
   // Hydrate from the session browse state so reopening the picker restores the
   // last search/drill-down/similar view (one search often feeds several pockets).
@@ -602,6 +619,25 @@ export function CatalogBrowser({
   const [seriesId, setSeriesId] = useState<string | null>(browseState.seriesId);
   const [setId, setSetId] = useState<string | null>(browseState.setId);
   const [selection, setSelection] = useState<FacetSelection>(browseState.selection);
+
+  /**
+   * The language bound actually sent to the server: the instance/shared bound, narrowed by the
+   * in-UI Language facet chip. `undefined` = unconstrained; `[]` = contradictory (chip and bound
+   * disagree), which the clients pass through as "no rows" rather than silently unconstraining.
+   *
+   * Folding the chip in here is what makes it a real PRE-filter. It used to be warm-only: the
+   * chip's values were sent as a `language` facet key, which `search_cards` doesn't know and
+   * ignores, so in cold mode the chip looked active while the server returned everything.
+   */
+  const langArg = useMemo<CardLanguage[] | undefined>(() => {
+    const bound = langSet ? ([...langSet] as CardLanguage[]) : null;
+    const chip = selection.language ?? [];
+    if (chip.length === 0) return bound ?? undefined;
+    const fromChip = LANGUAGE_ORDER.filter((c) => chip.includes(languageLabel(c)));
+    return bound ? bound.filter((c) => fromChip.includes(c)) : fromChip;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [langSet, selection.language?.join(',')]);
+
   // UI sort control: null → follow the search box's `sort:` (else relevance).
   const [sortSel, setSortSel] = useState<{ field: QuerySort; dir: SortDir } | null>(
     browseState.sortSel,
@@ -1161,7 +1197,9 @@ export function CatalogBrowser({
   const runSimilar = (steps: SimilarStep[]) => {
     const token = ++similarReq.current;
     setSimilarBusy(true);
-    findSimilarWeighted(steps, 24)
+    // `langArg` goes to the RPC so the language bound cuts the corpus BEFORE the top-24. Filtering
+    // the returned 24 instead used to leave ~13 on screen for an EN-only browser.
+    findSimilarWeighted(steps, 24, { languages: langArg })
       .then((hits) => resolveIds(hits.map((h) => h.id)))
       .catch(() => [] as CatalogCard[])
       .then((cards) => {
@@ -1224,6 +1262,22 @@ export function CatalogBrowser({
     setSimilarCards([]);
     runSimilar(steps);
   };
+
+  // Changing the language while EMBEDDING similarity results are on screen re-runs the search
+  // rather than filtering what's already there — that's the whole point of a pre-filter, and it
+  // refills the grid to a full 24 in the newly chosen language(s). Injected result sets (a colour
+  // search) aren't a session we can re-rank, so they're left alone; the app re-runs those.
+  const langAtSimilar = useRef(langArg?.join(',') ?? '');
+  useEffect(() => {
+    const key = langArg?.join(',') ?? '';
+    if (langAtSimilar.current === key) return;
+    langAtSimilar.current = key;
+    if (similarSteps.length > 0) {
+      setSimilarCards([]);
+      runSimilar(similarSteps);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [langArg]);
 
   // Multi-select is only meaningful when at least one batch action can run.
   const canMultiSelect = Boolean(onPickCards) || similarAvailable();
@@ -1590,6 +1644,9 @@ export function CatalogBrowser({
             clearButtonMode="while-editing"
             style={[styles.search, styles.searchFlex]}
           />
+          {/* EN/JP bound. Sits in the search row because it applies to the SEARCH, not the
+              results — flipping it re-runs every query/similarity call against the server. */}
+          {showLanguageToggle ? <LanguageToggle theme={themeProp} /> : null}
           {canSaveSearch ? (
             <Pressable
               onPress={() => toggleSavedSearch(currentSearch())}

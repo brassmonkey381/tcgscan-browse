@@ -30,7 +30,7 @@ export type ServerFacetSelection = Record<string, string[]>;
  * (the caller accumulates pages); `facets` are exact-match chip selections (AND across facets,
  * OR within). Returns tile-ready cards + their prices + the real total.
  */
-export declare function searchCards(parsed: ParsedQuery, { limit, offset, facets, languages, }?: {
+export declare function searchCards(parsedIn: ParsedQuery, { limit, offset, facets, languages: boundIn, }?: {
     limit?: number;
     offset?: number;
     facets?: ServerFacetSelection;
@@ -55,7 +55,7 @@ export declare function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]>;
  * Exclude-self per facet (server-side), mirroring the warm facetOptions. Returns facet key →
  * values in server order (the kit re-orders for display). Fails soft (empty map).
  */
-export declare function searchFacets(parsed: ParsedQuery, facets?: ServerFacetSelection, languages?: CardLanguage[]): Promise<Record<string, string[]>>;
+export declare function searchFacets(parsedIn: ParsedQuery, facets?: ServerFacetSelection, boundIn?: CardLanguage[]): Promise<Record<string, string[]>>;
 /**
  * Every card in the recent release window (release_date >= cutoff, upcoming included),
  * newest first — powers the catalog-FREE Recent & Upcoming feed. Fails soft ([]).

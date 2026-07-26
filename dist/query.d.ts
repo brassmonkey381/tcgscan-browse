@@ -32,6 +32,9 @@ export interface QueryableCard {
     hp: number | null;
     /** Evolution stage, 1-indexed (1 = Basic, 2 = Stage 1, …); -1 when unknown. */
     evolutionStage: number;
+    /** Printing language ('en' | 'ja') — addressed by the `lang:` field. Optional so a caller with
+     *  a pre-language card shape still satisfies the interface; absent is treated as English. */
+    language?: string;
 }
 /** The attribute a `sort:` orders by. Direction is carried separately (see SortDir). */
 export type QuerySort = 'relevance' | 'value' | 'date' | 'name' | 'hp' | 'stage';
@@ -65,7 +68,7 @@ export interface ParsedQuery {
     /** True when anything beyond bare name words is present. */
     hasStructure: boolean;
 }
-export type FieldKey = 'artist' | 'illustrator' | 'rarity' | 'set' | 'series' | 'type' | 'stage' | 'year' | 'num';
+export type FieldKey = 'artist' | 'illustrator' | 'rarity' | 'set' | 'series' | 'type' | 'stage' | 'year' | 'num' | 'lang';
 /** `rarity:"holo rare"` / `artist:arita` / `hp>200` / `>$100` / bare words — quote-aware. */
 export declare function parseQuery(raw: string): ParsedQuery;
 /**

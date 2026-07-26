@@ -1,17 +1,29 @@
+/**
+ * Visual similarity — the data server's find_similar RPC (pgvector over the
+ * scanner's 64-d card embeddings). Given a catalog card id, returns the ids of
+ * the most visually similar cards; the caller resolves them against the local
+ * catalog for display. Fails soft (empty list) — similarity is a bonus feature,
+ * never a dependency.
+ */
+import type { CardLanguage } from './catalog';
 export interface SimilarHit {
     id: string;
     similarity: number;
 }
 /** True when the app is configured to reach the data server's REST API. */
 export declare function similarAvailable(): boolean;
-export declare function findSimilar(cardId: string, limit?: number): Promise<SimilarHit[]>;
+export declare function findSimilar(cardId: string, limit?: number, { languages }?: {
+    languages?: CardLanguage[];
+}): Promise<SimilarHit[]>;
 /**
  * Multi-select "find similar to all": the ids most visually similar to the AVERAGE
  * embedding of `cardIds`. The server (find_similar_to_cards RPC) resolves each id's
  * 64-d vector, means them, and returns nearest neighbors — the client never holds
  * embeddings. Fails soft (empty list). Requires the find_similar_to_cards migration.
  */
-export declare function findSimilarToMany(cardIds: string[], limit?: number): Promise<SimilarHit[]>;
+export declare function findSimilarToMany(cardIds: string[], limit?: number, { languages }?: {
+    languages?: CardLanguage[];
+}): Promise<SimilarHit[]>;
 /** One step of an ongoing similarity session: the seed search, then each refinement. */
 export interface SimilarStep {
     kind: 'seed' | 'more' | 'less';
@@ -31,4 +43,6 @@ export declare function refineWeights(steps: SimilarStep[]): {
  * embeddings (find_similar_weighted RPC — Rocchio over the whole more/less history; the
  * client never holds embeddings). Session ids are excluded server-side. Fails soft.
  */
-export declare function findSimilarWeighted(steps: SimilarStep[], limit?: number): Promise<SimilarHit[]>;
+export declare function findSimilarWeighted(steps: SimilarStep[], limit?: number, { languages }?: {
+    languages?: CardLanguage[];
+}): Promise<SimilarHit[]>;

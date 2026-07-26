@@ -27,6 +27,25 @@ const FIELD_ALIASES = {
     year: 'year',
     num: 'num',
     number: 'num',
+    lang: 'lang',
+    language: 'lang',
+};
+/**
+ * `lang:` values normalize to the raw 'en'/'ja' codes HERE, on the client, so the field arrives at
+ * the server as an exact code and `search_cards` can compare it with plain equality. Keeping the
+ * synonyms client-side is what lets warm and cold search stay byte-identical (the parity rule in
+ * AGENTS.md) — the server never has to know that "japanese" and "jp" mean the same thing.
+ * An unrecognized value is left as typed, so it simply matches nothing.
+ */
+const LANG_ALIASES = {
+    en: 'en',
+    eng: 'en',
+    english: 'en',
+    ja: 'ja',
+    jp: 'ja',
+    jpn: 'ja',
+    japan: 'ja',
+    japanese: 'ja',
 };
 /** Sort field aliases → (canonical field, implied direction when the alias carries one). */
 const SORT_ALIASES = {
@@ -171,7 +190,9 @@ export function parseQuery(raw) {
             }
             const key = FIELD_ALIASES[rawKey];
             if (key && value) {
-                out.fields.push({ key, value });
+                // `lang:` resolves its synonyms to the raw code here so client and server compare the
+                // same thing; every other field keeps the typed value (they're substring matches).
+                out.fields.push({ key, value: key === 'lang' ? (LANG_ALIASES[value] ?? value) : value });
                 out.hasStructure = true;
                 continue;
             }
@@ -244,6 +265,10 @@ function fieldValues(card, key) {
             return card.releaseDate ? [card.releaseDate.slice(0, 4)] : [];
         case 'num':
             return card.number ? [card.number] : [];
+        case 'lang':
+            // The raw code, matching the normalized `lang:` value (see LANG_ALIASES). Cards from a
+            // pre-language source have no field; they are English by construction.
+            return [card.language === 'ja' ? 'ja' : 'en'];
     }
 }
 function numCompare(a, op, b) {
@@ -520,6 +545,7 @@ export const QUERY_MANUAL = [
             ['type:fire', 'energy type or card type (Pokemon / Trainer / …)'],
             ['stage:basic', 'evolution stage by name (Basic, Stage1, VMAX, …)'],
             ['num:4', 'collector number (alias: number:)'],
+            ['lang:ja', 'Japanese printings (lang:en for English; jp / japanese / eng all work)'],
         ],
     },
     {

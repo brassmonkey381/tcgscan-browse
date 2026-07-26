@@ -13,7 +13,9 @@
  */
 import { useEffect, useState } from 'react';
 
+import { getLoadedCatalog, type CardLanguage } from './catalog';
 import { getApiKey, getApiUrl, getColorUrl } from './config';
+import { effectiveLanguages } from './language';
 
 /** Which region of the card the palette is measured over. */
 export type ColorRegion = 'noborder' | 'art';
@@ -43,6 +45,32 @@ function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
 /** True when the data server's REST API is reachable (the server color path can run). */
 export function colorServerAvailable(): boolean {
   return Boolean(getApiUrl() && getApiKey());
+}
+
+/**
+ * A per-id "is this card allowed?" test for the language bound, or null when unconstrained.
+ *
+ * Path B (server) sends the bound as `p_lang` and never needs this. Path A (the on-device blob)
+ * holds ids only — no language — so it resolves each id against the loaded catalog. Cards the
+ * catalog can't resolve are KEPT (fail-open): the kit's job is to never hard-fail a bonus feature,
+ * and CatalogBrowser's own language filter is still downstream of this as a backstop.
+ */
+function languageGate(languages?: CardLanguage[]): ((id: string) => boolean) | null {
+  const eff = effectiveLanguages(languages);
+  if (!eff) return null;
+  const catalog = getLoadedCatalog();
+  if (!catalog) return null; // can't resolve languages locally — leave it to the downstream filter
+  const allowed = new Set(eff);
+  return (id: string) => {
+    const card = catalog.getCard(id);
+    return !card || allowed.has(card.language);
+  };
+}
+
+/** `p_lang` body fragment for the server colour RPCs; omitted when unconstrained. */
+function langArg(languages?: CardLanguage[]): { p_lang?: CardLanguage[] } {
+  const eff = effectiveLanguages(languages);
+  return eff ? { p_lang: eff } : {};
 }
 
 // ---- sRGB <-> CIELAB (mirror rgb_to_lab in tcgscan/analysis/colors.py) --------------------
@@ -156,23 +184,43 @@ export class ColorIndex {
     return 0.5 * (q2c + c2q);
   }
 
-  /** MODAL: cards with the palette most similar to `productId` (nearest first). */
-  findSimilar(productId: string, region: ColorRegion, topN = 30): ColorHit[] {
+  /**
+   * MODAL: cards with the palette most similar to `productId` (nearest first).
+   *
+   * `keep` is an optional per-id predicate (the language bound). It is applied during the scan,
+   * BEFORE the top-N slice, so a constrained search returns a full `topN` — filtering the slice
+   * afterwards would return however few of the top-N happened to qualify.
+   */
+  findSimilar(
+    productId: string,
+    region: ColorRegion,
+    topN = 30,
+    keep?: (id: string) => boolean,
+  ): ColorHit[] {
     const q = this.colors(productId, region);
     if (!q.length) return [];
     const out: ColorHit[] = [];
     for (const id of this.ids) {
       if (id === productId) continue;
+      if (keep && !keep(id)) continue;
       out.push({ id, score: ColorIndex.setDist(q, this.colors(id, region)) });
     }
     return out.sort((p, r) => p.score - r.score).slice(0, topN);
   }
 
-  /** PICKER: cards that prominently feature `pick` (LAB). `lambda` biases toward dominant colors. */
-  searchByColor(pick: { L: number; a: number; b: number }, region: ColorRegion, topN = 60, lambda = 25): ColorHit[] {
+  /** PICKER: cards that prominently feature `pick` (LAB). `lambda` biases toward dominant colors.
+   *  `keep` (the language bound) filters during the scan — see findSimilar. */
+  searchByColor(
+    pick: { L: number; a: number; b: number },
+    region: ColorRegion,
+    topN = 60,
+    lambda = 25,
+    keep?: (id: string) => boolean,
+  ): ColorHit[] {
     const p: Lab = { ...pick, w: 1 };
     const out: ColorHit[] = [];
     for (const id of this.ids) {
+      if (keep && !keep(id)) continue;
       const cs = this.colors(id, region);
       if (!cs.length) continue;
       const score = Math.min(...cs.map((c) => dE(p, c) - lambda * c.w));
@@ -185,12 +233,19 @@ export class ColorIndex {
    * MULTI-COLOR PICKER: cards whose palette best matches a WEIGHTED query palette (up to 3 colors
    * with weights). Uses the SAME symmetric weighted set-distance as findSimilar — the query palette
    * plays the role of a card. Weights need not sum to 1 (the metric is coverage-weighted either way).
+   * `keep` (the language bound) filters during the scan — see findSimilar.
    */
-  searchByColors(query: Lab[], region: ColorRegion, topN = 60): ColorHit[] {
+  searchByColors(
+    query: Lab[],
+    region: ColorRegion,
+    topN = 60,
+    keep?: (id: string) => boolean,
+  ): ColorHit[] {
     const q = query.filter((c) => c.w > 0);
     if (!q.length) return [];
     const out: ColorHit[] = [];
     for (const id of this.ids) {
+      if (keep && !keep(id)) continue;
       const cs = this.colors(id, region);
       if (!cs.length) continue;
       out.push({ id, score: ColorIndex.setDist(q, cs) });
@@ -252,14 +307,22 @@ export function useColorIndex(enabled: boolean): ColorIndex | null {
 export async function searchByColorServer(
   pick: { L: number; a: number; b: number },
   region: ColorRegion,
-  { limit = 60, lambda = 25 }: { limit?: number; lambda?: number } = {},
+  { limit = 60, lambda = 25, languages }: { limit?: number; lambda?: number; languages?: CardLanguage[] } = {},
 ): Promise<ColorHit[]> {
   if (!colorServerAvailable()) return [];
   try {
     const res = await fetchWithTimeout(`${getApiUrl()}/rpc/search_by_color`, {
       method: 'POST',
       headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_region: region, p_l: pick.L, p_a: pick.a, p_b: pick.b, p_limit: limit, p_lambda: lambda }),
+      body: JSON.stringify({
+        p_region: region,
+        p_l: pick.L,
+        p_a: pick.a,
+        p_b: pick.b,
+        p_limit: limit,
+        p_lambda: lambda,
+        ...langArg(languages),
+      }),
     });
     if (!res.ok) return [];
     const rows = (await res.json()) as { product_id: string; score: number }[];
@@ -273,7 +336,7 @@ export async function searchByColorServer(
 export async function searchByColorsServer(
   query: Lab[],
   region: ColorRegion,
-  { limit = 60 }: { limit?: number } = {},
+  { limit = 60, languages }: { limit?: number; languages?: CardLanguage[] } = {},
 ): Promise<ColorHit[]> {
   const q = query.filter((c) => c.w > 0);
   if (!colorServerAvailable() || !q.length) return [];
@@ -281,7 +344,12 @@ export async function searchByColorsServer(
     const res = await fetchWithTimeout(`${getApiUrl()}/rpc/search_by_colors`, {
       method: 'POST',
       headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_region: region, p_colors: q.map((c) => [c.L, c.a, c.b, c.w]), p_limit: limit }),
+      body: JSON.stringify({
+        p_region: region,
+        p_colors: q.map((c) => [c.L, c.a, c.b, c.w]),
+        p_limit: limit,
+        ...langArg(languages),
+      }),
     });
     if (!res.ok) return [];
     const rows = (await res.json()) as { product_id: string; dist: number }[];
@@ -295,14 +363,19 @@ export async function searchByColorsServer(
 export async function findSimilarByColorServer(
   productId: string,
   region: ColorRegion,
-  { limit = 30 }: { limit?: number } = {},
+  { limit = 30, languages }: { limit?: number; languages?: CardLanguage[] } = {},
 ): Promise<ColorHit[]> {
   if (!colorServerAvailable() || !productId) return [];
   try {
     const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_by_color`, {
       method: 'POST',
       headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_product_id: productId, p_region: region, p_limit: limit }),
+      body: JSON.stringify({
+        p_product_id: productId,
+        p_region: region,
+        p_limit: limit,
+        ...langArg(languages),
+      }),
     });
     if (!res.ok) return [];
     const rows = (await res.json()) as { product_id: string; dist: number }[];
@@ -326,9 +399,13 @@ export function colorSearchAvailable(): boolean {
 export async function searchByColor(
   pick: { L: number; a: number; b: number },
   region: ColorRegion,
-  opts: { limit?: number; lambda?: number } = {},
+  opts: { limit?: number; lambda?: number; languages?: CardLanguage[] } = {},
 ): Promise<string[]> {
-  if (indexLoaded) return indexLoaded.searchByColor(pick, region, opts.limit ?? 60, opts.lambda ?? 25).map((h) => h.id);
+  if (indexLoaded) {
+    return indexLoaded
+      .searchByColor(pick, region, opts.limit ?? 60, opts.lambda ?? 25, languageGate(opts.languages) ?? undefined)
+      .map((h) => h.id);
+  }
   return (await searchByColorServer(pick, region, opts)).map((h) => h.id);
 }
 
@@ -339,9 +416,13 @@ export async function searchByColor(
 export async function searchByColors(
   query: Lab[],
   region: ColorRegion,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; languages?: CardLanguage[] } = {},
 ): Promise<string[]> {
-  if (indexLoaded) return indexLoaded.searchByColors(query, region, opts.limit ?? 60).map((h) => h.id);
+  if (indexLoaded) {
+    return indexLoaded
+      .searchByColors(query, region, opts.limit ?? 60, languageGate(opts.languages) ?? undefined)
+      .map((h) => h.id);
+  }
   return (await searchByColorsServer(query, region, opts)).map((h) => h.id);
 }
 
@@ -352,8 +433,12 @@ export async function searchByColors(
 export async function findSimilarByColor(
   productId: string,
   region: ColorRegion,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; languages?: CardLanguage[] } = {},
 ): Promise<string[]> {
-  if (indexLoaded?.has(productId)) return indexLoaded.findSimilar(productId, region, opts.limit ?? 30).map((h) => h.id);
+  if (indexLoaded?.has(productId)) {
+    return indexLoaded
+      .findSimilar(productId, region, opts.limit ?? 30, languageGate(opts.languages) ?? undefined)
+      .map((h) => h.id);
+  }
   return (await findSimilarByColorServer(productId, region, opts)).map((h) => h.id);
 }

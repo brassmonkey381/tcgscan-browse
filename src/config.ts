@@ -22,6 +22,19 @@ export type CatalogSource = (
   onProgress?: (received: number, total: number) => void,
 ) => Promise<RawCatalog>;
 
+/**
+ * App-supplied persistence for the shared EN/JP preference (see `language.ts`). The kit has no
+ * storage and no auth, so an app that wants the choice to survive a reload (or follow a signed-in
+ * collector across devices) supplies these. Both are optional and both must FAIL SOFT — the kit
+ * swallows throws and falls back to a session-only preference.
+ */
+export interface LanguageStore {
+  /** Read the stored preference once at startup. Return null/undefined for "nothing stored". */
+  load?: () => Promise<CardLanguage[] | null | undefined>;
+  /** Persist a change. Fire-and-forget: the kit does not await it or surface failures. */
+  save?: (langs: CardLanguage[]) => void;
+}
+
 export interface BrowseConfig {
   /**
    * Base URL for catalog.json / prices-summary.json / alternates.json.
@@ -72,9 +85,14 @@ export interface BrowseConfig {
   ebayCampaignId?: string;
   /** EPN customid (sub-id) stamped on eBay links for per-surface attribution, e.g. 'michi-recent'. */
   ebayCustomId?: string;
+  /**
+   * Persistence for the shared EN/JP printing-language preference. Omit and the choice is
+   * session-only (still shared across every surface, just not remembered).
+   */
+  languageStore?: LanguageStore;
 }
 
-const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource'>> = {
+const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource' | 'languageStore'>> = {
   browseUrl: '/browse',
   imgBase: '',
   apiUrl: '',
@@ -85,6 +103,7 @@ const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource'>> = {
   ebayCustomId: '',
 };
 let catalogSource: CatalogSource | null = null;
+let languageStore: LanguageStore | null = null;
 
 /** Set the data-server origins. Call once from the app before any browse use. */
 export function configureBrowse(next: BrowseConfig): void {
@@ -97,12 +116,18 @@ export function configureBrowse(next: BrowseConfig): void {
   config.ebayCampaignId = next.ebayCampaignId ?? '';
   config.ebayCustomId = next.ebayCustomId ?? '';
   catalogSource = next.catalogSource ?? null;
+  languageStore = next.languageStore ?? null;
   setManifestCache(next.cache ?? null);
 }
 
 /** The app-supplied gated catalog loader, or null for the default public fetch. */
 export function getCatalogSource(): CatalogSource | null {
   return catalogSource;
+}
+
+/** The app-supplied persistence for the EN/JP preference, or null for session-only. */
+export function getLanguageStore(): LanguageStore | null {
+  return languageStore;
 }
 
 /** `https://<ref>.supabase.co/storage/...` -> `https://<ref>.supabase.co/rest/v1`. */

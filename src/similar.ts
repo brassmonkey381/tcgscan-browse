@@ -5,11 +5,32 @@
  * catalog for display. Fails soft (empty list) — similarity is a bonus feature,
  * never a dependency.
  */
+import type { CardLanguage } from './catalog';
 import { getApiKey, getApiUrl } from './config';
+import { effectiveLanguages } from './language';
 
 export interface SimilarHit {
   id: string;
   similarity: number; // cosine, 0..1-ish (higher = closer)
+}
+
+/**
+ * `p_lang` body fragment for a language bound.
+ *
+ * Every similarity call takes an optional `languages`; omitting it inherits the shared EN/JP
+ * preference (see `language.ts`). The bound is applied SERVER-SIDE, before the top-N cut, so a
+ * constrained search returns a full `limit` of in-language cards rather than a page thinned by
+ * client-side filtering (measured: 46.7% of an EN card's 24 nearest neighbours are JP printings).
+ *
+ * The SEED card is never language-bound — you can sit on a Japanese card and ask for English
+ * neighbours; only the results are constrained.
+ *
+ * Omitted entirely when unconstrained, so the RPC keeps its cheaper unbounded plan and a server
+ * predating tcgscan-data migration 33 still answers.
+ */
+function langArg(languages?: CardLanguage[]): { p_lang?: CardLanguage[] } {
+  const eff = effectiveLanguages(languages);
+  return eff ? { p_lang: eff } : {};
 }
 
 /** How long a similarity RPC may run before we abort and fail soft. A hung request without
@@ -29,13 +50,17 @@ export function similarAvailable(): boolean {
   return Boolean(getApiUrl() && getApiKey());
 }
 
-export async function findSimilar(cardId: string, limit = 24): Promise<SimilarHit[]> {
+export async function findSimilar(
+  cardId: string,
+  limit = 24,
+  { languages }: { languages?: CardLanguage[] } = {},
+): Promise<SimilarHit[]> {
   if (!similarAvailable()) return [];
   try {
     const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar`, {
       method: 'POST',
       headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_card_id: cardId, p_limit: limit }),
+      body: JSON.stringify({ p_card_id: cardId, p_limit: limit, ...langArg(languages) }),
     });
     if (!res.ok) return [];
     const rows = (await res.json()) as { id: string; similarity: number }[];
@@ -51,13 +76,17 @@ export async function findSimilar(cardId: string, limit = 24): Promise<SimilarHi
  * 64-d vector, means them, and returns nearest neighbors — the client never holds
  * embeddings. Fails soft (empty list). Requires the find_similar_to_cards migration.
  */
-export async function findSimilarToMany(cardIds: string[], limit = 24): Promise<SimilarHit[]> {
+export async function findSimilarToMany(
+  cardIds: string[],
+  limit = 24,
+  { languages }: { languages?: CardLanguage[] } = {},
+): Promise<SimilarHit[]> {
   if (!similarAvailable() || cardIds.length === 0) return [];
   try {
     const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_to_cards`, {
       method: 'POST',
       headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_card_ids: cardIds, p_limit: limit }),
+      body: JSON.stringify({ p_card_ids: cardIds, p_limit: limit, ...langArg(languages) }),
     });
     if (!res.ok) return [];
     const rows = (await res.json()) as { id: string; similarity: number }[];
@@ -98,14 +127,23 @@ export function refineWeights(steps: SimilarStep[]): { ids: string[]; weights: n
  * embeddings (find_similar_weighted RPC — Rocchio over the whole more/less history; the
  * client never holds embeddings). Session ids are excluded server-side. Fails soft.
  */
-export async function findSimilarWeighted(steps: SimilarStep[], limit = 24): Promise<SimilarHit[]> {
+export async function findSimilarWeighted(
+  steps: SimilarStep[],
+  limit = 24,
+  { languages }: { languages?: CardLanguage[] } = {},
+): Promise<SimilarHit[]> {
   const { ids, weights } = refineWeights(steps);
   if (!similarAvailable() || ids.length === 0) return [];
   try {
     const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_weighted`, {
       method: 'POST',
       headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_card_ids: ids, p_weights: weights, p_limit: limit }),
+      body: JSON.stringify({
+        p_card_ids: ids,
+        p_weights: weights,
+        p_limit: limit,
+        ...langArg(languages),
+      }),
     });
     if (!res.ok) return [];
     const rows = (await res.json()) as { id: string; similarity: number }[];

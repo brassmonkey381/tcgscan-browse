@@ -1,3 +1,4 @@
+import { type CardLanguage } from './catalog';
 /** Which region of the card the palette is measured over. */
 export type ColorRegion = 'noborder' | 'art';
 /** One dominant color: CIELAB + coverage weight (0..1). */
@@ -49,20 +50,28 @@ export declare class ColorIndex {
     colors(productId: string, region: ColorRegion): Lab[];
     /** Symmetric weighted color-set distance — mirrors the server/pipeline metric. */
     private static setDist;
-    /** MODAL: cards with the palette most similar to `productId` (nearest first). */
-    findSimilar(productId: string, region: ColorRegion, topN?: number): ColorHit[];
-    /** PICKER: cards that prominently feature `pick` (LAB). `lambda` biases toward dominant colors. */
+    /**
+     * MODAL: cards with the palette most similar to `productId` (nearest first).
+     *
+     * `keep` is an optional per-id predicate (the language bound). It is applied during the scan,
+     * BEFORE the top-N slice, so a constrained search returns a full `topN` — filtering the slice
+     * afterwards would return however few of the top-N happened to qualify.
+     */
+    findSimilar(productId: string, region: ColorRegion, topN?: number, keep?: (id: string) => boolean): ColorHit[];
+    /** PICKER: cards that prominently feature `pick` (LAB). `lambda` biases toward dominant colors.
+     *  `keep` (the language bound) filters during the scan — see findSimilar. */
     searchByColor(pick: {
         L: number;
         a: number;
         b: number;
-    }, region: ColorRegion, topN?: number, lambda?: number): ColorHit[];
+    }, region: ColorRegion, topN?: number, lambda?: number, keep?: (id: string) => boolean): ColorHit[];
     /**
      * MULTI-COLOR PICKER: cards whose palette best matches a WEIGHTED query palette (up to 3 colors
      * with weights). Uses the SAME symmetric weighted set-distance as findSimilar — the query palette
      * plays the role of a card. Weights need not sum to 1 (the metric is coverage-weighted either way).
+     * `keep` (the language bound) filters during the scan — see findSimilar.
      */
-    searchByColors(query: Lab[], region: ColorRegion, topN?: number): ColorHit[];
+    searchByColors(query: Lab[], region: ColorRegion, topN?: number, keep?: (id: string) => boolean): ColorHit[];
 }
 /** Load-once on-device color index from the configured color URL. Fails soft → null. */
 export declare function loadColorIndex(): Promise<ColorIndex | null>;
@@ -79,17 +88,20 @@ export declare function searchByColorServer(pick: {
     L: number;
     a: number;
     b: number;
-}, region: ColorRegion, { limit, lambda }?: {
+}, region: ColorRegion, { limit, lambda, languages }?: {
     limit?: number;
     lambda?: number;
+    languages?: CardLanguage[];
 }): Promise<ColorHit[]>;
 /** MULTI-COLOR PICKER via the server: cards matching a weighted query palette. Fails soft ([]). */
-export declare function searchByColorsServer(query: Lab[], region: ColorRegion, { limit }?: {
+export declare function searchByColorsServer(query: Lab[], region: ColorRegion, { limit, languages }?: {
     limit?: number;
+    languages?: CardLanguage[];
 }): Promise<ColorHit[]>;
 /** MODAL via the server: cards with the nearest palette to `productId`. Fails soft ([]). */
-export declare function findSimilarByColorServer(productId: string, region: ColorRegion, { limit }?: {
+export declare function findSimilarByColorServer(productId: string, region: ColorRegion, { limit, languages }?: {
     limit?: number;
+    languages?: CardLanguage[];
 }): Promise<ColorHit[]>;
 /** True when EITHER color path is usable (on-device index loaded, or server reachable). */
 export declare function colorSearchAvailable(): boolean;
@@ -104,6 +116,7 @@ export declare function searchByColor(pick: {
 }, region: ColorRegion, opts?: {
     limit?: number;
     lambda?: number;
+    languages?: CardLanguage[];
 }): Promise<string[]>;
 /**
  * MULTI-COLOR PICKER (hybrid): ids of cards best matching a weighted query palette (up to 3 colors
@@ -111,6 +124,7 @@ export declare function searchByColor(pick: {
  */
 export declare function searchByColors(query: Lab[], region: ColorRegion, opts?: {
     limit?: number;
+    languages?: CardLanguage[];
 }): Promise<string[]>;
 /**
  * MODAL (hybrid): ids of cards with the palette nearest `productId`, nearest first. On-device when
@@ -118,4 +132,5 @@ export declare function searchByColors(query: Lab[], region: ColorRegion, opts?:
  */
 export declare function findSimilarByColor(productId: string, region: ColorRegion, opts?: {
     limit?: number;
+    languages?: CardLanguage[];
 }): Promise<string[]>;

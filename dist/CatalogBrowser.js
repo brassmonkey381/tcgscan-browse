@@ -34,6 +34,8 @@ import { resolveActions, } from './actions';
 import { formatSetDate, seriesDateRange, useCatalogStatus, } from './catalog';
 import { cardThumbUrl } from './config';
 import { useImageManifest } from './images';
+import { LANGUAGE_ORDER, languageLabel, useBrowseLanguages } from './language';
+import { LanguageToggle } from './LanguageToggle';
 import { formatUsd, usePriceSummary } from './prices';
 import { findSimilarWeighted, similarAvailable } from './similar';
 import { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, } from './search';
@@ -295,7 +297,7 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
     // Hydrate the content-hashed image manifest and repaint tiles when it lands —
@@ -315,15 +317,18 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         anim.start();
         return () => anim.stop();
     }, [onColorSearch, newWiggle]);
-    // Upstream language constraint → a stable Set (null = unconstrained). Keyed by the sorted codes
+    // Printing-language bound: an explicit `languages` prop PINS this browser; otherwise it follows
+    // the shared, user-facing preference (the EN/JP toggle). Subscribing here is what makes a toggle
+    // rendered anywhere on the screen re-run this browser's searches.
+    const [sharedLanguages] = useBrowseLanguages();
+    const languages = languagesProp?.length ? languagesProp : sharedLanguages;
+    // → a stable Set (null = unconstrained, i.e. every language allowed). Keyed by the sorted codes
     // so an inline array prop doesn't thrash memo identity. `langOk` gates the warm/local card lists;
-    // the cold server path is constrained server-side via the `languages` arg to the RPC calls.
-    const langSet = useMemo(() => (languages && languages.length ? new Set(languages) : null), 
+    // every server path is constrained server-side via the `languages` arg to the RPC calls.
+    const langSet = useMemo(() => (languages.length && languages.length < LANGUAGE_ORDER.length ? new Set(languages) : null), 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [languages?.join(',')]);
+    [languages.join(',')]);
     const langOk = (c) => !langSet || langSet.has(c.language);
-    // Stable array form of the same constraint for the cold server RPCs (undefined = unconstrained).
-    const langArg = useMemo(() => (langSet ? [...langSet] : undefined), [langSet]);
     // Hydrate from the session browse state so reopening the picker restores the
     // last search/drill-down/similar view (one search often feeds several pockets).
     const [cardQuery, setCardQuery] = useState(browseState.cardQuery);
@@ -336,6 +341,24 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const [seriesId, setSeriesId] = useState(browseState.seriesId);
     const [setId, setSetId] = useState(browseState.setId);
     const [selection, setSelection] = useState(browseState.selection);
+    /**
+     * The language bound actually sent to the server: the instance/shared bound, narrowed by the
+     * in-UI Language facet chip. `undefined` = unconstrained; `[]` = contradictory (chip and bound
+     * disagree), which the clients pass through as "no rows" rather than silently unconstraining.
+     *
+     * Folding the chip in here is what makes it a real PRE-filter. It used to be warm-only: the
+     * chip's values were sent as a `language` facet key, which `search_cards` doesn't know and
+     * ignores, so in cold mode the chip looked active while the server returned everything.
+     */
+    const langArg = useMemo(() => {
+        const bound = langSet ? [...langSet] : null;
+        const chip = selection.language ?? [];
+        if (chip.length === 0)
+            return bound ?? undefined;
+        const fromChip = LANGUAGE_ORDER.filter((c) => chip.includes(languageLabel(c)));
+        return bound ? bound.filter((c) => fromChip.includes(c)) : fromChip;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [langSet, selection.language?.join(',')]);
     // UI sort control: null → follow the search box's `sort:` (else relevance).
     const [sortSel, setSortSel] = useState(browseState.sortSel);
     // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
@@ -857,7 +880,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const runSimilar = (steps) => {
         const token = ++similarReq.current;
         setSimilarBusy(true);
-        findSimilarWeighted(steps, 24)
+        // `langArg` goes to the RPC so the language bound cuts the corpus BEFORE the top-24. Filtering
+        // the returned 24 instead used to leave ~13 on screen for an EN-only browser.
+        findSimilarWeighted(steps, 24, { languages: langArg })
             .then((hits) => resolveIds(hits.map((h) => h.id)))
             .catch(() => [])
             .then((cards) => {
@@ -918,6 +943,22 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         setSimilarCards([]);
         runSimilar(steps);
     };
+    // Changing the language while EMBEDDING similarity results are on screen re-runs the search
+    // rather than filtering what's already there — that's the whole point of a pre-filter, and it
+    // refills the grid to a full 24 in the newly chosen language(s). Injected result sets (a colour
+    // search) aren't a session we can re-rank, so they're left alone; the app re-runs those.
+    const langAtSimilar = useRef(langArg?.join(',') ?? '');
+    useEffect(() => {
+        const key = langArg?.join(',') ?? '';
+        if (langAtSimilar.current === key)
+            return;
+        langAtSimilar.current = key;
+        if (similarSteps.length > 0) {
+            setSimilarCards([]);
+            runSimilar(similarSteps);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [langArg]);
     // Multi-select is only meaningful when at least one batch action can run.
     const canMultiSelect = Boolean(onPickCards) || similarAvailable();
     // Read live at press time (modifierHeld is a ref → no re-render on key state change).
@@ -1216,7 +1257,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 setFocusIdx(-1);
         },
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [onColorSearch ? (_jsxs(View, { style: styles.triColorRow, children: [_jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: "Tri-Color Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Tri-Color Search" }) }), _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), savedList.length > 0 ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, isCardLevel || !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [onColorSearch ? (_jsxs(View, { style: styles.triColorRow, children: [_jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: "Tri-Color Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Tri-Color Search" }) }), _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), showLanguageToggle ? _jsx(LanguageToggle, { theme: themeProp }) : null, canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), savedList.length > 0 ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, isCardLevel || !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
                         !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [warm
                                         ? filteredCards.length === viewCards.length

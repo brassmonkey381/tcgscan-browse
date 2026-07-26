@@ -89,12 +89,22 @@ interface CatalogBrowserProps {
     initialSimilar?: string[];
     /**
      * Constrain this browser instance to one or more printing languages — the upstream app decides
-     * which language(s) this browser shows (e.g. an EN-only or JP-only surface). `undefined`/empty =
-     * unconstrained (all languages), the default. When a single language is pinned, the in-UI
-     * language facet chip auto-hides; with both allowed it stays, letting the user toggle within the
-     * bound. Honored on the warm (catalog) and cold (server-search) paths alike.
+     * which language(s) this browser shows (e.g. an EN-only or JP-only surface). When a single
+     * language is pinned, the in-UI language facet chip auto-hides; with both allowed it stays,
+     * letting the user toggle within the bound. Honored on the warm (catalog) and cold
+     * (server-search) paths alike, and passed to the similarity + colour RPCs so THOSE results are
+     * cut before the top-N rather than thinned afterwards.
+     *
+     * Omit it to follow the SHARED, user-facing preference instead (`useBrowseLanguages` /
+     * `<LanguageToggle />`), which is the normal case — pass it only to pin a surface regardless of
+     * what the user picked. Either way the default is unconstrained (both languages).
      */
     languages?: CardLanguage[];
+    /**
+     * Show the EN/JP toggle in the browser's search row, bound to the shared preference. Apps that
+     * place their own `<LanguageToggle />` in a header (or that pin `languages`) leave this off.
+     */
+    showLanguageToggle?: boolean;
     /**
      * Card-tile size (S/M/L) — the app's GLOBAL default for this browser. The in-toolbar Size toggle
      * still overrides it locally; when the app changes this prop (e.g. a home-screen size control),
@@ -128,5 +138,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};
