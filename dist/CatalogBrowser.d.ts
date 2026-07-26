@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { type CardSize } from './state';
 import { type CardAction, type CardActionsFactory } from './actions';
 import { type Catalog, type CardLanguage, type CatalogCard } from './catalog';
+import { type BrowseFeature } from './features';
 import { type BrowseTheme } from './theme';
 interface CatalogBrowserProps {
     /**
@@ -106,6 +107,20 @@ interface CatalogBrowserProps {
      */
     showLanguageToggle?: boolean;
     /**
+     * Browse features the HOST has locked for this user (see `features.ts`). The kit stays
+     * tier-agnostic: it enforces the lock and degrades gracefully, the app decides who is locked
+     * and shows the upsell via `onLockedFeature`. Omit for an unrestricted browser.
+     *
+     * Locks apply to the query that actually RUNS, not just the chips, so a locked feature cannot
+     * be reached by typing it into the search box either.
+     */
+    lockedFeatures?: BrowseFeature[];
+    /**
+     * Fired when the user reaches for a locked feature — the host opens its own upsell. Without it
+     * a locked control is simply inert (still visibly locked, just not clickable-into-anything).
+     */
+    onLockedFeature?: (feature: BrowseFeature) => void;
+    /**
      * Card-tile size (S/M/L) — the app's GLOBAL default for this browser. The in-toolbar Size toggle
      * still overrides it locally; when the app changes this prop (e.g. a home-screen size control),
      * the browser follows it. Omit to fall back to the session-sticky `browseState.cardSize` (default
@@ -138,5 +153,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

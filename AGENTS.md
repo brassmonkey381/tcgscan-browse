@@ -24,6 +24,12 @@ an app.
   in `src/query.ts`) — plus the `search_cards` RPC in tcgscan-data, which must
   mirror the client semantics exactly (warm == cold parity). Checklist in
   `docs/ARCHITECTURE.md`.
+- **Tier gating is INJECTED, never inferred.** The kit knows nothing about tiers, entitlements
+  or pricing. Hosts pass `lockedFeatures` (see `src/features.ts`) and supply the upsell via
+  `onLockedFeature`. Locks are enforced on the query the kit RUNS (`applyFeatureLocks` on
+  `effParsed`), not just on the chips — otherwise typing `sort:value` walks straight past the
+  gate. A locked feature must always degrade to something coherent and SAY so
+  (`lockedQueryNotice`); silently dropping what the user typed reads as a bug.
 - **Language is a PRE-filter, never a post-filter.** The EN/JP bound
   (`src/language.ts` — the shared preference, the `languages` prop, the Language
   facet chip, and a `lang:` query term, all intersected) is passed to the server

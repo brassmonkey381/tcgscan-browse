@@ -33,6 +33,7 @@ import { SeriesAnalytics, SetAnalytics } from './analytics';
 import { resolveActions, } from './actions';
 import { formatSetDate, seriesDateRange, useCatalogStatus, } from './catalog';
 import { cardThumbUrl } from './config';
+import { applyFeatureLocks, isLocked, lockedQueryNotice } from './features';
 import { useImageManifest } from './images';
 import { LANGUAGE_ORDER, languageLabel, useBrowseLanguages } from './language';
 import { LanguageToggle } from './LanguageToggle';
@@ -97,6 +98,9 @@ const SIZE_OPTIONS = [
     { size: 'M', label: 'M' },
     { size: 'L', label: 'L' },
 ];
+/** Stable array identity for the one sort the `sortByValue` lock covers (avoids a new array
+ *  per render feeding SortBar's props). */
+const SORT_LOCKED_BY_VALUE = ['value'];
 const SORT_DEFAULT_DIR = {
     relevance: 'desc',
     value: 'desc',
@@ -297,7 +301,7 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
     // Hydrate the content-hashed image manifest and repaint tiles when it lands —
@@ -637,8 +641,18 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             return { field: parsed.sort, dir: parsed.sortDir };
         return { field: 'relevance', dir: 'desc' };
     }, [sortSel, parsed.sort, parsed.sortDir]);
-    // The query actually run/described/labelled, with the effective sort folded in.
-    const effParsed = useMemo(() => ({ ...parsed, sort: effSort.field, sortDir: effSort.dir }), [parsed, effSort]);
+    // The query actually run/described/labelled, with the effective sort folded in — then stripped
+    // of any host-locked feature. Enforcing HERE (rather than only on the chips) is what stops a
+    // locked user reaching the feature by typing `sort:value` or `>$100` into the box; every
+    // consumer downstream — warm runQuery, the cold RPC, facets, the query echo — reads effParsed.
+    const effParsed = useMemo(() => applyFeatureLocks({ ...parsed, sort: effSort.field, sortDir: effSort.dir }, lockedFeatures), 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [parsed, effSort, lockedFeatures?.join(',')]);
+    // What the lock dropped from what the user typed, so the UI can say so instead of appearing
+    // to disagree with the query.
+    const lockNotice = useMemo(() => lockedQueryNotice({ ...parsed, sort: effSort.field, sortDir: effSort.dir }, lockedFeatures), 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [parsed, effSort, lockedFeatures?.join(',')]);
     // Cards currently in view, before facet filtering: ranked full-corpus search results
     // (bare words match name/artist/set/series/rarity/type/stage — name hits rank first),
     // similar-mode results, or the set's cards.
@@ -938,6 +952,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
      *  weighted (Rocchio) history: seed 1.0, each more-group +0.8, each less-group −0.5, split
      *  across group members (see similar.ts refineWeights). Seed chips stay; the grid re-ranks. */
     const refineSimilar = (kind, ids) => {
+        // Single choke point for every refine entry (card sheet + multi-select), so the lock cannot
+        // be reached from one of them. The one-shot Find Similar this refines is NOT gated.
+        if (isLocked(lockedFeatures, 'similarRefine')) {
+            onLockedFeature?.('similarRefine');
+            return;
+        }
         const steps = [...similarSteps, { kind, ids }];
         setSimilarSteps(steps);
         setSimilarCards([]);
@@ -1062,6 +1082,11 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // Sort chips: tap a field to sort by it; tap the active field again (or the ↑/↓ button) to
     // flip its direction. Relevance has no direction.
     const pickSort = (field) => {
+        // A locked field never sets the sort — it hands off to the host's upsell instead.
+        if (field === 'value' && isLocked(lockedFeatures, 'sortByValue')) {
+            onLockedFeature?.('sortByValue');
+            return;
+        }
         if (field === effSort.field && field !== 'relevance') {
             setSortSel({ field, dir: effSort.dir === 'asc' ? 'desc' : 'asc' });
         }
@@ -1277,7 +1302,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     const src = findCard(sid);
                                     const uri = cardThumbUrl(sid, 245);
                                     return (_jsx(Pressable, { style: styles.similarThumb, onPress: () => src && setActionCard(src), children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: sid, transition: 80 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: src?.name?.slice(0, 1) ?? '?' }) })) }, sid));
-                                }) })] })) : seriesId ? (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs })) : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), analyticsScope ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
+                                }) })] })) : seriesId ? (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs })) : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), searching && lockNotice ? (_jsx(Pressable, { onPress: () => onLockedFeature?.(isLocked(lockedFeatures, 'sortByValue') ? 'sortByValue' : 'priceFilter'), style: styles.lockNoticeRow, children: _jsx(Text, { style: styles.lockNotice, numberOfLines: 2, children: lockNotice }) })) : null, analyticsScope ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
                             const on = t === analyticsTab;
                             const label = t === 'analytics' ? 'Analytics' : analyticsScope === 'series' ? 'Sets' : 'Cards';
                             // Locked analytics: accent-ring the tab so the gated perk draws the eye.
@@ -1289,7 +1314,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                         onColorSearch: onColorSearch, colorActive: !!similarTo?.injected, 
                         // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
                         // injecting the have: token so it composes with the rest of the filters.
-                        onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
+                        onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize, lockedSorts: isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
                                         setMultiSelectMode(false);
                                         clearSelection();
                                     }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
@@ -1374,10 +1399,13 @@ function Breadcrumb({ styles, crumbs }) {
  * ↑/↓ direction toggle (hidden for Relevance, which has no direction). Mirrors the FacetBar chip
  * look. The chips drive the SAME sort the search box's `sort:` grammar sets.
  */
-function SortBar({ styles, field, dir, onPick, onToggleDir, size, onPickSize, }) {
+function SortBar({ styles, field, dir, onPick, onToggleDir, size, onPickSize, lockedSorts, }) {
     return (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: "Sort" }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, style: styles.sortScroll, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: SORT_OPTIONS.map((o) => {
                     const on = o.field === field;
-                    return (_jsx(Pressable, { onPress: () => onPick(o.field), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: o.label }) }, o.field));
+                    // Locked fields stay VISIBLE (hiding them makes the plan difference invisible, and the
+                    // chip is the natural place to discover it) but read as locked and route to the upsell.
+                    const lock = lockedSorts?.includes(o.field);
+                    return (_jsx(Pressable, { onPress: () => onPick(o.field), style: [styles.chip, on && styles.chipOn, lock && styles.chipLocked], accessibilityState: { disabled: lock }, accessibilityLabel: lock ? `${o.label} (not included on your plan)` : o.label, children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn, lock && styles.chipTextLocked], numberOfLines: 1, children: lock ? `${o.label} ⋯` : o.label }) }, o.field));
                 }) }), field !== 'relevance' ? (_jsx(Pressable, { onPress: onToggleDir, style: styles.sortDir, accessibilityLabel: "Toggle sort direction", children: _jsx(Text, { style: styles.sortDirText, children: dir === 'asc' ? '↑' : '↓' }) })) : null, _jsx(View, { style: styles.sizeChips, children: SIZE_OPTIONS.map((o) => {
                     const on = o.size === size;
                     return (_jsx(Pressable, { onPress: () => onPickSize(o.size), style: [styles.sizeChip, on && styles.chipOn], accessibilityLabel: `Card size ${o.label}`, children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], children: o.label }) }, o.size));
@@ -1540,6 +1568,12 @@ function makeStyles(t, taxTileHeight) {
         chipOn: { backgroundColor: t.accent, borderColor: t.accent },
         chipText: { fontSize: 12, fontWeight: '600', color: t.subtext },
         chipTextOn: { color: t.accentText },
+        // A host-locked chip: still readable (the plan difference should be discoverable, not
+        // hidden), but visibly not-yours — dashed edge + faded text.
+        chipLocked: { borderStyle: 'dashed', borderColor: t.faint, backgroundColor: 'transparent' },
+        chipTextLocked: { color: t.faint },
+        lockNoticeRow: { paddingHorizontal: 2, paddingBottom: 4 },
+        lockNotice: { fontSize: 11, color: t.faint, fontStyle: 'italic' },
         // sort control (field chips + a ↑/↓ direction toggle)
         sortScroll: { flexShrink: 1 },
         sortDir: {

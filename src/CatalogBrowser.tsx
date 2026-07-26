@@ -81,6 +81,7 @@ import {
   type VUnionGroup,
 } from './catalog';
 import { cardThumbUrl } from './config';
+import { applyFeatureLocks, isLocked, lockedQueryNotice, type BrowseFeature } from './features';
 import { useImageManifest } from './images';
 import { LANGUAGE_ORDER, languageLabel, useBrowseLanguages } from './language';
 import { LanguageToggle } from './LanguageToggle';
@@ -178,6 +179,10 @@ const SIZE_OPTIONS: { size: CardSize; label: string }[] = [
   { size: 'M', label: 'M' },
   { size: 'L', label: 'L' },
 ];
+/** Stable array identity for the one sort the `sortByValue` lock covers (avoids a new array
+ *  per render feeding SortBar's props). */
+const SORT_LOCKED_BY_VALUE: QuerySort[] = ['value'];
+
 const SORT_DEFAULT_DIR: Record<QuerySort, SortDir> = {
   relevance: 'desc',
   value: 'desc',
@@ -511,6 +516,20 @@ interface CatalogBrowserProps {
    */
   showLanguageToggle?: boolean;
   /**
+   * Browse features the HOST has locked for this user (see `features.ts`). The kit stays
+   * tier-agnostic: it enforces the lock and degrades gracefully, the app decides who is locked
+   * and shows the upsell via `onLockedFeature`. Omit for an unrestricted browser.
+   *
+   * Locks apply to the query that actually RUNS, not just the chips, so a locked feature cannot
+   * be reached by typing it into the search box either.
+   */
+  lockedFeatures?: BrowseFeature[];
+  /**
+   * Fired when the user reaches for a locked feature — the host opens its own upsell. Without it
+   * a locked control is simply inert (still visibly locked, just not clickable-into-anything).
+   */
+  onLockedFeature?: (feature: BrowseFeature) => void;
+  /**
    * Card-tile size (S/M/L) — the app's GLOBAL default for this browser. The in-toolbar Size toggle
    * still overrides it locally; when the app changes this prop (e.g. a home-screen size control),
    * the browser follows it. Omit to fall back to the session-sticky `browseState.cardSize` (default
@@ -563,6 +582,8 @@ export function CatalogBrowser({
   initialSimilar,
   languages: languagesProp,
   showLanguageToggle,
+  lockedFeatures,
+  onLockedFeature,
   cardSize: cardSizeProp,
   onCardSizeChange,
   onColorSearch,
@@ -938,10 +959,21 @@ export function CatalogBrowser({
     if (parsed.sort !== 'relevance') return { field: parsed.sort, dir: parsed.sortDir };
     return { field: 'relevance', dir: 'desc' };
   }, [sortSel, parsed.sort, parsed.sortDir]);
-  // The query actually run/described/labelled, with the effective sort folded in.
+  // The query actually run/described/labelled, with the effective sort folded in — then stripped
+  // of any host-locked feature. Enforcing HERE (rather than only on the chips) is what stops a
+  // locked user reaching the feature by typing `sort:value` or `>$100` into the box; every
+  // consumer downstream — warm runQuery, the cold RPC, facets, the query echo — reads effParsed.
   const effParsed = useMemo(
-    () => ({ ...parsed, sort: effSort.field, sortDir: effSort.dir }),
-    [parsed, effSort],
+    () => applyFeatureLocks({ ...parsed, sort: effSort.field, sortDir: effSort.dir }, lockedFeatures),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [parsed, effSort, lockedFeatures?.join(',')],
+  );
+  // What the lock dropped from what the user typed, so the UI can say so instead of appearing
+  // to disagree with the query.
+  const lockNotice = useMemo(
+    () => lockedQueryNotice({ ...parsed, sort: effSort.field, sortDir: effSort.dir }, lockedFeatures),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [parsed, effSort, lockedFeatures?.join(',')],
   );
 
   // Cards currently in view, before facet filtering: ranked full-corpus search results
@@ -1257,6 +1289,12 @@ export function CatalogBrowser({
    *  weighted (Rocchio) history: seed 1.0, each more-group +0.8, each less-group −0.5, split
    *  across group members (see similar.ts refineWeights). Seed chips stay; the grid re-ranks. */
   const refineSimilar = (kind: 'more' | 'less', ids: string[]) => {
+    // Single choke point for every refine entry (card sheet + multi-select), so the lock cannot
+    // be reached from one of them. The one-shot Find Similar this refines is NOT gated.
+    if (isLocked(lockedFeatures, 'similarRefine')) {
+      onLockedFeature?.('similarRefine');
+      return;
+    }
     const steps: SimilarStep[] = [...similarSteps, { kind, ids }];
     setSimilarSteps(steps);
     setSimilarCards([]);
@@ -1386,6 +1424,11 @@ export function CatalogBrowser({
   // Sort chips: tap a field to sort by it; tap the active field again (or the ↑/↓ button) to
   // flip its direction. Relevance has no direction.
   const pickSort = (field: QuerySort) => {
+    // A locked field never sets the sort — it hands off to the host's upsell instead.
+    if (field === 'value' && isLocked(lockedFeatures, 'sortByValue')) {
+      onLockedFeature?.('sortByValue');
+      return;
+    }
     if (field === effSort.field && field !== 'relevance') {
       setSortSel({ field, dir: effSort.dir === 'asc' ? 'desc' : 'asc' });
     } else {
@@ -1795,6 +1838,20 @@ export function CatalogBrowser({
         ) : (
           <Text style={styles.meta}>{series.length} series</Text>
         )}
+        {/* A locked token was stripped from the query — say so, or the results read as if the
+            search box had been ignored. Tapping it opens the host's upsell. Sits OUTSIDE the
+            chain above (which is exclusive: search / similar / breadcrumb / series count). */}
+        {searching && lockNotice ? (
+          <Pressable
+            onPress={() =>
+              onLockedFeature?.(isLocked(lockedFeatures, 'sortByValue') ? 'sortByValue' : 'priceFilter')
+            }
+            style={styles.lockNoticeRow}>
+            <Text style={styles.lockNotice} numberOfLines={2}>
+              {lockNotice}
+            </Text>
+          </Pressable>
+        ) : null}
         {analyticsScope ? (
           <View style={styles.tabRow}>
             {(['cards', 'analytics'] as const).map((t) => {
@@ -1841,6 +1898,7 @@ export function CatalogBrowser({
             onToggleDir={toggleSortDir}
             size={cardSize}
             onPickSize={pickCardSize}
+            lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
           />
         ) : null}
         {isCardLevel && canMultiSelect && !analyticsView ? (
@@ -2260,10 +2318,13 @@ function SortBar({
   onToggleDir,
   size,
   onPickSize,
+  lockedSorts,
 }: {
   styles: Styles;
   field: QuerySort;
   dir: SortDir;
+  /** Sort fields the host has locked — rendered visibly locked, routed to the upsell on tap. */
+  lockedSorts?: QuerySort[];
   onPick: (field: QuerySort) => void;
   onToggleDir: () => void;
   size: CardSize;
@@ -2280,10 +2341,18 @@ function SortBar({
         keyboardShouldPersistTaps="handled">
         {SORT_OPTIONS.map((o) => {
           const on = o.field === field;
+          // Locked fields stay VISIBLE (hiding them makes the plan difference invisible, and the
+          // chip is the natural place to discover it) but read as locked and route to the upsell.
+          const lock = lockedSorts?.includes(o.field);
           return (
-            <Pressable key={o.field} onPress={() => onPick(o.field)} style={[styles.chip, on && styles.chipOn]}>
-              <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>
-                {o.label}
+            <Pressable
+              key={o.field}
+              onPress={() => onPick(o.field)}
+              style={[styles.chip, on && styles.chipOn, lock && styles.chipLocked]}
+              accessibilityState={{ disabled: lock }}
+              accessibilityLabel={lock ? `${o.label} (not included on your plan)` : o.label}>
+              <Text style={[styles.chipText, on && styles.chipTextOn, lock && styles.chipTextLocked]} numberOfLines={1}>
+                {lock ? `${o.label} ⋯` : o.label}
               </Text>
             </Pressable>
           );
@@ -2559,6 +2628,12 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     chipOn: { backgroundColor: t.accent, borderColor: t.accent },
     chipText: { fontSize: 12, fontWeight: '600', color: t.subtext },
     chipTextOn: { color: t.accentText },
+    // A host-locked chip: still readable (the plan difference should be discoverable, not
+    // hidden), but visibly not-yours — dashed edge + faded text.
+    chipLocked: { borderStyle: 'dashed', borderColor: t.faint, backgroundColor: 'transparent' },
+    chipTextLocked: { color: t.faint },
+    lockNoticeRow: { paddingHorizontal: 2, paddingBottom: 4 },
+    lockNotice: { fontSize: 11, color: t.faint, fontStyle: 'italic' },
     // sort control (field chips + a ↑/↓ direction toggle)
     sortScroll: { flexShrink: 1 },
     sortDir: {

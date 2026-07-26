@@ -42,6 +42,14 @@ export {
 export { LanguageToggle } from './LanguageToggle';
 
 export {
+  applyFeatureLocks,
+  FEATURE_LABELS,
+  isLocked,
+  lockedQueryNotice,
+  type BrowseFeature,
+} from './features';
+
+export {
   hydrateImageManifest,
   imageManifestReady,
   subscribeImageManifest,
