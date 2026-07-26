@@ -98,6 +98,14 @@ const SIZE_OPTIONS = [
     { size: 'M', label: 'M' },
     { size: 'L', label: 'L' },
 ];
+/**
+ * Below this measured content width the search row stacks (input on one line, EN/JP + ★ + ? on
+ * the next). Chosen from the real constraint rather than a device: the full placeholder needs
+ * roughly 300pt to read, and the controls take ~150pt with the language toggle shown, so a single
+ * row stops working somewhere just under 500. A 430pt phone (the largest common one) lands
+ * comfortably in the compact branch; a 768pt tablet or a split-screen desktop pane stays wide.
+ */
+const COMPACT_SEARCH_W = 500;
 /** Stable array identity for the one sort the `sortByValue` lock covers (avoids a new array
  *  per render feeding SortBar's props). */
 const SORT_LOCKED_BY_VALUE = ['value'];
@@ -586,6 +594,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         if (w > 0 && Math.abs(w - containerWidth) > 0.5)
             setContainerWidth(w);
     };
+    // Phone-width search layout (see the search row). `containerWidth` is 0 before the first layout
+    // pass; treating that as NOT compact keeps the wide layout as the default and avoids a visible
+    // one-frame reflow on desktop, where the stacked form would otherwise flash first.
+    const compactSearch = containerWidth > 0 && containerWidth < COMPACT_SEARCH_W;
     const clearFilters = () => setSelection({});
     const q = cardQueryDebounced.trim();
     const searching = q.length > 0;
@@ -1282,7 +1294,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 setFocusIdx(-1);
         },
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [onColorSearch ? (_jsxs(View, { style: styles.triColorRow, children: [_jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: "Tri-Color Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Tri-Color Search" }) }), _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), showLanguageToggle ? _jsx(LanguageToggle, { theme: themeProp }) : null, canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] }), savedList.length > 0 ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, isCardLevel || !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [onColorSearch ? (_jsxs(View, { style: styles.triColorRow, children: [_jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: "Tri-Color Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Tri-Color Search" }) }), _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: compactSearch ? styles.searchCol : styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
+                                    ? `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards`
+                                    : `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, compactSearch ? styles.searchFull : styles.searchFlex] }), _jsxs(View, { style: compactSearch ? styles.searchTools : styles.searchToolsInline, children: [compactSearch ? (_jsx(Text, { style: styles.searchHint, numberOfLines: 1, children: QUERY_HINT })) : null, showLanguageToggle ? _jsx(LanguageToggle, { theme: themeProp }) : null, canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), savedList.length > 0 ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, isCardLevel || !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
                         !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [warm
                                         ? filteredCards.length === viewCards.length
@@ -1457,6 +1471,14 @@ function makeStyles(t, taxTileHeight) {
         },
         searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
         searchFlex: { flex: 1 },
+        // Compact (phone-width) search: input on its own line, controls beneath it.
+        searchCol: { gap: 6 },
+        searchFull: { width: '100%' },
+        // Controls line. The hint takes the slack so EN/JP + ★ + ? sit flush right, which keeps the
+        // tap targets where the thumb already is rather than centred under the input.
+        searchTools: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+        searchToolsInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        searchHint: { flex: 1, fontSize: 11, color: t.faint, flexShrink: 1 },
         // search-source badge (on-device / loading / — later — server)
         modeBadge: { flexDirection: 'row', alignItems: 'center', gap: 5 },
         modeDot: { width: 7, height: 7, borderRadius: 4 },

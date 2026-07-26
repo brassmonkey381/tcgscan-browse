@@ -179,6 +179,15 @@ const SIZE_OPTIONS: { size: CardSize; label: string }[] = [
   { size: 'M', label: 'M' },
   { size: 'L', label: 'L' },
 ];
+/**
+ * Below this measured content width the search row stacks (input on one line, EN/JP + ★ + ? on
+ * the next). Chosen from the real constraint rather than a device: the full placeholder needs
+ * roughly 300pt to read, and the controls take ~150pt with the language toggle shown, so a single
+ * row stops working somewhere just under 500. A 430pt phone (the largest common one) lands
+ * comfortably in the compact branch; a 768pt tablet or a split-screen desktop pane stays wide.
+ */
+const COMPACT_SEARCH_W = 500;
+
 /** Stable array identity for the one sort the `sortByValue` lock covers (avoids a new array
  *  per render feeding SortBar's props). */
 const SORT_LOCKED_BY_VALUE: QuerySort[] = ['value'];
@@ -896,6 +905,10 @@ export function CatalogBrowser({
     const w = e.nativeEvent.layout.width;
     if (w > 0 && Math.abs(w - containerWidth) > 0.5) setContainerWidth(w);
   };
+  // Phone-width search layout (see the search row). `containerWidth` is 0 before the first layout
+  // pass; treating that as NOT compact keeps the wide layout as the default and avoids a visible
+  // one-frame reflow on desktop, where the stacked form would otherwise flash first.
+  const compactSearch = containerWidth > 0 && containerWidth < COMPACT_SEARCH_W;
 
   const clearFilters = () => setSelection({});
 
@@ -1677,37 +1690,58 @@ export function CatalogBrowser({
         ) : (
           <Text style={styles.sectionLabel}>Cards · 1×1</Text>
         )}
-        <View style={styles.searchRow}>
+        {/*
+          Search row. On a phone the input + EN/JP + ★ + ? together leave the placeholder truncated
+          mid-word ("…try: charizard hp>2"), which hides the one hint that teaches the grammar. So
+          below `COMPACT_SEARCH_W` the controls drop to their own line and the input takes the full
+          width; above it everything stays on one line as before. `compactSearch` is derived from
+          the MEASURED container, not the window, so a narrow embed (the binder card picker) gets
+          the same treatment as a narrow phone.
+        */}
+        <View style={compactSearch ? styles.searchCol : styles.searchRow}>
           <TextInput
             value={cardQuery}
             onChangeText={onChangeQuery}
-            placeholder={`Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`}
+            placeholder={
+              compactSearch
+                ? `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards`
+                : `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`
+            }
             placeholderTextColor={theme.faint}
             autoCorrect={false}
             clearButtonMode="while-editing"
-            style={[styles.search, styles.searchFlex]}
+            style={[styles.search, compactSearch ? styles.searchFull : styles.searchFlex]}
           />
-          {/* EN/JP bound. Sits in the search row because it applies to the SEARCH, not the
-              results — flipping it re-runs every query/similarity call against the server. */}
-          {showLanguageToggle ? <LanguageToggle theme={themeProp} /> : null}
-          {canSaveSearch ? (
-            <Pressable
-              onPress={() => toggleSavedSearch(currentSearch())}
-              style={[styles.helpBtn, searchSaved && styles.helpBtnOn]}
-              hitSlop={6}
-              accessibilityLabel={searchSaved ? 'Unsave this search' : 'Save this search'}>
-              <Text style={[styles.helpBtnText, searchSaved && styles.helpBtnTextOn]}>
-                {searchSaved ? '★' : '☆'}
+          <View style={compactSearch ? styles.searchTools : styles.searchToolsInline}>
+            {/* The grammar hint the placeholder gives up when compact — kept visible, since it is
+                how anyone discovers `hp>200` / `sort:value` exists at all. */}
+            {compactSearch ? (
+              <Text style={styles.searchHint} numberOfLines={1}>
+                {QUERY_HINT}
               </Text>
+            ) : null}
+            {/* EN/JP bound. Rides with the search controls because it applies to the SEARCH, not
+                the results — flipping it re-runs every query/similarity call against the server. */}
+            {showLanguageToggle ? <LanguageToggle theme={themeProp} /> : null}
+            {canSaveSearch ? (
+              <Pressable
+                onPress={() => toggleSavedSearch(currentSearch())}
+                style={[styles.helpBtn, searchSaved && styles.helpBtnOn]}
+                hitSlop={6}
+                accessibilityLabel={searchSaved ? 'Unsave this search' : 'Save this search'}>
+                <Text style={[styles.helpBtnText, searchSaved && styles.helpBtnTextOn]}>
+                  {searchSaved ? '★' : '☆'}
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => setHelpOpen((v) => !v)}
+              style={[styles.helpBtn, helpOpen && styles.helpBtnOn]}
+              hitSlop={6}
+              accessibilityLabel="Search syntax help">
+              <Text style={[styles.helpBtnText, helpOpen && styles.helpBtnTextOn]}>?</Text>
             </Pressable>
-          ) : null}
-          <Pressable
-            onPress={() => setHelpOpen((v) => !v)}
-            style={[styles.helpBtn, helpOpen && styles.helpBtnOn]}
-            hitSlop={6}
-            accessibilityLabel="Search syntax help">
-            <Text style={[styles.helpBtnText, helpOpen && styles.helpBtnTextOn]}>?</Text>
-          </Pressable>
+          </View>
         </View>
         {/* Saved-search chips: one tap re-runs the starred search; long-press removes it. */}
         {savedList.length > 0 ? (
@@ -2517,6 +2551,14 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     searchFlex: { flex: 1 },
+    // Compact (phone-width) search: input on its own line, controls beneath it.
+    searchCol: { gap: 6 },
+    searchFull: { width: '100%' },
+    // Controls line. The hint takes the slack so EN/JP + ★ + ? sit flush right, which keeps the
+    // tap targets where the thumb already is rather than centred under the input.
+    searchTools: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    searchToolsInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    searchHint: { flex: 1, fontSize: 11, color: t.faint, flexShrink: 1 },
     // search-source badge (on-device / loading / — later — server)
     modeBadge: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     modeDot: { width: 7, height: 7, borderRadius: 4 },
