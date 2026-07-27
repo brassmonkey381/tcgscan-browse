@@ -520,8 +520,17 @@ interface CatalogBrowserProps {
    */
   languages?: CardLanguage[];
   /**
-   * Show the EN/JP toggle in the browser's search row, bound to the shared preference. Apps that
-   * place their own `<LanguageToggle />` in a header (or that pin `languages`) leave this off.
+   * Show the EN/JP toggle in the browser's search row, bound to the shared preference.
+   *
+   * DEFAULTS ON. Every surface that opens a browser to look at, add or replace a card should let
+   * the collector say which printings they want, and the bound has to be set BEFORE the search
+   * runs (it is passed to the server, so a constrained similarity search still returns a full 24
+   * rather than 24-then-filtered-to-13). Making each host opt in meant a new browser silently
+   * shipped without it, which is how the binder picker and the scan/settings pickers ended up
+   * with no language control at all.
+   *
+   * Pass `false` only for a browser already constrained to one language by an explicit
+   * `languages` prop, where the toggle would be a control that does nothing.
    */
   showLanguageToggle?: boolean;
   /**
@@ -590,7 +599,7 @@ export function CatalogBrowser({
   taxTileHeight = TAX_TILE_H,
   initialSimilar,
   languages: languagesProp,
-  showLanguageToggle,
+  showLanguageToggle = true,
   lockedFeatures,
   onLockedFeature,
   cardSize: cardSizeProp,
@@ -624,7 +633,11 @@ export function CatalogBrowser({
   // the shared, user-facing preference (the EN/JP toggle). Subscribing here is what makes a toggle
   // rendered anywhere on the screen re-run this browser's searches.
   const [sharedLanguages] = useBrowseLanguages();
-  const languages = languagesProp?.length ? languagesProp : sharedLanguages;
+  const langPinned = !!languagesProp?.length;
+  const languages = langPinned ? languagesProp! : sharedLanguages;
+  // A PINNED browser ignores the shared preference, so its toggle would be a control that changes
+  // nothing on screen. Hide it rather than lie about it — hosts get the toggle by NOT pinning.
+  const languageToggleVisible = showLanguageToggle && !langPinned;
 
   // → a stable Set (null = unconstrained, i.e. every language allowed). Keyed by the sorted codes
   // so an inline array prop doesn't thrash memo identity. `langOk` gates the warm/local card lists;
@@ -1722,7 +1735,7 @@ export function CatalogBrowser({
             ) : null}
             {/* EN/JP bound. Rides with the search controls because it applies to the SEARCH, not
                 the results — flipping it re-runs every query/similarity call against the server. */}
-            {showLanguageToggle ? <LanguageToggle theme={themeProp} /> : null}
+            {languageToggleVisible ? <LanguageToggle theme={themeProp} /> : null}
             {canSaveSearch ? (
               <Pressable
                 onPress={() => toggleSavedSearch(currentSearch())}
