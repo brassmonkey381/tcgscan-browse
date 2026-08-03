@@ -53,7 +53,19 @@ const CACHE_KEY = 'tcgscan-browse:images-manifest:v3';
 let cacheAdapter: ManifestCache | null = null;
 let manifest: ImageManifest | null = null;
 let hydrating: Promise<void> | null = null;
+// True once the first hydrate attempt FINISHES (with or without a manifest). Lets cardThumbUrl tell
+// "manifest still loading" (paint a placeholder, no doomed request) apart from "genuinely static /
+// offline, no manifest is coming" (use the flat convention path).
+let settled = false;
+// Monotonic tick bumped on every manifest publish AND on settle; the useSyncExternalStore snapshot,
+// so consumers re-render both when the manifest lands and when a manifest-less load settles.
+let version = 0;
 const subscribers = new Set<() => void>();
+
+function bump(): void {
+  version += 1;
+  subscribers.forEach((cb) => cb());
+}
 
 /** Install the persistent cache adapter (called by configureBrowse). */
 export function setManifestCache(cache: ManifestCache | null): void {
@@ -73,7 +85,7 @@ export function subscribeImageManifest(callback: () => void): () => void {
 
 function publish(next: ImageManifest): void {
   manifest = next;
-  subscribers.forEach((cb) => cb());
+  bump();
 }
 
 /** id + field → absolute content-hashed URL, or undefined if unmapped/not loaded.
@@ -102,6 +114,15 @@ export function imageManifestReady(): boolean {
 }
 
 /**
+ * True once the first hydrate attempt has finished, whether or not it produced a manifest. While
+ * this is false a hosted manifest is still in flight, so `cardThumbUrl` should paint a placeholder
+ * rather than a doomed flat-convention URL (which 404s on hosted buckets that key by content hash).
+ */
+export function imageManifestSettled(): boolean {
+  return settled;
+}
+
+/**
  * Load the manifest once: instant from the injected cache, then refresh from the
  * server in the background. Idempotent (safe to call from every mount). A missing
  * images.json (static mode / offline) is a no-op — cardThumbUrl falls back to the
@@ -110,31 +131,38 @@ export function imageManifestReady(): boolean {
 export function hydrateImageManifest(): Promise<void> {
   if (!hydrating) {
     hydrating = (async () => {
-      // 1) instant paint from the persisted cache (if the app injected one)
-      if (cacheAdapter) {
-        try {
-          const raw = await cacheAdapter.getItem(CACHE_KEY);
-          if (raw && !manifest) publish(JSON.parse(raw) as ImageManifest);
-        } catch {
-          /* corrupt/absent cache — fall through to the network */
-        }
-      }
-      // 2) background refresh (best-effort; content-hashed URLs make this safe)
       try {
-        const res = await fetch(`${getBrowseUrl()}/images.json`);
-        if (res.ok) {
-          const fresh = (await res.json()) as ImageManifest;
-          publish(fresh);
-          if (cacheAdapter) {
-            try {
-              await cacheAdapter.setItem(CACHE_KEY, JSON.stringify(fresh));
-            } catch {
-              /* quota / write failure — the in-memory copy is still good */
-            }
+        // 1) instant paint from the persisted cache (if the app injected one)
+        if (cacheAdapter) {
+          try {
+            const raw = await cacheAdapter.getItem(CACHE_KEY);
+            if (raw && !manifest) publish(JSON.parse(raw) as ImageManifest);
+          } catch {
+            /* corrupt/absent cache — fall through to the network */
           }
         }
-      } catch {
-        /* offline or static mode — convention fallback covers it */
+        // 2) background refresh (best-effort; content-hashed URLs make this safe)
+        try {
+          const res = await fetch(`${getBrowseUrl()}/images.json`);
+          if (res.ok) {
+            const fresh = (await res.json()) as ImageManifest;
+            publish(fresh);
+            if (cacheAdapter) {
+              try {
+                await cacheAdapter.setItem(CACHE_KEY, JSON.stringify(fresh));
+              } catch {
+                /* quota / write failure — the in-memory copy is still good */
+              }
+            }
+          }
+        } catch {
+          /* offline or static mode — convention fallback covers it */
+        }
+      } finally {
+        // Mark the attempt done and wake consumers: in static/offline mode no manifest ever
+        // publishes, so this settle is what flips cardThumbUrl from placeholder to the flat path.
+        settled = true;
+        bump();
       }
     })();
   }
@@ -154,6 +182,9 @@ export function useImageManifest(): boolean {
   // the window BETWEEN a component's first render and its effect subscribing — with a manual
   // bump that publish is missed and the component stays "not ready" forever (covers stuck on
   // fallback paths until reload). uSES re-reads the snapshot at subscription time, closing the
-  // race. Server snapshot: never ready during SSR.
-  return useSyncExternalStore(subscribeImageManifest, imageManifestReady, () => false);
+  // race. Snapshot is the version TICK (not `imageManifestReady`) so a manifest-less settle also
+  // re-renders — otherwise static/offline consumers would sit on the placeholder cardThumbUrl
+  // returns pre-settle. Server snapshot: constant, so never ready during SSR.
+  useSyncExternalStore(subscribeImageManifest, () => version, () => 0);
+  return imageManifestReady();
 }

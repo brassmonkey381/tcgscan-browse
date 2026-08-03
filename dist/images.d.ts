@@ -21,6 +21,12 @@ export declare function manifestUrl(id: string, field: string): string | undefin
 /** True once a manifest (cached or fresh) is in memory. */
 export declare function imageManifestReady(): boolean;
 /**
+ * True once the first hydrate attempt has finished, whether or not it produced a manifest. While
+ * this is false a hosted manifest is still in flight, so `cardThumbUrl` should paint a placeholder
+ * rather than a doomed flat-convention URL (which 404s on hosted buckets that key by content hash).
+ */
+export declare function imageManifestSettled(): boolean;
+/**
  * Load the manifest once: instant from the injected cache, then refresh from the
  * server in the background. Idempotent (safe to call from every mount). A missing
  * images.json (static mode / offline) is a no-op — cardThumbUrl falls back to the

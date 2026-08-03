@@ -7,7 +7,7 @@
  * apps' src/lib/catalogConfig.ts). Every fetch in this package reads the config
  * lazily, so configure-at-import is always early enough.
  */
-import { imageManifestReady, manifestUrl, setManifestCache } from './images';
+import { imageManifestReady, imageManifestSettled, manifestUrl, setManifestCache, } from './images';
 const config = {
     browseUrl: '/browse',
     imgBase: '',
@@ -175,9 +175,14 @@ export function cdnImageUrl(id, size = 1000) {
  * manifest (hydrateImageManifest). If the manifest is loaded but the card's tier
  * isn't in it, fall back to the card's mirrored full image; a wholly unmirrored
  * card resolves to '' (placeholder) — the TCGPlayer CDN is NOT used (it 403s
- * hotlinked pulls now, and we don't want to lean on it regardless). Only before
- * the manifest has loaded at all (static/offline) do we use the flat
- * convention path.
+ * hotlinked pulls now, and we don't want to lean on it regardless).
+ *
+ * Before the manifest resolves we must NOT emit the flat `card-thumbs/<tier>/<id>.webp`
+ * convention on a hosted bucket: that layout is retired (images key by content hash), so every
+ * such URL 404s and the browser ORB-blocks the JSON error — a wave of failed requests + console
+ * spam on every cold paint. So while a hosted manifest is still IN FLIGHT (not settled) we return
+ * '' (placeholder) and let consumers repaint when it lands. Only once hydration has SETTLED with no
+ * manifest — genuine static/offline mode, where the flat layout is real — do we use the convention.
  */
 export function cardThumbUrl(id, tier) {
     if (!id)
@@ -191,7 +196,10 @@ export function cardThumbUrl(id, tier) {
         // firing a doomed request at the TCGPlayer CDN (403 + no CORS).
         return manifestUrl(id, 'image') ?? '';
     }
-    // Manifest not loaded yet (static/offline): flat convention path.
+    // Manifest still loading: placeholder now, repaint when it lands (no doomed hosted request).
+    if (!imageManifestSettled())
+        return '';
+    // Settled with no manifest → static/offline, where the flat convention is the real layout.
     if (tier === 'full')
         return `${config.imgBase}/card-imgs/${id}.jpg`;
     return `${config.imgBase}/card-thumbs/${tier}/${id}.webp`;
