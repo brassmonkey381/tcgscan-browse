@@ -129,9 +129,13 @@ export {
   findSimilar,
   findSimilarToMany,
   findSimilarWeighted,
+  getSimilarityModel,
+  listSimilarityModels,
   refineWeights,
+  setSimilarityModel,
   similarAvailable,
   type SimilarHit,
+  type SimilarityModelInfo,
   type SimilarStep,
 } from './similar';
 

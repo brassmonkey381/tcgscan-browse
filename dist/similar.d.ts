@@ -12,6 +12,21 @@ export interface SimilarHit {
 }
 /** True when the app is configured to reach the data server's REST API. */
 export declare function similarAvailable(): boolean;
+export declare function setSimilarityModel(modelVersion: string | null): void;
+export declare function getSimilarityModel(): string | null;
+export interface SimilarityModelInfo {
+    modelVersion: string;
+    nVectors: number;
+    languages: string[];
+    createdAt: string;
+}
+/**
+ * Candidate models available to compare against, newest first. The live model is NOT in this list
+ * — it is `null`, the default — so a picker should offer "Live" plus whatever this returns.
+ * Fails soft to an empty list, which correctly renders as "live only" on a server that predates
+ * the candidate_embeddings migration.
+ */
+export declare function listSimilarityModels(): Promise<SimilarityModelInfo[]>;
 export declare function findSimilar(cardId: string, limit?: number, { languages }?: {
     languages?: CardLanguage[];
 }): Promise<SimilarHit[]>;

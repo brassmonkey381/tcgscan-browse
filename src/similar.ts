@@ -50,6 +50,83 @@ export function similarAvailable(): boolean {
   return Boolean(getApiUrl() && getApiKey());
 }
 
+/**
+ * WHICH EMBEDDING MODEL ANSWERS. `null` (the default) is the LIVE model — the one whose vectors
+ * sit in cards.embedding and which every user gets. Anything else is a CANDIDATE: a model pushed
+ * to card_embeddings_candidate for evaluation, reachable only through the *_candidate RPCs, with
+ * no effect on what anyone else sees.
+ *
+ * This is an evaluation control, not a preference. Two models rank differently on ordinary cards
+ * (measured: 2 of 5 shared neighbours on a mid-catalog seed) while agreeing almost completely on
+ * reprint clusters, and no offline bench answers which is the better *browse* neighbour — that is
+ * a human judgement on real seeds, which is what this exists to enable.
+ *
+ * Module-level rather than per-call so every similarity path in a session answers from one space:
+ * a seed search on capG-e15 followed by a refinement on the live model would silently compare two
+ * geometries and read as one result set.
+ */
+let similarityModel: string | null = null;
+
+export function setSimilarityModel(modelVersion: string | null): void {
+  similarityModel = modelVersion || null;
+}
+
+export function getSimilarityModel(): string | null {
+  return similarityModel;
+}
+
+export interface SimilarityModelInfo {
+  modelVersion: string;
+  nVectors: number;
+  languages: string[];
+  createdAt: string;
+}
+
+/**
+ * Candidate models available to compare against, newest first. The live model is NOT in this list
+ * — it is `null`, the default — so a picker should offer "Live" plus whatever this returns.
+ * Fails soft to an empty list, which correctly renders as "live only" on a server that predates
+ * the candidate_embeddings migration.
+ */
+export async function listSimilarityModels(): Promise<SimilarityModelInfo[]> {
+  if (!similarAvailable()) return [];
+  try {
+    const res = await fetchWithTimeout(`${getApiUrl()}/rpc/list_candidate_models`, {
+      method: 'POST',
+      headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!res.ok) return [];
+    const rows = (await res.json()) as {
+      model_version: string;
+      n_vectors: number;
+      languages: string[];
+      created_at: string;
+    }[];
+    return rows.map((r) => ({
+      modelVersion: r.model_version,
+      nVectors: r.n_vectors,
+      languages: r.languages ?? [],
+      createdAt: r.created_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * (rpc name, extra body) for the active model.
+ *
+ * Every similarity call routes through this, so a model can never be selected for one path and
+ * silently ignored on another — the failure a picker over `findSimilar` alone would have had, with
+ * the seed search on the candidate and the refinement back on live under one label.
+ */
+function route(liveRpc: string): { rpc: string; extra: Record<string, string> } {
+  return similarityModel
+    ? { rpc: `${liveRpc}_candidate`, extra: { p_model_version: similarityModel } }
+    : { rpc: liveRpc, extra: {} };
+}
+
 export async function findSimilar(
   cardId: string,
   limit = 24,
@@ -57,10 +134,11 @@ export async function findSimilar(
 ): Promise<SimilarHit[]> {
   if (!similarAvailable()) return [];
   try {
-    const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar`, {
+    const { rpc, extra } = route('find_similar');
+    const res = await fetchWithTimeout(`${getApiUrl()}/rpc/${rpc}`, {
       method: 'POST',
       headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_card_id: cardId, p_limit: limit, ...langArg(languages) }),
+      body: JSON.stringify({ p_card_id: cardId, p_limit: limit, ...extra, ...langArg(languages) }),
     });
     if (!res.ok) return [];
     const rows = (await res.json()) as { id: string; similarity: number }[];
@@ -83,10 +161,11 @@ export async function findSimilarToMany(
 ): Promise<SimilarHit[]> {
   if (!similarAvailable() || cardIds.length === 0) return [];
   try {
-    const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_to_cards`, {
+    const { rpc, extra } = route('find_similar_to_cards');
+    const res = await fetchWithTimeout(`${getApiUrl()}/rpc/${rpc}`, {
       method: 'POST',
       headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_card_ids: cardIds, p_limit: limit, ...langArg(languages) }),
+      body: JSON.stringify({ p_card_ids: cardIds, p_limit: limit, ...extra, ...langArg(languages) }),
     });
     if (!res.ok) return [];
     const rows = (await res.json()) as { id: string; similarity: number }[];
@@ -135,13 +214,15 @@ export async function findSimilarWeighted(
   const { ids, weights } = refineWeights(steps);
   if (!similarAvailable() || ids.length === 0) return [];
   try {
-    const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_weighted`, {
+    const { rpc, extra } = route('find_similar_weighted');
+    const res = await fetchWithTimeout(`${getApiUrl()}/rpc/${rpc}`, {
       method: 'POST',
       headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         p_card_ids: ids,
         p_weights: weights,
         p_limit: limit,
+        ...extra,
         ...langArg(languages),
       }),
     });

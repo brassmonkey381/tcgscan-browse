@@ -15,11 +15,21 @@ let snapshot = null;
 export function getPriceSummary() {
     if (!loadPromise) {
         loadPromise = fetch(`${getBrowseUrl()}/prices-summary.json`)
-            .then((res) => (res.ok ? res.json() : {}))
-            .catch(() => ({}))
+            .then((res) => {
+            if (!res.ok)
+                throw new Error(`prices-summary ${res.status}`);
+            return res.json();
+        })
             .then((s) => {
             snapshot = s;
             return s;
+        })
+            .catch(() => {
+            // A failed summary must NOT stick — a cached {} renders every portfolio as $0.00 until the
+            // process restarts. Drop the cache so the next call re-fetches, and leave any good snapshot
+            // in place. Still resolve empty for THIS call (callers rely on it never throwing).
+            loadPromise = null;
+            return {};
         });
     }
     return loadPromise;
@@ -105,15 +115,21 @@ function fetchCardPricesRest(productId) {
 const cardCache = new Map();
 /** Full price history for one card, or null if unpriced. Cached per productId. */
 export function getCardPrices(productId) {
-    let p = cardCache.get(productId);
-    if (!p) {
-        p = getApiUrl()
-            ? fetchCardPricesRest(productId)
-            : fetch(`${getBrowseUrl()}/prices/${productId}.json`)
-                .then((res) => (res.ok ? res.json() : null))
-                .catch(() => null);
-        cardCache.set(productId, p);
-    }
+    const cached = cardCache.get(productId);
+    if (cached)
+        return cached;
+    const p = (getApiUrl()
+        ? fetchCardPricesRest(productId)
+        : fetch(`${getBrowseUrl()}/prices/${productId}.json`)
+            .then((res) => (res.ok ? res.json() : null))
+            .catch(() => null)).then((v) => {
+        // Never pin a failure: a null here (transport error OR genuine miss) is evicted so the next
+        // lookup re-fetches, instead of freezing the card at "$0.00" for the whole process.
+        if (v == null)
+            cardCache.delete(productId);
+        return v;
+    });
+    cardCache.set(productId, p);
     return p;
 }
 /** Series-name → filename slug, matching the pipeline's set_art._slug. */
@@ -124,13 +140,20 @@ const valueSeriesCache = new Map();
 /** Precomputed value-over-time for a set or series, or null if not published yet. */
 export function getValueSeries(kind, id) {
     const key = `${kind}:${id}`;
-    let p = valueSeriesCache.get(key);
-    if (!p) {
-        const file = kind === 'set' ? `set-${id}` : `series-${valueSeriesSlug(id)}`;
-        p = fetch(`${getBrowseUrl()}/value-series/${file}.json`)
-            .then((res) => (res.ok ? res.json() : null))
-            .catch(() => null);
-        valueSeriesCache.set(key, p);
-    }
+    const cached = valueSeriesCache.get(key);
+    if (cached)
+        return cached;
+    const file = kind === 'set' ? `set-${id}` : `series-${valueSeriesSlug(id)}`;
+    const p = fetch(`${getBrowseUrl()}/value-series/${file}.json`)
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null)
+        .then((v) => {
+        // Don't pin a failed fetch — evict on null so a later view re-fetches (a missing file is a
+        // legitimate null too; re-checking it is cheap).
+        if (v == null)
+            valueSeriesCache.delete(key);
+        return v;
+    });
+    valueSeriesCache.set(key, p);
     return p;
 }

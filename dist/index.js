@@ -17,7 +17,7 @@ export { formatUsd, getCardPrices, getPriceSummary, getValueSeries, lastMarket, 
 export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, } from './analytics';
 export { resolveActions, resolveLabel, } from './actions';
 export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE } from './theme';
-export { findSimilar, findSimilarToMany, findSimilarWeighted, refineWeights, similarAvailable, } from './similar';
+export { findSimilar, findSimilarToMany, findSimilarWeighted, getSimilarityModel, listSimilarityModels, refineWeights, setSimilarityModel, similarAvailable, } from './similar';
 export { ColorIndex, colorSearchAvailable, colorServerAvailable, findSimilarByColor, findSimilarByColorServer, getColorIndex, labToSrgb, loadColorIndex, searchByColor, searchByColorServer, searchByColors, searchByColorsServer, srgbToLab, useColorIndex, } from './color';
 export { fetchCardDetail, fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, } from './search';
 export { loadTaxonomy, useTaxonomy } from './taxonomy';

@@ -1236,18 +1236,32 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         }
         const c = item.card;
         const value = priceOf(c.id);
+        /**
+         * ONE price per tile, and never at the cost of the name.
+         *
+         * Two duplicates lived here. Sorting by value REPLACED the name with the price while the value
+         * line printed the same number again — two identical prices and no way to tell one card from
+         * another, which is worst exactly when a value-sorted grid is full of alternate arts of the
+         * same Pokémon. And in every other sort the price rendered as a corner tag AND under the name.
+         *
+         * The rule now: the name always owns the name line; the price appears once, in the value line
+         * when there is one, otherwise as the corner tag. Sorting by value still surfaces the price
+         * even where pricing is otherwise not shown, since it's the key being sorted on.
+         */
+        const showValue = value > 0 && (!!analytics || effParsed.sort === 'value');
         return (_jsx(CardTile, { styles: styles, card: c, width: tileW, 
             // Big tiles pull the 640px thumb so they don't upscale a 245px webp.
             tier: cardTierFor(tileW), selected: c.id === selectedCardId, focused: index === focusIdx, 
             // In select mode (toggle, or web Ctrl/Shift) a tap toggles selection; else it opens
             // the single-card sheet.
             onPress: () => (isSelecting() ? toggleSelected(c.id) : setActionCard(c)), multiSelected: selectedIds.includes(c.id), 
-            // value replaces the name line when sorting by value (keeps row geometry fixed)
-            label: effParsed.sort === 'value' && value > 0 ? formatUsd(value) : c.name, 
-            // headline value under the name, only when pricing is surfaced
-            value: analytics ? value : undefined, 
-            // latest market value as a corner tag (skipped when the label already IS the value)
-            priceTag: effParsed.sort === 'value' && value > 0 ? undefined : value, 
+            // The name always owns this line — it is the only thing distinguishing one tile's art
+            // from the next, and it must not be spent on a number shown elsewhere.
+            label: c.name, 
+            // The price, under the name.
+            value: showValue ? value : undefined, 
+            // ...or as a corner tag, when it is not already under the name. Never both.
+            priceTag: showValue ? undefined : value, 
             // app-injected inline quick action (＋add / quick-place), if any
             quickAction: quickAction?.(c), 
             // collection-aware: a green check when the user owns this card
