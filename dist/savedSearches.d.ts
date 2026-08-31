@@ -1,11 +1,3 @@
-/**
- * Saved searches — star a search (query text + facet selection + sort) to pin it as a
- * one-tap chip under the search box. Persistence is best-effort per platform:
- *   · web    — localStorage (per browser, survives reloads)
- *   · native — module memory (session-sticky, like browseState; resets on app relaunch)
- * The kit owns storage so every consumer surface (browse page, binder card picker) shares
- * the same list with zero app wiring.
- */
 import type { QuerySort, SortDir } from './query';
 export interface SavedSearch {
     /** Chip label — the raw query text (or a facet summary when the query is empty). */
@@ -17,6 +9,12 @@ export interface SavedSearch {
         dir: SortDir;
     } | null;
 }
+/**
+ * Load the persisted list through the app-supplied store, once per session. Adopting does NOT
+ * write back. Anything already starred THIS session wins over the stored copy, so a star tapped
+ * before a slow native read lands is never swallowed by it.
+ */
+export declare function hydrateSavedSearches(): Promise<void>;
 export declare function listSavedSearches(): SavedSearch[];
 /** Two saves are "the same search" when query + facets + sort all match. */
 export declare function sameSearch(a: SavedSearch, b: SavedSearch): boolean;

@@ -47,12 +47,15 @@ import {
 } from './query';
 import {
   CARD_GRID_GAP,
+  CARD_SIZE_FRACTION,
+  CARD_SIZE_SCALE,
   cardGridColumns,
   cardTierFor,
   cardTileWidthFor,
 } from './cardSize';
 import { browseState, subscribeBrowseCommand, type CardSize } from './state';
 import {
+  hydrateSavedSearches,
   isSearchSaved,
   listSavedSearches,
   removeSavedSearch,
@@ -608,7 +611,21 @@ export function CatalogBrowser({
   ownedIds,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
-  const styles = useMemo(() => makeStyles(theme, taxTileHeight), [theme, taxTileHeight]);
+  // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
+  // given, else the session-sticky browseState. The toolbar toggle overrides locally; when the
+  // global prop changes the browser follows it (global-default + local-override).
+  //
+  // Declared before `styles` because the Size step now sizes the SERIES/SET tiles too (the control
+  // is offered at the taxonomy level, where a knob that moved nothing would be a lie), and their
+  // height is baked into the stylesheet.
+  const [cardSize, setCardSize] = useState<CardSize>(cardSizeProp ?? browseState.cardSize);
+  useEffect(() => {
+    if (cardSizeProp) setCardSize(cardSizeProp);
+  }, [cardSizeProp]);
+  // M is the norm the tile height was authored at, so the scale is taken RELATIVE to M: M renders
+  // exactly as it always has, S/L step around it.
+  const taxTileH = Math.round((taxTileHeight * CARD_SIZE_SCALE[cardSize]) / CARD_SIZE_SCALE.M);
+  const styles = useMemo(() => makeStyles(theme, taxTileH), [theme, taxTileH]);
   // Hydrate the content-hashed image manifest and repaint tiles when it lands —
   // card images resolve by id (cardThumbUrl), not from URLs in the catalog.
   useImageManifest();
@@ -685,13 +702,6 @@ export function CatalogBrowser({
   const [sortSel, setSortSel] = useState<{ field: QuerySort; dir: SortDir } | null>(
     browseState.sortSel,
   );
-  // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
-  // given, else the session-sticky browseState. The toolbar toggle overrides locally; when the
-  // global prop changes the browser follows it (global-default + local-override).
-  const [cardSize, setCardSize] = useState<CardSize>(cardSizeProp ?? browseState.cardSize);
-  useEffect(() => {
-    if (cardSizeProp) setCardSize(cardSizeProp);
-  }, [cardSizeProp]);
   // Local toggle: apply + lift to the app's global store (if wired).
   const pickCardSize = (s: CardSize) => {
     setCardSize(s);
@@ -703,6 +713,12 @@ export function CatalogBrowser({
   // (see savedSearches.ts for the per-platform persistence story).
   const [savedList, setSavedList] = useState<SavedSearch[]>(listSavedSearches());
   useEffect(() => subscribeSavedSearches(() => setSavedList([...listSavedSearches()])), []);
+  // Pull the app's persisted stars in (native has no localStorage, so without a store they would
+  // not survive a relaunch). Idempotent and cheap after the first call, and it notifies through
+  // the subscription above rather than setting state here.
+  useEffect(() => {
+    void hydrateSavedSearches();
+  }, []);
   // "Find similar" mode: results of the data server's embedding RPC for one card.
   const [similarTo, setSimilarTo] = useState<{ ids: string[]; name: string; injected?: boolean } | null>(
     browseState.similarTo,
@@ -1007,7 +1023,18 @@ export function CatalogBrowser({
   // similar-mode results, or the set's cards.
   const viewCards = useMemo<CatalogCard[]>(() => {
     // Cold search: the accumulated server-search pages (already language-constrained server-side).
-    if (!catalog && searching) return serverCards;
+    if (!catalog && searching) {
+      // OWNERSHIP IS THE ONE FILTER THE SERVER CANNOT PRE-APPLY: it never sees the collection, so
+      // unlike the language bound there is nothing to thread into the call. Cold mode therefore
+      // filters the returned page, which thins a page instead of searching the whole corpus - the
+      // honest trade against what this did before, which was to accept `have:` and ignore it, so
+      // the Collection chip lit up and changed nothing.
+      if (ownedIds && effParsed.owned != null) {
+        const want = effParsed.owned;
+        return serverCards.filter((c) => ownedIds.has(c.id) === want);
+      }
+      return serverCards;
+    }
     if (catalog && searching)
       return runQuery(catalog.listAll().filter(langOk), effParsed, priceOf, Infinity, ownedIds);
     // Set cards / similar results (warm from the catalog, cold from the per-set fetch): keep
@@ -1122,15 +1149,18 @@ export function CatalogBrowser({
     // Card grid columns/width for the Size step — the shared kit norm (see cardSize.ts).
     const cCols = cardGridColumns(containerWidth, cardTileWidth, cardSize, GRID_GAP);
     const cW = cardTileWidthFor(containerWidth, cCols, GRID_GAP);
-    // Series/set tiles: 2–4 wide columns (bigger cover art than the card tiles).
-    const tCols = Math.max(2, Math.min(4, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
+    // Series/set tiles: 2–4 wide columns (bigger cover art than the card tiles), then stepped by
+    // the Size control RELATIVE to M, so M packs exactly as it always has while S/L step around
+    // it. Clamped to at least one column so L can go full width on a phone.
+    const tBase = Math.max(2, Math.min(4, Math.floor((containerWidth + GRID_GAP) / (TARGET_TAX_TILE_W + GRID_GAP))));
+    const tCols = Math.max(1, Math.round((tBase * CARD_SIZE_FRACTION[cardSize]) / CARD_SIZE_FRACTION.M));
     const tW = Math.floor((containerWidth - GRID_GAP * (tCols - 1)) / tCols);
     return { numColumns: cCols, tileW: cW, taxCols: tCols, taxTileW: tW };
   }, [containerWidth, cardTileWidth, cardSize]);
 
   const cols = isCardLevel ? numColumns : taxCols;
   const cardRowHeight = Math.round(tileW * CARD_ASPECT + CARD_LABEL_H + ROW_GAP);
-  const rowHeight = isCardLevel ? cardRowHeight : taxTileHeight + ROW_GAP;
+  const rowHeight = isCardLevel ? cardRowHeight : taxTileH + ROW_GAP;
 
   // Size=V-UNION surfaces assembled group tiles (no per-card signal exists for them). Shown
   // ahead of any plain cards the rest of the Size selection matches (Standard/Jumbo).
@@ -1426,12 +1456,15 @@ export function CatalogBrowser({
     setCardQueryDebounced(q);
   };
 
-  // Collection chip: cycle All → Missing → Owned → All by rewriting just the `have:` token, keeping
+  // Collection chip: cycle All → Owned → Missing → All by rewriting just the `have:` token, keeping
   // the rest of the query so ownership composes with search + facets ("return the ids like a query
   // so we can still filter down"). Doesn't clear filters, unlike viewIllustrator.
+  //
+  // OWNED FIRST, deliberately: "show me mine" is the common intent and the one a collector reaches
+  // for, so it costs one tap; hunting for gaps is the second tap.
   const cycleOwnedFilter = () => {
     const cur = parseQuery(cardQuery).owned; // null | false | true
-    const next = cur === null ? false : cur === false ? true : null;
+    const next = cur === null ? true : cur === true ? false : null;
     const cleaned = cardQuery.replace(/(?:have|owned|own|collection):[^\s"]+/gi, '').replace(/\s+/g, ' ').trim();
     const q2 = next === null ? cleaned : `${cleaned} have:${next ? 'yes' : 'no'}`.trim();
     setCardQuery(q2);
@@ -1950,6 +1983,16 @@ export function CatalogBrowser({
             ownedState={parsed.owned}
           />
         ) : null}
+        {/* Series/set levels get Collection + Size without waiting for a drill-down or a search. */}
+        {!isCardLevel && !analyticsView && level !== 'coldidle' ? (
+          <TaxonomyBar
+            styles={styles}
+            onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
+            ownedState={parsed.owned}
+            size={cardSize}
+            onPickSize={pickCardSize}
+          />
+        ) : null}
         {isCardLevel && !analyticsView ? (
           <SortBar
             styles={styles}
@@ -2424,20 +2467,104 @@ function SortBar({
           <Text style={styles.sortDirText}>{dir === 'asc' ? '↑' : '↓'}</Text>
         </Pressable>
       ) : null}
-      {/* Card-size control (S/M/L), inline at the row's end — session-sticky; L pulls the 640px thumb. */}
-      <View style={styles.sizeChips}>
-        {SIZE_OPTIONS.map((o) => {
-          const on = o.size === size;
-          return (
-            <Pressable
-              key={o.size}
-              onPress={() => onPickSize(o.size)}
-              style={[styles.sizeChip, on && styles.chipOn]}
-              accessibilityLabel={`Card size ${o.label}`}>
-              <Text style={[styles.chipText, on && styles.chipTextOn]}>{o.label}</Text>
-            </Pressable>
-          );
-        })}
+      <SizeChips styles={styles} size={size} onPickSize={onPickSize} />
+    </View>
+  );
+}
+
+/**
+ * The S / M / L control. Extracted because it now rides TWO rows: the sort bar at card level, and
+ * the slim taxonomy bar at series/set level — one component so the two can never drift apart.
+ * Session-sticky; L pulls the 640px thumb.
+ */
+function SizeChips({
+  styles,
+  size,
+  onPickSize,
+}: {
+  styles: Styles;
+  size: CardSize;
+  onPickSize: (size: CardSize) => void;
+}) {
+  return (
+    <View style={styles.sizeChips}>
+      {SIZE_OPTIONS.map((o) => {
+        const on = o.size === size;
+        return (
+          <Pressable
+            key={o.size}
+            onPress={() => onPickSize(o.size)}
+            style={[styles.sizeChip, on && styles.chipOn]}
+            accessibilityLabel={`Card size ${o.label}`}>
+            <Text style={[styles.chipText, on && styles.chipTextOn]}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * The Collection chip — one tap cycles All → Owned → Missing → All. Shared by the card-level
+ * filter bar and the taxonomy bar, so the label and the cycle can never disagree between them.
+ */
+function CollectionChip({
+  styles,
+  onCycle,
+  state,
+}: {
+  styles: Styles;
+  onCycle: () => void;
+  /** true = owned only, false = missing only, null = everything. */
+  state: boolean | null;
+}) {
+  return (
+    <Pressable
+      onPress={onCycle}
+      style={[styles.facetToggle, state != null && styles.facetToggleOn]}
+      accessibilityLabel={
+        state === true ? 'Showing cards you own' : state === false ? 'Showing cards you are missing' : 'Collection filter'
+      }>
+      <Text style={[styles.facetToggleText, state != null && styles.facetToggleTextOn]}>
+        {state === true ? '✓ Owned' : state === false ? '◇ Missing' : 'Collection'}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * The slim bar the SERIES/SET levels get: Collection + Size, with no Filters or Sort.
+ *
+ * Why it exists: those two controls used to appear only once you had drilled into a set or typed a
+ * search, so "show me what I own" and "make these tiles bigger" were invisible from the front door
+ * — the two places a collector most wants them. Filters and Sort stay behind, because their fields
+ * are card fields (hp, type, price) and there is nothing here for them to act on.
+ *
+ * Tapping Collection from here injects `have:` into the query, which turns the view into a card
+ * search across the whole catalogue. That IS the intent: "show me my cards", answered immediately
+ * rather than after picking a series and a set.
+ */
+function TaxonomyBar({
+  styles,
+  onCycleOwned,
+  ownedState,
+  size,
+  onPickSize,
+}: {
+  styles: Styles;
+  onCycleOwned?: () => void;
+  ownedState?: boolean | null;
+  size: CardSize;
+  onPickSize: (size: CardSize) => void;
+}) {
+  return (
+    <View style={styles.facetBar}>
+      <View style={styles.facetHeader}>
+        {onCycleOwned ? (
+          <CollectionChip styles={styles} onCycle={onCycleOwned} state={ownedState ?? null} />
+        ) : null}
+        <View style={styles.taxBarSpacer} />
+        <SizeChips styles={styles} size={size} onPickSize={onPickSize} />
       </View>
     </View>
   );
@@ -2499,11 +2626,7 @@ function FacetBar({
           </Pressable>
         ) : null}
         {onCycleOwned ? (
-          <Pressable onPress={onCycleOwned} style={[styles.facetToggle, ownedState != null && styles.facetToggleOn]}>
-            <Text style={[styles.facetToggleText, ownedState != null && styles.facetToggleTextOn]}>
-              {ownedState === true ? '✓ Owned' : ownedState === false ? '◇ Missing' : 'Collection'}
-            </Text>
-          </Pressable>
+          <CollectionChip styles={styles} onCycle={onCycleOwned} state={ownedState ?? null} />
         ) : null}
         {activeCount > 0 ? (
           <Pressable onPress={onClear} hitSlop={8}>
@@ -2672,6 +2795,9 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     // facet bar
     facetBar: { gap: 6 },
     facetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    // Keeps Size pinned right on the taxonomy bar even when the Collection chip is absent
+    // (a guest, or a host that supplied no owned ids), where space-between alone would left-align it.
+    taxBarSpacer: { flex: 1 },
     facetToggle: {
       paddingHorizontal: 10,
       paddingVertical: 4,

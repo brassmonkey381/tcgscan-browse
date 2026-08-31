@@ -29,6 +29,18 @@ export interface LanguageStore {
     /** Persist a change. Fire-and-forget: the kit does not await it or surface failures. */
     save?: (langs: CardLanguage[]) => void;
 }
+/**
+ * App-supplied persistence for starred searches (see `savedSearches.ts`). Web gets localStorage
+ * for free, but NATIVE has no such thing, so without this a starred search survives only until
+ * the app is relaunched — which reads as the feature being broken rather than session-scoped.
+ * Both hooks are optional and both must FAIL SOFT.
+ */
+export interface SavedSearchStore {
+    /** Read the stored list once at startup. Return null/undefined for "nothing stored". */
+    load?: () => Promise<unknown[] | null | undefined>;
+    /** Persist the whole list. Fire-and-forget: the kit does not await it or surface failures. */
+    save?: (searches: unknown[]) => void;
+}
 export interface BrowseConfig {
     /**
      * Base URL for catalog.json / prices-summary.json / alternates.json.
@@ -84,9 +96,16 @@ export interface BrowseConfig {
      * session-only (still shared across every surface, just not remembered).
      */
     languageStore?: LanguageStore;
+    /**
+     * Persistence for starred searches. Omit and they are localStorage-backed on web and
+     * session-only on native (see SavedSearchStore).
+     */
+    savedSearchStore?: SavedSearchStore;
 }
 /** Set the data-server origins. Call once from the app before any browse use. */
 export declare function configureBrowse(next: BrowseConfig): void;
+/** The app-supplied persistence for starred searches, or null for the platform default. */
+export declare function getSavedSearchStore(): SavedSearchStore | null;
 /** The app-supplied gated catalog loader, or null for the default public fetch. */
 export declare function getCatalogSource(): CatalogSource | null;
 /** The app-supplied persistence for the EN/JP preference, or null for session-only. */

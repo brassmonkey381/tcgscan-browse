@@ -20,6 +20,7 @@ const config = {
 };
 let catalogSource = null;
 let languageStore = null;
+let savedSearchStore = null;
 /** Set the data-server origins. Call once from the app before any browse use. */
 export function configureBrowse(next) {
     config.browseUrl = next.browseUrl;
@@ -32,7 +33,12 @@ export function configureBrowse(next) {
     config.ebayCustomId = next.ebayCustomId ?? '';
     catalogSource = next.catalogSource ?? null;
     languageStore = next.languageStore ?? null;
+    savedSearchStore = next.savedSearchStore ?? null;
     setManifestCache(next.cache ?? null);
+}
+/** The app-supplied persistence for starred searches, or null for the platform default. */
+export function getSavedSearchStore() {
+    return savedSearchStore;
 }
 /** The app-supplied gated catalog loader, or null for the default public fetch. */
 export function getCatalogSource() {

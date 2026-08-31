@@ -1,11 +1,14 @@
 /**
  * Saved searches — star a search (query text + facet selection + sort) to pin it as a
- * one-tap chip under the search box. Persistence is best-effort per platform:
- *   · web    — localStorage (per browser, survives reloads)
- *   · native — module memory (session-sticky, like browseState; resets on app relaunch)
- * The kit owns storage so every consumer surface (browse page, binder card picker) shares
- * the same list with zero app wiring.
+ * one-tap chip under the search box. Persistence, best-effort, in precedence order:
+ *   · an app-supplied `savedSearchStore` (configureBrowse) — the only option that survives a
+ *     NATIVE relaunch, since RN has no localStorage
+ *   · web      — localStorage (per browser, survives reloads)
+ *   · native   — module memory (session-sticky, like browseState; gone on relaunch)
+ * The kit owns the list so every consumer surface (browse page, binder card picker) shares it
+ * with zero app wiring; the store is only about where the bytes land.
  */
+import { getSavedSearchStore } from './config';
 import type { QuerySort, SortDir } from './query';
 
 export interface SavedSearch {
@@ -49,7 +52,42 @@ function persist(): void {
   } catch {
     // quota/privacy failures degrade to session-only — same as native
   }
+  try {
+    getSavedSearchStore()?.save?.(saved);
+  } catch {
+    // the app's storage is best-effort too; the in-memory list still stands for this session
+  }
   listeners.forEach((l) => l());
+}
+
+/** Keep only well-formed entries — a corrupt or half-written store must not crash the browser. */
+function sanitize(list: unknown[]): SavedSearch[] {
+  return list.filter(
+    (s): s is SavedSearch =>
+      !!s && typeof (s as SavedSearch).label === 'string' && typeof (s as SavedSearch).query === 'string',
+  );
+}
+
+let hydrated = false;
+
+/**
+ * Load the persisted list through the app-supplied store, once per session. Adopting does NOT
+ * write back. Anything already starred THIS session wins over the stored copy, so a star tapped
+ * before a slow native read lands is never swallowed by it.
+ */
+export async function hydrateSavedSearches(): Promise<void> {
+  if (hydrated) return;
+  hydrated = true;
+  try {
+    const stored = await getSavedSearchStore()?.load?.();
+    if (!stored?.length) return;
+    const fromStore = sanitize(stored).filter((s) => !saved.some((x) => sameSearch(x, s)));
+    if (!fromStore.length) return;
+    saved = [...saved, ...fromStore].slice(0, MAX_SAVED);
+    listeners.forEach((l) => l());
+  } catch {
+    // absent / corrupt / offline — whatever is in memory stands
+  }
 }
 
 export function listSavedSearches(): SavedSearch[] {

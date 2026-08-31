@@ -41,6 +41,19 @@ export interface LanguageStore {
   save?: (langs: CardLanguage[]) => void;
 }
 
+/**
+ * App-supplied persistence for starred searches (see `savedSearches.ts`). Web gets localStorage
+ * for free, but NATIVE has no such thing, so without this a starred search survives only until
+ * the app is relaunched — which reads as the feature being broken rather than session-scoped.
+ * Both hooks are optional and both must FAIL SOFT.
+ */
+export interface SavedSearchStore {
+  /** Read the stored list once at startup. Return null/undefined for "nothing stored". */
+  load?: () => Promise<unknown[] | null | undefined>;
+  /** Persist the whole list. Fire-and-forget: the kit does not await it or surface failures. */
+  save?: (searches: unknown[]) => void;
+}
+
 export interface BrowseConfig {
   /**
    * Base URL for catalog.json / prices-summary.json / alternates.json.
@@ -96,9 +109,16 @@ export interface BrowseConfig {
    * session-only (still shared across every surface, just not remembered).
    */
   languageStore?: LanguageStore;
+  /**
+   * Persistence for starred searches. Omit and they are localStorage-backed on web and
+   * session-only on native (see SavedSearchStore).
+   */
+  savedSearchStore?: SavedSearchStore;
 }
 
-const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource' | 'languageStore'>> = {
+const config: Required<
+  Omit<BrowseConfig, 'cache' | 'catalogSource' | 'languageStore' | 'savedSearchStore'>
+> = {
   browseUrl: '/browse',
   imgBase: '',
   apiUrl: '',
@@ -110,6 +130,7 @@ const config: Required<Omit<BrowseConfig, 'cache' | 'catalogSource' | 'languageS
 };
 let catalogSource: CatalogSource | null = null;
 let languageStore: LanguageStore | null = null;
+let savedSearchStore: SavedSearchStore | null = null;
 
 /** Set the data-server origins. Call once from the app before any browse use. */
 export function configureBrowse(next: BrowseConfig): void {
@@ -123,7 +144,13 @@ export function configureBrowse(next: BrowseConfig): void {
   config.ebayCustomId = next.ebayCustomId ?? '';
   catalogSource = next.catalogSource ?? null;
   languageStore = next.languageStore ?? null;
+  savedSearchStore = next.savedSearchStore ?? null;
   setManifestCache(next.cache ?? null);
+}
+
+/** The app-supplied persistence for starred searches, or null for the platform default. */
+export function getSavedSearchStore(): SavedSearchStore | null {
+  return savedSearchStore;
 }
 
 /** The app-supplied gated catalog loader, or null for the default public fetch. */

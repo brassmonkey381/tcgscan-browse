@@ -24,6 +24,7 @@ export {
   type BrowseConfig,
   type CatalogSource,
   type LanguageStore,
+  type SavedSearchStore,
 } from './config';
 
 export {
@@ -206,6 +207,7 @@ export {
 } from './query';
 
 export {
+  hydrateSavedSearches,
   isSearchSaved,
   listSavedSearches,
   removeSavedSearch,
