@@ -22,6 +22,7 @@ export { ColorIndex, colorSearchAvailable, colorServerAvailable, findSimilarByCo
 export { fetchCardDetail, fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, type CardDetail, type SearchPage, type ServerFacetSelection, } from './search';
 export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, type SealedCatalog, type SealedProduct, type SealedSet, } from './sealed';
+export { SEALED_GROUPS, sealedGroupOf, type SealedGroup } from './sealed-groups';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, type CompareField, type CompareOp, type Comparison, type FieldKey, type ManualSection, type ParsedQuery, type QueryableCard, type QuerySort, type SortDir, } from './query';
 export { isSearchSaved, listSavedSearches, removeSavedSearch, subscribeSavedSearches, toggleSavedSearch, type SavedSearch, } from './savedSearches';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, type CardSize, } from './state';
@@ -29,3 +30,4 @@ export { CARD_SIZES, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, CARD_GRID_GAP, CARD_HI
 export { CatalogBrowser } from './CatalogBrowser';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts, type FeedSet } from './RecentProducts';
+export { SealedBrowser } from './SealedBrowser';

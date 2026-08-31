@@ -39,8 +39,14 @@ export declare function loadSealedPrices(): Promise<Record<string, number>>;
 /**
  * React hook: the sealed catalog + prices, loading both once app-wide. `sealed` is null
  * until loaded (fail → stays null and a later mount retries); prices default to {}.
+ *
+ * `status` distinguishes the two nulls. Without it a failed fetch is indistinguishable from a
+ * slow one, and every consumer sits on "Loading…" forever — the kit's own rule is that a failure
+ * degrades visibly rather than hanging. Purely additive: `sealed` and `priceOf` are unchanged, so
+ * a caller that destructures only those two behaves exactly as before.
  */
 export declare function useSealed(): {
     sealed: SealedCatalog | null;
     priceOf: (id: string) => number;
+    status: 'loading' | 'ready' | 'error';
 };

@@ -183,6 +183,8 @@ export {
   type SealedSet,
 } from './sealed';
 
+export { SEALED_GROUPS, sealedGroupOf, type SealedGroup } from './sealed-groups';
+
 export {
   describeQuery,
   matchCard,
@@ -235,3 +237,7 @@ export {
 export { CatalogBrowser } from './CatalogBrowser';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts, type FeedSet } from './RecentProducts';
+// Mounted by tcgscan-app only. michi-maker deliberately does not import it — it curates sealed
+// through its own HomeSealed carousel — which is how the kit hides a surface from one app: the
+// host decides by importing, not by a flag (RecentProducts is the same story in reverse).
+export { SealedBrowser } from './SealedBrowser';

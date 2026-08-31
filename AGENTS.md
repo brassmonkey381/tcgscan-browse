@@ -59,12 +59,22 @@ Do not commit or push unless the user asks.
 - `src/index.ts` — the single export surface (everything public re-exports here).
 - `src/CatalogBrowser.tsx` — the main component (warm catalog + cold
   server-search paths); `CardActionModal.tsx`, `RecentProducts.tsx`,
-  `analytics.tsx` are the other UI surfaces.
+  `SealedBrowser.tsx`, `analytics.tsx` are the other UI surfaces.
+  `SealedBrowser` is mounted by tcgscan-app ONLY — michi-maker curates sealed
+  through its own HomeSealed carousel and deliberately does not import it. That
+  is how this kit hides a surface from one app: the host decides by importing,
+  not by a flag (`RecentProducts` is the same arrangement in reverse). Do not
+  wire it into `CatalogBrowser`, and do not add a `BrowseFeature` for it — that
+  union is the TIER seam, and a locked feature is meant to stay visible and
+  advertise a plan.
 - `src/query.ts` — grammar + `QUERY_MANUAL` (see grammar sync above).
 - Clients: `catalog.ts` (normalization boundary — the only place the wire's
   snake_case is known), `search.ts` (search_cards / search_facets /
   card_detail RPCs + PostgREST fetches), `prices.ts`, `similar.ts`, `color.ts`,
-  `sealed.ts`, `taxonomy.ts`, `images.ts`.
+  `sealed.ts` (+ `sealed-groups.ts`, the product taxonomy read off product
+  names — a property of the shared artifact, not of one app's screen; its
+  precedence is pinned by tcgscan-app's test suite, since this kit has no test
+  runner), `taxonomy.ts`, `images.ts`.
 - `src/config.ts` — `configureBrowse` (the only config entry point),
   `state.ts` / `savedSearches.ts` — session state + browse commands,
   `language.ts` / `LanguageToggle.tsx` — the shared EN/JP preference + its pills

@@ -22,6 +22,7 @@ export { ColorIndex, colorSearchAvailable, colorServerAvailable, findSimilarByCo
 export { fetchCardDetail, fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, } from './search';
 export { loadTaxonomy, useTaxonomy } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, } from './sealed';
+export { SEALED_GROUPS, sealedGroupOf } from './sealed-groups';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, } from './query';
 export { isSearchSaved, listSavedSearches, removeSavedSearch, subscribeSavedSearches, toggleSavedSearch, } from './savedSearches';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, } from './state';
@@ -29,3 +30,7 @@ export { CARD_SIZES, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, CARD_GRID_GAP, CARD_HI
 export { CatalogBrowser } from './CatalogBrowser';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts } from './RecentProducts';
+// Mounted by tcgscan-app only. michi-maker deliberately does not import it — it curates sealed
+// through its own HomeSealed carousel — which is how the kit hides a surface from one app: the
+// host decides by importing, not by a flag (RecentProducts is the same story in reverse).
+export { SealedBrowser } from './SealedBrowser';

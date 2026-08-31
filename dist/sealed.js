@@ -95,17 +95,30 @@ export function loadSealedPrices() {
 /**
  * React hook: the sealed catalog + prices, loading both once app-wide. `sealed` is null
  * until loaded (fail → stays null and a later mount retries); prices default to {}.
+ *
+ * `status` distinguishes the two nulls. Without it a failed fetch is indistinguishable from a
+ * slow one, and every consumer sits on "Loading…" forever — the kit's own rule is that a failure
+ * degrades visibly rather than hanging. Purely additive: `sealed` and `priceOf` are unchanged, so
+ * a caller that destructures only those two behaves exactly as before.
  */
 export function useSealed() {
     const [sealed, setSealed] = useState(sealedLoaded);
     const [prices, setPrices] = useState(sealedPricesLoaded ?? {});
+    const [failed, setFailed] = useState(false);
     useEffect(() => {
         let cancelled = false;
-        loadSealed().then((s) => !cancelled && setSealed(s), () => { });
+        loadSealed().then((s) => !cancelled && setSealed(s), 
+        // The catalog is what the surface needs; a price fetch that fails leaves prices empty and
+        // the grid still readable, so only this rejection counts as an error.
+        () => !cancelled && setFailed(true));
         loadSealedPrices().then((p) => !cancelled && setPrices(p));
         return () => {
             cancelled = true;
         };
     }, []);
-    return { sealed, priceOf: (id) => prices[id] ?? 0 };
+    return {
+        sealed,
+        priceOf: (id) => prices[id] ?? 0,
+        status: sealed ? 'ready' : failed ? 'error' : 'loading',
+    };
 }
