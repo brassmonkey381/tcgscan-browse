@@ -1224,19 +1224,51 @@ export function CatalogBrowser({
     setSimilarCards([]);
     setSimilarSteps([]);
   };
-  // The current search as a saveable snapshot (query text + facet chips + sort control).
+  // The current search as a saveable snapshot: query text, facet chips, sort control, AND where
+  // you were standing. The drill-down is what makes a facets-only save replayable at all — the
+  // facet bar exists only at a card level, so restoring filters without the set they belonged to
+  // set state nothing could show or clear (and re-filtered whatever other set you were in).
+  const savedLabel = (): string => {
+    const q = cardQuery.trim();
+    if (q) return q;
+    // Named by WHERE it was saved plus a taste of the filters, because every facets-only save
+    // used to be labelled the same constant "Filters" and several were indistinguishable chips.
+    // (currentSet/currentSeries are derived further down; resolve it here rather than reorder.)
+    const where = (tax && setId ? tax.getSet(setId)?.name : undefined)
+      ?? (tax && seriesId ? tax.getSeries(seriesId)?.name : undefined);
+    const filters = Object.values(selection)
+      .flat()
+      .slice(0, 2)
+      .join(' · ');
+    return [where, filters].filter(Boolean).join(' · ') || 'Filters';
+  };
   const currentSearch = (): SavedSearch => ({
-    label: cardQuery.trim() || 'Filters',
+    label: savedLabel(),
     query: cardQuery,
     selection,
     sortSel,
+    seriesId,
+    setId,
   });
-  // Only offer the star when there's something worth saving.
-  const canSaveSearch = cardQuery.trim().length > 0 || Object.values(selection).some((v) => v.length > 0) || !!sortSel;
+  // Something worth saving: a query, filters, a sort — or simply a set/series you want to keep to
+  // hand, which is the thing a collector most wants to favourite and previously had no star for.
+  const canSaveSearch =
+    cardQuery.trim().length > 0 ||
+    Object.values(selection).some((v) => v.length > 0) ||
+    !!sortSel ||
+    !!setId ||
+    !!seriesId;
   const searchSaved = canSaveSearch && isSearchSaved(currentSearch());
   const applySaved = (s: SavedSearch) => {
     clearSimilar();
+    // Both, so the results are the saved ones on the very next render. Setting only the raw query
+    // left the saved FACETS applied to the previous query's results for a debounce tick, which
+    // read as "my saved search returns nothing". Same reason viewIllustrator/jumpToSet do it.
     setCardQuery(s.query);
+    setCardQueryDebounced(s.query);
+    // Restore the drill-down directly rather than through openSeries/openSet, which clear filters.
+    setSeriesId(s.seriesId ?? null);
+    setSetId(s.setId ?? null);
     setSelection(s.selection);
     setSortSel(s.sortSel);
   };
