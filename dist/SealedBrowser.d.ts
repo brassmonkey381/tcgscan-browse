@@ -9,7 +9,7 @@ export declare function SealedBrowser({ theme: themeProp, languages, numColumns,
      * hidden because the host has already decided.
      */
     languages?: CardLanguage[];
-    /** Grid width. Two suits a phone; a desktop host can ask for more. */
+    /** Pin the column count. Omit for the S/M/L steps; passing it hides the size toggle. */
     numColumns?: number;
     /** Open a product. Omitted → tiles are not pressable. */
     onOpen?: (product: SealedProduct) => void;
