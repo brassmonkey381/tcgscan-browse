@@ -35,6 +35,7 @@ import { LanguageToggle } from './LanguageToggle';
 import { CARD_GRID_GAP, CARD_SIZE_FRACTION, CARD_SIZES, cardTileWidthFor } from './cardSize';
 import { useBrowseLanguages } from './language';
 import { formatUsd } from './prices';
+import { releaseTag } from './releaseTag';
 import { SEALED_GROUPS, sealedGroupOf } from './sealed-groups';
 import { sealedLanguageOf, useSealed } from './sealed';
 import { resolveTheme } from './theme';
@@ -96,7 +97,12 @@ export function SealedBrowser({ theme: themeProp, languages, numColumns, onOpen,
                                     return (_jsx(Pressable, { onPress: () => setSize(s), accessibilityRole: "button", accessibilityState: { selected: on }, accessibilityLabel: `Tile size ${s}`, style: [styles.sizeChip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], children: s }) }, s));
                                 }) }))] })] }), _jsx(FlatList, { data: shown, keyExtractor: (p) => p.id, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, ListEmptyComponent: _jsx(View, { style: styles.empty, children: _jsx(Text, { style: styles.emptyText, children: emptyText }) }), renderItem: ({ item: p }) => {
                     const price = formatUsd(priceOf(p.id));
-                    return (_jsxs(Pressable, { style: [styles.tile, tileW > 0 ? { width: tileW } : null], accessibilityRole: onOpen ? 'button' : undefined, accessibilityLabel: p.name, disabled: !onOpen, onPress: onOpen ? () => onOpen(p) : undefined, children: [_jsxs(View, { style: styles.imageWrap, children: [_jsx(Image, { source: { uri: (tileW >= 150 ? p.imageMedium : p.imageSmall) || p.image }, style: styles.image, contentFit: "contain", transition: 100, recyclingKey: p.id }), onAdd ? (_jsx(Pressable, { hitSlop: 6, accessibilityRole: "button", accessibilityLabel: `Add ${p.name}`, onPress: () => onAdd(p), style: styles.quick, children: _jsx(Text, { style: styles.quickText, children: addLabel }) })) : null] }), _jsx(Text, { style: styles.name, numberOfLines: 1, children: p.name }), price ? _jsx(Text, { style: styles.price, children: price }) : null] }));
+                    return (_jsxs(Pressable, { style: [styles.tile, tileW > 0 ? { width: tileW } : null], accessibilityRole: onOpen ? 'button' : undefined, accessibilityLabel: p.name, disabled: !onOpen, onPress: onOpen ? () => onOpen(p) : undefined, children: [_jsxs(View, { style: styles.imageWrap, children: [_jsx(Image, { source: { uri: (tileW >= 150 ? p.imageMedium : p.imageSmall) || p.image }, style: styles.image, contentFit: "contain", transition: 100, recyclingKey: p.id }), onAdd ? (_jsx(Pressable, { hitSlop: 6, accessibilityRole: "button", accessibilityLabel: `Add ${p.name}`, onPress: () => onAdd(p), style: styles.quick, children: _jsx(Text, { style: styles.quickText, children: addLabel }) })) : null, (() => {
+                                        const tag = releaseTag(p.releaseDate);
+                                        if (!tag)
+                                            return null;
+                                        return (_jsx(View, { style: [styles.badge, tag.kind === 'countdown' && styles.badgeCountdown], pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, numberOfLines: 1, children: tag.label }) }));
+                                    })()] }), _jsx(Text, { style: styles.name, numberOfLines: 1, children: p.name }), price ? _jsx(Text, { style: styles.price, children: price }) : null] }));
                 } }, cols)] }));
 }
 function makeStyles(t) {
@@ -172,6 +178,19 @@ function makeStyles(t) {
             justifyContent: 'center',
         },
         quickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+        // Bottom-left, so it never collides with the add button top-right.
+        badge: {
+            position: 'absolute',
+            left: 3,
+            bottom: 3,
+            maxWidth: '92%',
+            borderRadius: 5,
+            paddingHorizontal: 4,
+            paddingVertical: 1,
+            backgroundColor: t.accent,
+        },
+        badgeCountdown: { backgroundColor: t.danger },
+        badgeText: { color: t.accentText, fontSize: 8, fontWeight: '800', letterSpacing: 0.2 },
         name: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
         // The one coloured thing on a tile, as on the card shelf — this is what the eye lands on.
         price: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.accent, textAlign: 'center' },

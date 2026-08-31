@@ -38,6 +38,7 @@ import { useImageManifest } from './images';
 import { LANGUAGE_ORDER, languageLabel, useBrowseLanguages } from './language';
 import { LanguageToggle } from './LanguageToggle';
 import { formatUsd, usePriceSummary } from './prices';
+import { releaseTag } from './releaseTag';
 import { findSimilarWeighted, similarAvailable } from './similar';
 import { fetchCardsByIds, fetchSetCards, searchCards, searchFacets, serverSearchAvailable, } from './search';
 import { useTaxonomy } from './taxonomy';
@@ -1289,7 +1290,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             const meta = [s.code, `${s.cardCount.toLocaleString()} cards`, formatSetDate(s.releaseDate)]
                 .filter(Boolean)
                 .join(' · ');
-            return (_jsx(TaxonomyTile, { styles: styles, title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSet(s.id), completion: showCompletion ? { owned: ownedCounts.bySet.get(s.id) ?? 0, total: s.cardCount } : undefined }));
+            return (_jsx(TaxonomyTile, { styles: styles, title: s.name, meta: meta, coverUri: s.coverUri, width: taxTileW, onPress: () => openSet(s.id), completion: showCompletion ? { owned: ownedCounts.bySet.get(s.id) ?? 0, total: s.cardCount } : undefined, tag: releaseTag(s.releaseDate) }));
         }
         if (item.kind === 'vunion') {
             const g = item.group;
@@ -1448,11 +1449,11 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
  * has no cover, which is most), the name, and a meta line. Fixed height so getItemLayout can
  * skip offscreen rows.
  */
-function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, completion, }) {
+function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, completion, tag, }) {
     const pct = completion && completion.total > 0
         ? Math.round((completion.owned / completion.total) * 100)
         : null;
-    return (_jsxs(Pressable, { style: [styles.taxTile, { width }], onPress: onPress, children: [_jsxs(View, { style: styles.taxLogoWrap, children: [coverUri ? (_jsx(Image, { source: { uri: coverUri }, style: styles.taxLogo, contentFit: "contain", transition: 100 })) : (_jsx(Text, { style: styles.taxInitial, children: title.trim().charAt(0).toUpperCase() })), pct != null ? (_jsx(View, { style: styles.taxPctBadge, children: _jsxs(Text, { style: styles.taxPctBadgeText, children: [pct, "%"] }) })) : null] }), _jsx(Text, { style: styles.taxTitle, numberOfLines: 2, children: title }), meta ? (_jsx(Text, { style: styles.taxMeta, numberOfLines: 2, children: meta })) : null, completion && completion.total > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.taxCompletion, numberOfLines: 1, children: [completion.owned.toLocaleString(), " / ", completion.total.toLocaleString(), " owned"] }), _jsx(View, { style: styles.taxProgressTrack, children: _jsx(View, { style: [styles.taxProgressFill, { width: `${pct ?? 0}%` }] }) })] })) : null] }));
+    return (_jsxs(Pressable, { style: [styles.taxTile, { width }], onPress: onPress, children: [_jsxs(View, { style: styles.taxLogoWrap, children: [coverUri ? (_jsx(Image, { source: { uri: coverUri }, style: styles.taxLogo, contentFit: "contain", transition: 100 })) : (_jsx(Text, { style: styles.taxInitial, children: title.trim().charAt(0).toUpperCase() })), pct != null ? (_jsx(View, { style: styles.taxPctBadge, children: _jsxs(Text, { style: styles.taxPctBadgeText, children: [pct, "%"] }) })) : null, tag ? (_jsx(View, { style: [styles.taxTagBadge, tag.kind === 'countdown' && styles.taxTagBadgeCountdown], pointerEvents: "none", children: _jsx(Text, { style: styles.taxTagBadgeText, numberOfLines: 1, children: tag.label }) })) : null] }), _jsx(Text, { style: styles.taxTitle, numberOfLines: 2, children: title }), meta ? (_jsx(Text, { style: styles.taxMeta, numberOfLines: 2, children: meta })) : null, completion && completion.total > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.taxCompletion, numberOfLines: 1, children: [completion.owned.toLocaleString(), " / ", completion.total.toLocaleString(), " owned"] }), _jsx(View, { style: styles.taxProgressTrack, children: _jsx(View, { style: [styles.taxProgressFill, { width: `${pct ?? 0}%` }] }) })] })) : null] }));
 }
 /**
  * A single dense catalog-card tile. Width is driven by the measured grid so tiles stay
@@ -1773,6 +1774,19 @@ function makeStyles(t, taxTileHeight) {
             paddingHorizontal: 5,
             paddingVertical: 1,
         },
+        // Release badge, bottom-left of the logo (the completion % sits top-right).
+        taxTagBadge: {
+            position: 'absolute',
+            left: 4,
+            bottom: 4,
+            maxWidth: '90%',
+            borderRadius: 5,
+            paddingHorizontal: 5,
+            paddingVertical: 2,
+            backgroundColor: t.accent,
+        },
+        taxTagBadgeCountdown: { backgroundColor: t.danger },
+        taxTagBadgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
         taxPctBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800', lineHeight: 14 },
         taxCompletion: { fontSize: 12, color: t.subtext, lineHeight: 15, marginTop: 1 },
         taxProgressTrack: {

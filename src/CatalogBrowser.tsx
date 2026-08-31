@@ -89,6 +89,7 @@ import { useImageManifest } from './images';
 import { LANGUAGE_ORDER, languageLabel, useBrowseLanguages } from './language';
 import { LanguageToggle } from './LanguageToggle';
 import { formatUsd, usePriceSummary } from './prices';
+import { releaseTag, type ReleaseTag } from './releaseTag';
 import { findSimilarWeighted, similarAvailable, type SimilarStep } from './similar';
 import {
   fetchCardsByIds,
@@ -1672,6 +1673,7 @@ export function CatalogBrowser({
           width={taxTileW}
           onPress={() => openSet(s.id)}
           completion={showCompletion ? { owned: ownedCounts.bySet.get(s.id) ?? 0, total: s.cardCount } : undefined}
+          tag={releaseTag(s.releaseDate)}
         />
       );
     }
@@ -2182,6 +2184,7 @@ function TaxonomyTile({
   width,
   onPress,
   completion,
+  tag,
 }: {
   styles: Styles;
   title: string;
@@ -2191,6 +2194,8 @@ function TaxonomyTile({
   onPress: () => void;
   /** Collection completion for this set/series — renders "X/Y" + a % badge + progress bar. */
   completion?: { owned: number; total: number };
+  /** Where the set sits on the release timeline (see releaseTag). Absent for anything older. */
+  tag?: ReleaseTag | null;
 }) {
   const pct =
     completion && completion.total > 0
@@ -2207,6 +2212,16 @@ function TaxonomyTile({
         {pct != null ? (
           <View style={styles.taxPctBadge}>
             <Text style={styles.taxPctBadgeText}>{pct}%</Text>
+          </View>
+        ) : null}
+        {/* Release timeline, opposite corner to the completion badge so they never overlap. */}
+        {tag ? (
+          <View
+            style={[styles.taxTagBadge, tag.kind === 'countdown' && styles.taxTagBadgeCountdown]}
+            pointerEvents="none">
+            <Text style={styles.taxTagBadgeText} numberOfLines={1}>
+              {tag.label}
+            </Text>
           </View>
         ) : null}
       </View>
@@ -2926,6 +2941,19 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       paddingHorizontal: 5,
       paddingVertical: 1,
     },
+    // Release badge, bottom-left of the logo (the completion % sits top-right).
+    taxTagBadge: {
+      position: 'absolute',
+      left: 4,
+      bottom: 4,
+      maxWidth: '90%',
+      borderRadius: 5,
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+      backgroundColor: t.accent,
+    },
+    taxTagBadgeCountdown: { backgroundColor: t.danger },
+    taxTagBadgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
     taxPctBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800', lineHeight: 14 },
     taxCompletion: { fontSize: 12, color: t.subtext, lineHeight: 15, marginTop: 1 },
     taxProgressTrack: {

@@ -37,6 +37,7 @@ import type { CardSize } from './state';
 import { cardThumbUrl, ebayCardSearchUrl, ebaySearchUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
+import { releaseTag } from './releaseTag';
 import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable, type SetMeta } from './search';
 import { similarAvailable } from './similar';
 import { resolveTheme, tileShadow, type BrowseTheme } from './theme';
@@ -477,11 +478,20 @@ export function RecentProducts({
             />
           </Pressable>
         ))}
-        {t.upcoming ? (
-          <View style={styles.badge} pointerEvents="none">
-            <Text style={styles.badgeText}>Upcoming</Text>
-          </View>
-        ) : null}
+        {/* Where it sits on the release timeline: Upcoming, a countdown, Just Released!, or Very
+            Recent. This used to be a bare "Upcoming or nothing", so a set shipping on Friday and
+            one from two years ago wore the same face. */}
+        {(() => {
+          const tag = releaseTag(t.set.releaseDate, today);
+          if (!tag) return null;
+          return (
+            <View
+              style={[styles.badge, tag.kind === 'countdown' && styles.badgeCountdown]}
+              pointerEvents="none">
+              <Text style={styles.badgeText}>{tag.label}</Text>
+            </View>
+          );
+        })()}
       </View>
       <View style={styles.tileFooter}>
         <View style={styles.tileFooterLeft}>
@@ -536,8 +546,10 @@ export function RecentProducts({
       onPress={onOpenSet ? () => onOpenSet(set) : undefined}
       accessibilityRole={onOpenSet ? 'button' : undefined}
       accessibilityLabel={onOpenSet ? `Browse ${set.name}${upcoming ? ' (upcoming)' : ''}` : undefined}>
+      {/* The same ladder as the set tiles, so a strip header and its tile never disagree. Falls
+          back to NEW SET once a release is old enough that the ladder says nothing. */}
       <Text style={[styles.cardHeaderKicker, upcoming && styles.cardHeaderKickerUpcoming]}>
-        {upcoming ? 'UPCOMING' : 'NEW SET'}
+        {releaseTag(set.releaseDate)?.label ?? 'NEW SET'}
       </Text>
       <Text style={styles.cardHeaderName} numberOfLines={3}>
         {set.name}
@@ -857,6 +869,8 @@ function makeStyles(t: BrowseTheme) {
       paddingHorizontal: 5,
       paddingVertical: 2,
     },
+    // The countdown is the one that expires, so it gets the loudest treatment on the tile.
+    badgeCountdown: { backgroundColor: t.danger },
     badgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
     tileFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     tileFooterLeft: { flex: 1, gap: 3 },

@@ -24,6 +24,7 @@ export { loadTaxonomy, useTaxonomy } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, } from './sealed';
 export { SEALED_GROUPS, sealedGroupOf } from './sealed-groups';
 export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, } from './query';
+export { daysUntilRelease, isUpcoming, releaseTag, todayISO, JUST_RELEASED_DAYS, RECENT_DAYS, RELEASE_SOON_DAYS, } from './releaseTag';
 export { hydrateSavedSearches, isSearchSaved, listSavedSearches, removeSavedSearch, subscribeSavedSearches, toggleSavedSearch, } from './savedSearches';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, } from './state';
 export { CARD_SIZES, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, CARD_GRID_GAP, CARD_HIRES_TILE_W, cardGridColumns, cardTileWidthFor, cardTierFor, } from './cardSize';

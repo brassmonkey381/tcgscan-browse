@@ -207,6 +207,18 @@ export {
 } from './query';
 
 export {
+  daysUntilRelease,
+  isUpcoming,
+  releaseTag,
+  todayISO,
+  JUST_RELEASED_DAYS,
+  RECENT_DAYS,
+  RELEASE_SOON_DAYS,
+  type ReleaseTag,
+  type ReleaseTagKind,
+} from './releaseTag';
+
+export {
   hydrateSavedSearches,
   isSearchSaved,
   listSavedSearches,

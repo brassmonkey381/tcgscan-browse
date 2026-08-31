@@ -45,6 +45,7 @@ import { CARD_GRID_GAP, CARD_SIZE_FRACTION, CARD_SIZES, cardTileWidthFor } from 
 import type { CardLanguage } from './catalog';
 import { useBrowseLanguages } from './language';
 import { formatUsd } from './prices';
+import { releaseTag } from './releaseTag';
 import { SEALED_GROUPS, sealedGroupOf, type SealedGroup } from './sealed-groups';
 import { sealedLanguageOf, useSealed, type SealedProduct } from './sealed';
 import type { CardSize } from './state';
@@ -235,6 +236,22 @@ export function SealedBrowser({
                     <Text style={styles.quickText}>{addLabel}</Text>
                   </Pressable>
                 ) : null}
+                {/* Sealed carries a release date and never showed it, so a box shipping next week
+                    and one from two years ago looked identical on the shelf. Same ladder as the
+                    Recent & Upcoming tiles. */}
+                {(() => {
+                  const tag = releaseTag(p.releaseDate);
+                  if (!tag) return null;
+                  return (
+                    <View
+                      style={[styles.badge, tag.kind === 'countdown' && styles.badgeCountdown]}
+                      pointerEvents="none">
+                      <Text style={styles.badgeText} numberOfLines={1}>
+                        {tag.label}
+                      </Text>
+                    </View>
+                  );
+                })()}
               </View>
               <Text style={styles.name} numberOfLines={1}>
                 {p.name}
@@ -321,6 +338,19 @@ function makeStyles(t: BrowseTheme) {
       justifyContent: 'center',
     },
     quickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+    // Bottom-left, so it never collides with the add button top-right.
+    badge: {
+      position: 'absolute',
+      left: 3,
+      bottom: 3,
+      maxWidth: '92%',
+      borderRadius: 5,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      backgroundColor: t.accent,
+    },
+    badgeCountdown: { backgroundColor: t.danger },
+    badgeText: { color: t.accentText, fontSize: 8, fontWeight: '800', letterSpacing: 0.2 },
     name: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
     // The one coloured thing on a tile, as on the card shelf — this is what the eye lands on.
     price: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.accent, textAlign: 'center' },
