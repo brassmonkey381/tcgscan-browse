@@ -21,6 +21,21 @@
  * sides are pinned to UTC midnight before subtracting: parsing '2026-09-04' as a local Date puts a
  * user west of UTC a day behind and would show "1 Day To-Go" on release morning.
  */
+/**
+ * ONE SIZE FOR EVERY RELEASE TAG, everywhere it appears.
+ *
+ * These badges grew up on separate surfaces and ended up at five different sizes: 7pt on michi's
+ * sealed rail, 8pt on the kit's sealed tiles, 9pt on the Recent & Upcoming tiles, browse set tiles
+ * and the strip kickers, and 12pt on the sealed product page. The same sentence read as a footnote
+ * in one place and a heading in another. Owner decision: take the largest of them and add a
+ * quarter, so 12 becomes 15, and give every surface that number from here.
+ *
+ * Exported rather than duplicated because the apps draw their own sealed tiles (michi does not
+ * mount the kit's SealedBrowser), and a second copy of this number is how they drifted apart.
+ */
+export const RELEASE_TAG_FONT_SIZE = 15;
+/** Line box for RELEASE_TAG_FONT_SIZE — tight, since a badge is always one line. */
+export const RELEASE_TAG_LINE_HEIGHT = 18;
 /** The countdown window, and the width of each band after release. */
 export const RELEASE_SOON_DAYS = 30;
 export const JUST_RELEASED_DAYS = 7;

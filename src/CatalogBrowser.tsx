@@ -89,7 +89,12 @@ import { useImageManifest } from './images';
 import { LANGUAGE_ORDER, languageLabel, useBrowseLanguages } from './language';
 import { LanguageToggle } from './LanguageToggle';
 import { formatUsd, usePriceSummary } from './prices';
-import { releaseTag, type ReleaseTag } from './releaseTag';
+import {
+  releaseTag,
+  RELEASE_TAG_FONT_SIZE,
+  RELEASE_TAG_LINE_HEIGHT,
+  type ReleaseTag,
+} from './releaseTag';
 import { findSimilarWeighted, similarAvailable, type SimilarStep } from './similar';
 import {
   fetchCardsByIds,
@@ -2953,7 +2958,13 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       backgroundColor: t.accent,
     },
     taxTagBadgeCountdown: { backgroundColor: t.danger },
-    taxTagBadgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
+    taxTagBadgeText: {
+      color: t.accentText,
+      fontSize: RELEASE_TAG_FONT_SIZE,
+      lineHeight: RELEASE_TAG_LINE_HEIGHT,
+      fontWeight: '800',
+      letterSpacing: 0.3,
+    },
     taxPctBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800', lineHeight: 14 },
     taxCompletion: { fontSize: 12, color: t.subtext, lineHeight: 15, marginTop: 1 },
     taxProgressTrack: {

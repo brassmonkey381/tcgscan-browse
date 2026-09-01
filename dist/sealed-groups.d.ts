@@ -24,30 +24,46 @@
  * of its own (package.json is build + check), and the app's harness resolves the kit's published
  * `src` directly, so the assertions double as a pin-bump regression check.
  */
+/**
+ * Each group twice: the full `label` for anywhere with room, and a `short` for a chip row.
+ *
+ * The chips are a filter bar on a phone, and "Elite Trainer Boxes" spent 180px saying what "ETB"
+ * says to anyone who would be filtering by it — three of the nine groups fit on screen at once,
+ * so the taxonomy was there without being browsable. The short forms are the ones the market
+ * already uses, and they only differ where the long name was the problem.
+ */
 export declare const SEALED_GROUPS: readonly [{
     readonly key: "packs";
     readonly label: "Packs";
+    readonly short: "Packs";
 }, {
     readonly key: "boxes";
     readonly label: "Booster Boxes";
+    readonly short: "Boxes";
 }, {
     readonly key: "etb";
     readonly label: "Elite Trainer Boxes";
+    readonly short: "ETB";
 }, {
     readonly key: "bundles";
     readonly label: "Bundles";
+    readonly short: "Bundles";
 }, {
     readonly key: "tins";
     readonly label: "Tins";
+    readonly short: "Tins";
 }, {
     readonly key: "decks";
     readonly label: "Decks";
+    readonly short: "Decks";
 }, {
     readonly key: "collections";
     readonly label: "Collections";
+    readonly short: "Collections";
 }, {
     readonly key: "other";
     readonly label: "Other";
+    readonly short: "Other";
 }];
 export type SealedGroup = (typeof SEALED_GROUPS)[number]['key'];
 export declare function sealedGroupOf(name: string): SealedGroup;

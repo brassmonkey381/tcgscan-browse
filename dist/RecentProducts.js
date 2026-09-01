@@ -29,7 +29,7 @@ import { formatSetDate } from './catalog';
 import { cardThumbUrl, ebayCardSearchUrl, ebaySearchUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
-import { releaseTag } from './releaseTag';
+import { releaseTag, RELEASE_TAG_FONT_SIZE, RELEASE_TAG_LINE_HEIGHT } from './releaseTag';
 import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable } from './search';
 import { similarAvailable } from './similar';
 import { resolveTheme, tileShadow } from './theme';
@@ -469,7 +469,13 @@ function makeStyles(t) {
         },
         // The countdown is the one that expires, so it gets the loudest treatment on the tile.
         badgeCountdown: { backgroundColor: t.danger },
-        badgeText: { color: t.accentText, fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
+        badgeText: {
+            color: t.accentText,
+            fontSize: RELEASE_TAG_FONT_SIZE,
+            lineHeight: RELEASE_TAG_LINE_HEIGHT,
+            fontWeight: '800',
+            letterSpacing: 0.3,
+        },
         tileFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
         tileFooterLeft: { flex: 1, gap: 3 },
         tileLogo: { width: 72, height: 44 },
@@ -512,7 +518,8 @@ function makeStyles(t) {
             justifyContent: 'center',
         },
         cardHeaderKicker: {
-            fontSize: 9,
+            fontSize: RELEASE_TAG_FONT_SIZE,
+            lineHeight: RELEASE_TAG_LINE_HEIGHT,
             fontWeight: '800',
             letterSpacing: 0.5,
             color: t.subtext,

@@ -41,26 +41,43 @@ import {
 } from 'react-native';
 
 import { LanguageToggle } from './LanguageToggle';
-import { CARD_GRID_GAP, CARD_SIZE_FRACTION, CARD_SIZES, cardTileWidthFor } from './cardSize';
+import { CARD_GRID_GAP, CARD_SIZES, cardTileWidthFor } from './cardSize';
 import type { CardLanguage } from './catalog';
 import { useBrowseLanguages } from './language';
 import { formatUsd } from './prices';
-import { releaseTag } from './releaseTag';
+import { releaseTag, RELEASE_TAG_FONT_SIZE, RELEASE_TAG_LINE_HEIGHT } from './releaseTag';
 import { SEALED_GROUPS, sealedGroupOf, type SealedGroup } from './sealed-groups';
 import { sealedLanguageOf, useSealed, type SealedProduct } from './sealed';
 import type { CardSize } from './state';
 import { resolveTheme, type BrowseTheme } from './theme';
 
 /**
- * Columns at the S step. M and L fall out of the kit's own size fractions ({S:1, M:0.72, L:0.45},
- * cardSize.ts), so the sealed steps land on 8 / 6 / 4 and stay tied to the card grid's notion of
- * what S, M and L mean — change the fractions there and both grids move together.
+ * Columns per Size step, by how wide the grid actually is.
+ *
+ * These used to be one ladder for every screen — 8 / 6 / 4, derived from the card grid's size
+ * fractions so the two shelves moved together. The derivation was tidy and the result was wrong on
+ * the device most of this is browsed on: eight columns of a 390pt phone is a 43pt tile, which is a
+ * thumbnail of a booster box rather than a picture of one, and even the L step landed at four.
+ *
+ * So the phone gets its own rung. A SEALED TILE IS NOT A CARD TILE: card art is legible tiny
+ * because the whole point of it is one figure on one background, while a sealed tile has to carry
+ * a product photo and a set logo, and those die first. 6 / 4 / 2 keeps S dense enough to scan a
+ * shelf and lets L be a real look at one box.
  *
  * A TARGET, not a packing: unlike cardGridColumns, which derives a base from the container width,
- * these are fixed so the step means the same thing on a phone and on a desktop. Sealed art is
- * square-ish product photography that survives being small, and the S step is meant to be dense.
+ * each rung is fixed, so the step means the same thing on every phone rather than drifting a
+ * column between a mini and a Max. The width only chooses the rung.
  */
-const SEALED_BASE_COLUMNS = 8;
+const SEALED_COLUMNS: readonly { upTo: number; cols: Record<CardSize, number> }[] = [
+  { upTo: 700, cols: { S: 6, M: 4, L: 2 } },
+  { upTo: Infinity, cols: { S: 8, M: 6, L: 4 } },
+];
+
+/** The rung `width` falls on. Width 0 (pre-layout) reads as narrow, which is the safe guess. */
+function sealedColumns(width: number, size: CardSize): number {
+  const rung = SEALED_COLUMNS.find((r) => width <= r.upTo) ?? SEALED_COLUMNS[SEALED_COLUMNS.length - 1];
+  return rung.cols[size];
+}
 
 export function SealedBrowser({
   theme: themeProp,
@@ -103,7 +120,7 @@ export function SealedBrowser({
     if (w > 0 && Math.abs(w - containerWidth) > 0.5) setContainerWidth(w);
   };
 
-  const cols = numColumns ?? Math.max(1, Math.round(SEALED_BASE_COLUMNS * CARD_SIZE_FRACTION[size]));
+  const cols = numColumns ?? sealedColumns(containerWidth, size);
   const tileW = containerWidth > 0 ? cardTileWidthFor(containerWidth, cols, CARD_GRID_GAP) : 0;
 
   const wanted = useMemo(
@@ -150,15 +167,47 @@ export function SealedBrowser({
           />
           {languages ? null : <LanguageToggle theme={themeProp} />}
         </View>
-        {/* WHAT KIND OF THING, then how big to draw it — one row, the card shelf's facet shape. */}
+        {/* TWO ROWS, NOT ONE. The card shelf puts a facet label, its chips and the size toggle on
+            a single line, and that shape does not survive nine chips: the horizontal ScrollView
+            sizes to its content, so on a phone it pushed S/M/L clean off the right edge — the
+            size control was unreachable and about two Types were visible at a time.
+
+            So the labels and the size toggle take a header line of their own, aligned to the two
+            ends (which is what makes the block read as a bar rather than a pile), and the chips
+            get the full width underneath. Same tokens, same chips; the row they sit on is just no
+            longer being shared with two other controls. */}
         <View style={styles.facetGroup}>
-          <Text style={styles.facetLabel}>Type</Text>
+          <View style={styles.facetHead}>
+            <Text style={styles.facetLabel}>Type</Text>
+            {numColumns ? null : (
+              <View style={styles.sizeChips}>
+                <Text style={styles.facetLabel}>Size</Text>
+                {CARD_SIZES.map((s) => {
+                  const on = s === size;
+                  return (
+                    <Pressable
+                      key={s}
+                      onPress={() => setSize(s)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={`Tile size ${s}`}
+                      style={[styles.sizeChip, on && styles.chipOn]}>
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{s}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+          {/* `short`, not `label`: a chip only has to say which filter it is, and the long form
+              spent the row's whole width on "Elite Trainer Boxes". The full name stays on the
+              accessibility label, so nothing is lost to a screen reader. */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.chipRow}>
-            {[{ key: 'all' as const, label: 'Everything' }, ...SEALED_GROUPS].map((g) => {
+            {[{ key: 'all' as const, label: 'Everything', short: 'Everything' }, ...SEALED_GROUPS].map((g) => {
               const on = group === g.key;
               return (
                 <Pressable
@@ -166,32 +215,15 @@ export function SealedBrowser({
                   onPress={() => setGroup(g.key)}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
+                  accessibilityLabel={g.label}
                   style={[styles.chip, on && styles.chipOn]}>
                   <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>
-                    {g.label}
+                    {g.short}
                   </Text>
                 </Pressable>
               );
             })}
           </ScrollView>
-          {numColumns ? null : (
-            <View style={styles.sizeChips}>
-              {CARD_SIZES.map((s) => {
-                const on = s === size;
-                return (
-                  <Pressable
-                    key={s}
-                    onPress={() => setSize(s)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: on }}
-                    accessibilityLabel={`Tile size ${s}`}
-                    style={[styles.sizeChip, on && styles.chipOn]}>
-                    <Text style={[styles.chipText, on && styles.chipTextOn]}>{s}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
         </View>
       </View>
 
@@ -288,8 +320,12 @@ function makeStyles(t: BrowseTheme) {
     },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     searchFlex: { flex: 1 },
-    facetGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    facetLabel: { fontSize: 11, fontWeight: '600', color: t.subtext, width: 58 },
+    // A stacked facet block: label + size toggle on one line, the chips full-width under it.
+    facetGroup: { gap: 6 },
+    facetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    // No fixed width any more — the label shares its line with one right-aligned control
+    // instead of holding a column open in front of a scroll view.
+    facetLabel: { fontSize: 11, fontWeight: '600', color: t.subtext },
     chipRow: { gap: 6, paddingRight: 8 },
     chip: {
       paddingHorizontal: 10,
@@ -302,7 +338,7 @@ function makeStyles(t: BrowseTheme) {
     chipOn: { backgroundColor: t.accent, borderColor: t.accent },
     chipText: { fontSize: 12, fontWeight: '600', color: t.subtext },
     chipTextOn: { color: t.accentText },
-    sizeChips: { flexDirection: 'row', gap: 4, marginLeft: 8 },
+    sizeChips: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     sizeChip: {
       minWidth: 26,
       alignItems: 'center',
@@ -345,12 +381,19 @@ function makeStyles(t: BrowseTheme) {
       bottom: 3,
       maxWidth: '92%',
       borderRadius: 5,
-      paddingHorizontal: 4,
-      paddingVertical: 1,
+      // Matches the other release badges; 1pt of vertical padding was set for 8pt text.
+      paddingHorizontal: 5,
+      paddingVertical: 2,
       backgroundColor: t.accent,
     },
     badgeCountdown: { backgroundColor: t.danger },
-    badgeText: { color: t.accentText, fontSize: 8, fontWeight: '800', letterSpacing: 0.2 },
+    badgeText: {
+      color: t.accentText,
+      fontSize: RELEASE_TAG_FONT_SIZE,
+      lineHeight: RELEASE_TAG_LINE_HEIGHT,
+      fontWeight: '800',
+      letterSpacing: 0.2,
+    },
     name: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
     // The one coloured thing on a tile, as on the card shelf — this is what the eye lands on.
     price: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.accent, textAlign: 'center' },
