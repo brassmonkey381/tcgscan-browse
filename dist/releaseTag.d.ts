@@ -13,24 +13,27 @@
  *                                      only tag that changes every morning, and pre-orders close)
  *   · release day .. 7 days after    → Just Released!
  *   · 8..30 days after               → Very Recent
+ *   · 31..90 days after              → Recent (a set is still the current one people are opening
+ *                                      well past its first month; a quarter is about how long)
  *   · older, or no date              → nothing, and nothing is the common case
  *
  * DATES ARE CALENDAR DAYS, NOT INSTANTS. A release date is 'yyyy-mm-dd' with no timezone, so both
  * sides are pinned to UTC midnight before subtracting: parsing '2026-09-04' as a local Date puts a
  * user west of UTC a day behind and would show "1 Day To-Go" on release morning.
  */
-export type ReleaseTagKind = 'upcoming' | 'countdown' | 'just-released' | 'very-recent';
+export type ReleaseTagKind = 'upcoming' | 'countdown' | 'just-released' | 'very-recent' | 'recent';
 export interface ReleaseTag {
     kind: ReleaseTagKind;
-    /** Ready to render, e.g. 'Upcoming', '12 Days To-Go', 'Just Released!', 'Very Recent'. */
+    /** Ready to render, e.g. 'Upcoming', '12 Days To-Go', 'Just Released!', 'Very Recent', 'Recent'. */
     label: string;
     /** Whole days until release. Positive = future, 0 = today, negative = days since release. */
     days: number;
 }
-/** Days in the countdown window, and the width of both "recently released" bands. */
+/** The countdown window, and the width of each band after release. */
 export declare const RELEASE_SOON_DAYS = 30;
 export declare const JUST_RELEASED_DAYS = 7;
-export declare const RECENT_DAYS = 30;
+export declare const VERY_RECENT_DAYS = 30;
+export declare const RECENT_DAYS = 90;
 /** Today as 'yyyy-mm-dd' in the viewer's own timezone — which day it is where they are. */
 export declare function todayISO(now?: Date): string;
 /** Whole calendar days from `today` to `releaseDate`; null if either is unparseable. */

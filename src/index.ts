@@ -214,6 +214,7 @@ export {
   JUST_RELEASED_DAYS,
   RECENT_DAYS,
   RELEASE_SOON_DAYS,
+  VERY_RECENT_DAYS,
   type ReleaseTag,
   type ReleaseTagKind,
 } from './releaseTag';

@@ -13,16 +13,19 @@
  *                                      only tag that changes every morning, and pre-orders close)
  *   · release day .. 7 days after    → Just Released!
  *   · 8..30 days after               → Very Recent
+ *   · 31..90 days after              → Recent (a set is still the current one people are opening
+ *                                      well past its first month; a quarter is about how long)
  *   · older, or no date              → nothing, and nothing is the common case
  *
  * DATES ARE CALENDAR DAYS, NOT INSTANTS. A release date is 'yyyy-mm-dd' with no timezone, so both
  * sides are pinned to UTC midnight before subtracting: parsing '2026-09-04' as a local Date puts a
  * user west of UTC a day behind and would show "1 Day To-Go" on release morning.
  */
-/** Days in the countdown window, and the width of both "recently released" bands. */
+/** The countdown window, and the width of each band after release. */
 export const RELEASE_SOON_DAYS = 30;
 export const JUST_RELEASED_DAYS = 7;
-export const RECENT_DAYS = 30;
+export const VERY_RECENT_DAYS = 30;
+export const RECENT_DAYS = 90;
 /** Today as 'yyyy-mm-dd' in the viewer's own timezone — which day it is where they are. */
 export function todayISO(now = new Date()) {
     const p = (n) => String(n).padStart(2, '0');
@@ -60,8 +63,10 @@ export function releaseTag(releaseDate, today = todayISO()) {
     // days <= 0: released. Release day itself reads as just released, not as a zero-day countdown.
     if (days >= -JUST_RELEASED_DAYS)
         return { kind: 'just-released', label: 'Just Released!', days };
-    if (days >= -RECENT_DAYS)
+    if (days >= -VERY_RECENT_DAYS)
         return { kind: 'very-recent', label: 'Very Recent', days };
+    if (days >= -RECENT_DAYS)
+        return { kind: 'recent', label: 'Recent', days };
     return null;
 }
 /** True while the date is in the future — the old binary the feeds used, kept for tile ordering. */
