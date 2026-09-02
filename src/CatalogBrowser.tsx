@@ -1335,8 +1335,21 @@ export function CatalogBrowser({
       });
   };
 
+  /**
+   * ONE CHOKE POINT for the one-shot similarity search, so every way in is gated the same way:
+   * the card sheet, "find similar to all", the `similar` / `similarMany` commands off the bus,
+   * and the `initialSimilar` mount prop. Reports to the host and refuses; the host draws the
+   * upsell, since the kit knows nothing about tiers.
+   */
+  const similarLocked = (): boolean => {
+    if (!isLocked(lockedFeatures, 'findSimilar')) return false;
+    onLockedFeature?.('findSimilar');
+    return true;
+  };
+
   /** "Find similar" — embedding search on the data server, results shown in the grid. */
   const openSimilar = (card: CatalogCard) => {
+    if (similarLocked()) return;
     setCardQuery('');
     setCardQueryDebounced('');
     clearFilters();
@@ -1350,6 +1363,7 @@ export function CatalogBrowser({
   /** "Find similar to all" — embedding search on the AVERAGE of the selected cards' vectors.
    *  Results replace the grid, like openSimilar. */
   const openSimilarMany = (ids: string[]) => {
+    if (similarLocked()) return;
     setCardQuery('');
     setCardQueryDebounced('');
     clearFilters();
@@ -1384,7 +1398,8 @@ export function CatalogBrowser({
    *  across group members (see similar.ts refineWeights). Seed chips stay; the grid re-ranks. */
   const refineSimilar = (kind: 'more' | 'less', ids: string[]) => {
     // Single choke point for every refine entry (card sheet + multi-select), so the lock cannot
-    // be reached from one of them. The one-shot Find Similar this refines is NOT gated.
+    // be reached from one of them. The one-shot Find Similar it refines has its own lock
+    // (similarLocked) — a host may sell the two apart.
     if (isLocked(lockedFeatures, 'similarRefine')) {
       onLockedFeature?.('similarRefine');
       return;

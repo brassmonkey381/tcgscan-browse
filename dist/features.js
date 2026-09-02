@@ -2,6 +2,7 @@
 export const FEATURE_LABELS = {
     sortByValue: 'Sort by value',
     priceFilter: 'Price filters',
+    findSimilar: 'Find similar',
     similarRefine: 'Refine by similarity',
     colorSearch: 'Colour search',
 };

@@ -13,8 +13,12 @@
  *                  stripped back to relevance rather than quietly ignored.
  *   priceFilter    typed price bounds (`>$100`, `<$500`, `value>100`) are stripped from the
  *                  query. The search still runs, just unbounded by price.
- *   similarRefine  the "more/less like this" refinement calls `onLockedFeature`; the one-shot
- *                  Find Similar it refines is NOT gated by this.
+ *   findSimilar    the one-shot "≈ Find similar" (and "find similar to all", and a `similar`
+ *                  command from the bus) calls `onLockedFeature` instead of searching. The action
+ *                  stays in the card sheet: an entry point that vanishes teaches nobody what it
+ *                  was, where one that answers the tap can carry the host's upsell.
+ *   similarRefine  the "more/less like this" refinement calls `onLockedFeature`. Separate from
+ *                  `findSimilar` because a host may sell them apart — michi did, for a month.
  *   colorSearch    advisory only — the colour entry point is already host-supplied via
  *                  `onColorSearch`, so hosts branch there (michi swaps tri-colour for the simple
  *                  energy picker). Listed here so a host can express the whole set in one place.
@@ -24,7 +28,7 @@
  */
 import type { ParsedQuery } from './query';
 /** A capability a host may lock. */
-export type BrowseFeature = 'sortByValue' | 'priceFilter' | 'similarRefine' | 'colorSearch';
+export type BrowseFeature = 'sortByValue' | 'priceFilter' | 'findSimilar' | 'similarRefine' | 'colorSearch';
 /** Stable display names, so hosts and the kit describe the same thing in upsells. */
 export declare const FEATURE_LABELS: Record<BrowseFeature, string>;
 /** Convenience: is `feature` locked for this host? */
