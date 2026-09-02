@@ -37,7 +37,12 @@ import type { CardSize } from './state';
 import { cardThumbUrl, ebayCardSearchUrl, ebaySearchUrl, productUrl, setShopUrl } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
-import { releaseTag, RELEASE_TAG_FONT_SIZE, RELEASE_TAG_LINE_HEIGHT } from './releaseTag';
+import {
+  releaseTag,
+  todayISO,
+  RELEASE_TAG_FONT_SIZE,
+  RELEASE_TAG_LINE_HEIGHT,
+} from './releaseTag';
 import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable, type SetMeta } from './search';
 import { similarAvailable } from './similar';
 import { resolveTheme, tileShadow, type BrowseTheme } from './theme';
@@ -178,11 +183,16 @@ export function RecentProducts({
 
   // Today (yyyy-mm-dd) for the upcoming/released split, and the release-window cutoff
   // `monthsBack` months earlier. Computed once (setMonth handles year rollover).
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  //
+  // LOCAL calendar date, via the same todayISO the release ladder defaults to. toISOString gives
+  // the UTC day, which is already tomorrow for a viewer west of UTC in the evening: the countdown
+  // here read one day shorter than the identical badge on a surface that let releaseTag pick its
+  // own today. Every consumer of a yyyy-mm-dd release date has to agree on which day it is.
+  const today = useMemo(() => todayISO(), []);
   const cutoff = useMemo(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - monthsBack);
-    return d.toISOString().slice(0, 10);
+    return todayISO(d);
   }, [monthsBack]);
 
   // Catalog-FREE data: without the catalog, fetch the same window from the public tables
