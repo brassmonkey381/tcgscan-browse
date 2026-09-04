@@ -1030,15 +1030,26 @@ export function CatalogBrowser({
   // notice is passive and easy to miss under a grid that still returned something.
   const themeTyped = parsed.fields.some((f) => f.key === 'theme');
   const themeLocked = themeTyped && isLocked(lockedFeatures, 'themeSearch');
-  const lastThemeNotified = useRef('');
+  // ONLY FOR A QUERY TYPED INTO THIS BROWSER. The search box is shared state, so a locked theme
+  // left in it on one screen is still there when a second browser mounts (the binder's card
+  // picker, say) — and firing the host's offer on mount for a query nobody typed just now sent a
+  // person to the plans page for tapping a pocket. The key seen at mount is taken as already
+  // dealt with; only a CHANGE after that reaches the host. The passive notice still shows.
+  const themeKey = themeLocked ? parsed.fields.filter((f) => f.key === 'theme').map((f) => f.value).join('|') : '';
+  const lastThemeNotified = useRef<string | null>(null);
   useEffect(() => {
-    if (!themeLocked) return;
-    const key = parsed.fields.filter((f) => f.key === 'theme').map((f) => f.value).join('|');
-    if (lastThemeNotified.current === key) return;
-    lastThemeNotified.current = key;
+    if (lastThemeNotified.current === null) {
+      lastThemeNotified.current = themeKey;
+      return;
+    }
+    if (!themeKey || lastThemeNotified.current === themeKey) {
+      if (!themeKey) lastThemeNotified.current = '';
+      return;
+    }
+    lastThemeNotified.current = themeKey;
     onLockedFeature?.('themeSearch');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themeLocked, parsed]);
+  }, [themeKey]);
   // What the lock dropped from what the user typed, so the UI can say so instead of appearing
   // to disagree with the query.
   const lockNotice = useMemo(

@@ -684,17 +684,27 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // notice is passive and easy to miss under a grid that still returned something.
     const themeTyped = parsed.fields.some((f) => f.key === 'theme');
     const themeLocked = themeTyped && isLocked(lockedFeatures, 'themeSearch');
-    const lastThemeNotified = useRef('');
+    // ONLY FOR A QUERY TYPED INTO THIS BROWSER. The search box is shared state, so a locked theme
+    // left in it on one screen is still there when a second browser mounts (the binder's card
+    // picker, say) — and firing the host's offer on mount for a query nobody typed just now sent a
+    // person to the plans page for tapping a pocket. The key seen at mount is taken as already
+    // dealt with; only a CHANGE after that reaches the host. The passive notice still shows.
+    const themeKey = themeLocked ? parsed.fields.filter((f) => f.key === 'theme').map((f) => f.value).join('|') : '';
+    const lastThemeNotified = useRef(null);
     useEffect(() => {
-        if (!themeLocked)
+        if (lastThemeNotified.current === null) {
+            lastThemeNotified.current = themeKey;
             return;
-        const key = parsed.fields.filter((f) => f.key === 'theme').map((f) => f.value).join('|');
-        if (lastThemeNotified.current === key)
+        }
+        if (!themeKey || lastThemeNotified.current === themeKey) {
+            if (!themeKey)
+                lastThemeNotified.current = '';
             return;
-        lastThemeNotified.current = key;
+        }
+        lastThemeNotified.current = themeKey;
         onLockedFeature?.('themeSearch');
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [themeLocked, parsed]);
+    }, [themeKey]);
     // What the lock dropped from what the user typed, so the UI can say so instead of appearing
     // to disagree with the query.
     const lockNotice = useMemo(() => lockedQueryNotice({ ...parsed, sort: effSort.field, sortDir: effSort.dir }, lockedFeatures), 
