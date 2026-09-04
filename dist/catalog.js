@@ -151,6 +151,12 @@ class LocalCatalog {
                 imageMedium: raw_c.image_medium,
                 imageSubstituted: raw_c.imageSubstituted,
                 language: raw_c.language === 'ja' ? 'ja' : 'en',
+                // Sparse on purpose: the publisher omits both keys entirely for uncaptioned cards, so
+                // leaving them undefined here (rather than defaulting to '' / []) keeps the absence
+                // visible to `fieldValues`, which is what makes a `theme:` miss mean "no caption" and
+                // not "empty caption".
+                sceneCaption: raw_c.scene_caption,
+                sceneTags: raw_c.scene_tags,
             };
             this.cards.set(card.id, card);
             this.all.push(card);

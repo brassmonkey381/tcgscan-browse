@@ -4,6 +4,7 @@ export const FEATURE_LABELS = {
     priceFilter: 'Price filters',
     findSimilar: 'Find similar',
     similarRefine: 'Refine by similarity',
+    themeSearch: 'Artwork theme search',
     colorSearch: 'Colour search',
 };
 /** Convenience: is `feature` locked for this host? */
@@ -22,7 +23,8 @@ export function applyFeatureLocks(parsed, locked) {
         return parsed;
     const dropValueSort = isLocked(locked, 'sortByValue') && parsed.sort === 'value';
     const dropPrice = isLocked(locked, 'priceFilter') && (parsed.minPrice !== null || parsed.maxPrice !== null);
-    if (!dropValueSort && !dropPrice)
+    const dropTheme = isLocked(locked, 'themeSearch') && parsed.fields.some((f) => f.key === 'theme');
+    if (!dropValueSort && !dropPrice && !dropTheme)
         return parsed;
     return {
         ...parsed,
@@ -30,6 +32,10 @@ export function applyFeatureLocks(parsed, locked) {
         sortDir: dropValueSort ? 'desc' : parsed.sortDir,
         minPrice: dropPrice ? null : parsed.minPrice,
         maxPrice: dropPrice ? null : parsed.maxPrice,
+        // Stripped from the RUN query, so a locked user cannot reach the server field by typing it.
+        // The cold path forwards parsed.fields straight into p_fields, which is exactly why this has
+        // to happen here rather than in the UI.
+        fields: dropTheme ? parsed.fields.filter((f) => f.key !== 'theme') : parsed.fields,
     };
 }
 /**
@@ -45,6 +51,9 @@ export function lockedQueryNotice(parsed, locked) {
         dropped.push('sort by value');
     if (isLocked(locked, 'priceFilter') && (parsed.minPrice !== null || parsed.maxPrice !== null)) {
         dropped.push('price filters');
+    }
+    if (isLocked(locked, 'themeSearch') && parsed.fields.some((f) => f.key === 'theme')) {
+        dropped.push('artwork theme search');
     }
     if (!dropped.length)
         return '';

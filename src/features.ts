@@ -19,6 +19,10 @@
  *                  was, where one that answers the tap can carry the host's upsell.
  *   similarRefine  the "more/less like this" refinement calls `onLockedFeature`. Separate from
  *                  `findSimilar` because a host may sell them apart — michi did, for a month.
+ *   themeSearch    typed `theme:` / `art:` / `scene:` constraints are stripped from the query.
+ *                  The search still runs, just without the artwork constraint -- the same
+ *                  degrade as `priceFilter`, and for the same reason: a query that returns
+ *                  nothing teaches less than one that returns the unfiltered set plus a notice.
  *   colorSearch    advisory only — the colour entry point is already host-supplied via
  *                  `onColorSearch`, so hosts branch there (michi swaps tri-colour for the simple
  *                  energy picker). Listed here so a host can express the whole set in one place.
@@ -34,6 +38,7 @@ export type BrowseFeature =
   | 'priceFilter'
   | 'findSimilar'
   | 'similarRefine'
+  | 'themeSearch'
   | 'colorSearch';
 
 /** Stable display names, so hosts and the kit describe the same thing in upsells. */
@@ -42,6 +47,7 @@ export const FEATURE_LABELS: Record<BrowseFeature, string> = {
   priceFilter: 'Price filters',
   findSimilar: 'Find similar',
   similarRefine: 'Refine by similarity',
+  themeSearch: 'Artwork theme search',
   colorSearch: 'Colour search',
 };
 
@@ -64,13 +70,18 @@ export function applyFeatureLocks(
   if (!locked?.length) return parsed;
   const dropValueSort = isLocked(locked, 'sortByValue') && parsed.sort === 'value';
   const dropPrice = isLocked(locked, 'priceFilter') && (parsed.minPrice !== null || parsed.maxPrice !== null);
-  if (!dropValueSort && !dropPrice) return parsed;
+  const dropTheme = isLocked(locked, 'themeSearch') && parsed.fields.some((f) => f.key === 'theme');
+  if (!dropValueSort && !dropPrice && !dropTheme) return parsed;
   return {
     ...parsed,
     sort: dropValueSort ? 'relevance' : parsed.sort,
     sortDir: dropValueSort ? 'desc' : parsed.sortDir,
     minPrice: dropPrice ? null : parsed.minPrice,
     maxPrice: dropPrice ? null : parsed.maxPrice,
+    // Stripped from the RUN query, so a locked user cannot reach the server field by typing it.
+    // The cold path forwards parsed.fields straight into p_fields, which is exactly why this has
+    // to happen here rather than in the UI.
+    fields: dropTheme ? parsed.fields.filter((f) => f.key !== 'theme') : parsed.fields,
   };
 }
 
@@ -88,6 +99,9 @@ export function lockedQueryNotice(
   if (isLocked(locked, 'sortByValue') && parsed.sort === 'value') dropped.push('sort by value');
   if (isLocked(locked, 'priceFilter') && (parsed.minPrice !== null || parsed.maxPrice !== null)) {
     dropped.push('price filters');
+  }
+  if (isLocked(locked, 'themeSearch') && parsed.fields.some((f) => f.key === 'theme')) {
+    dropped.push('artwork theme search');
   }
   if (!dropped.length) return '';
   // Lead with the label so there is no verb to agree with ("price filters is…" was the naive

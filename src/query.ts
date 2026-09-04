@@ -36,6 +36,11 @@ export interface QueryableCard {
   /** Printing language ('en' | 'ja') — addressed by the `lang:` field. Optional so a caller with
    *  a pre-language card shape still satisfies the interface; absent is treated as English. */
   language?: string;
+  /** Artwork scene caption — addressed by `theme:` / `art:` only. Optional: sparse in the
+   *  catalog, and a host with no captions at all still satisfies the interface. */
+  sceneCaption?: string;
+  /** Scene tags from the same pass, searched together with the caption. */
+  sceneTags?: string[];
 }
 
 /** The attribute a `sort:` orders by. Direction is carried separately (see SortDir). */
@@ -80,7 +85,10 @@ export type FieldKey =
   | 'stage'
   | 'year'
   | 'num'
-  | 'lang';
+  | 'lang'
+  /** Artwork scene: the caption and tags a vision model wrote about the picture.
+   *  Deliberately NOT part of the bare-word haystack — see `lowered`. */
+  | 'theme';
 
 const FIELD_ALIASES: Record<string, FieldKey> = {
   artist: 'artist',
@@ -93,6 +101,9 @@ const FIELD_ALIASES: Record<string, FieldKey> = {
   stage: 'stage',
   year: 'year',
   num: 'num',
+  theme: 'theme',
+  art: 'theme',
+  scene: 'theme',
   number: 'num',
   lang: 'lang',
   language: 'lang',
@@ -311,6 +322,12 @@ function fieldValues(card: QueryableCard, key: FieldKey): string[] {
     case 'artist':
     case 'illustrator':
       return card.illustrator ? [card.illustrator] : [];
+    case 'theme':
+      // Caption and tags as separate values: `fieldValues` semantics are "match ANY", so
+      // `theme:sunset` hits whether the word is in the sentence or in the tag list.
+      return card.sceneCaption || card.sceneTags?.length
+        ? [card.sceneCaption ?? '', ...(card.sceneTags ?? [])].filter(Boolean)
+        : [];
     case 'rarity':
       return card.rarity ? [card.rarity] : [];
     case 'set':
@@ -393,6 +410,10 @@ function lowered(card: QueryableCard): { name: string; entity: string[]; contain
   if (!entry) {
     entry = {
       name: card.name.toLowerCase(),
+      // sceneCaption/sceneTags are deliberately ABSENT here. They are reachable only through
+      // `theme:` — folding caption prose into the bare-word haystack would mean "energy" (336
+      // captions, and also a card type) and "powerful" (215) start dragging in hundreds of
+      // unrelated cards on ordinary searches.
       entity: [card.illustrator, card.rarity, card.stage, card.number, ...card.types, ...card.cardType]
         .filter(Boolean)
         .map((v) => v.toLowerCase()),
@@ -646,6 +667,7 @@ export const QUERY_MANUAL: ManualSection[] = [
     title: 'Target a field',
     rows: [
       ['artist:arita', 'illustrator (alias: illustrator:)'],
+      ['theme:underwater', 'what the artwork shows (aliases: art:, scene:)'],
       ['rarity:"holo rare"', 'rarity, quote multi-word values'],
       ['set:base', 'set name'],
       ['series:sword', 'series name'],

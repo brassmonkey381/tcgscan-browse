@@ -35,6 +35,11 @@ export interface QueryableCard {
     /** Printing language ('en' | 'ja') — addressed by the `lang:` field. Optional so a caller with
      *  a pre-language card shape still satisfies the interface; absent is treated as English. */
     language?: string;
+    /** Artwork scene caption — addressed by `theme:` / `art:` only. Optional: sparse in the
+     *  catalog, and a host with no captions at all still satisfies the interface. */
+    sceneCaption?: string;
+    /** Scene tags from the same pass, searched together with the caption. */
+    sceneTags?: string[];
 }
 /** The attribute a `sort:` orders by. Direction is carried separately (see SortDir). */
 export type QuerySort = 'relevance' | 'value' | 'date' | 'name' | 'hp' | 'stage';
@@ -68,7 +73,10 @@ export interface ParsedQuery {
     /** True when anything beyond bare name words is present. */
     hasStructure: boolean;
 }
-export type FieldKey = 'artist' | 'illustrator' | 'rarity' | 'set' | 'series' | 'type' | 'stage' | 'year' | 'num' | 'lang';
+export type FieldKey = 'artist' | 'illustrator' | 'rarity' | 'set' | 'series' | 'type' | 'stage' | 'year' | 'num' | 'lang'
+/** Artwork scene: the caption and tags a vision model wrote about the picture.
+ *  Deliberately NOT part of the bare-word haystack — see `lowered`. */
+ | 'theme';
 /** `rarity:"holo rare"` / `artist:arita` / `hp>200` / `>$100` / bare words — quote-aware. */
 export declare function parseQuery(raw: string): ParsedQuery;
 /**

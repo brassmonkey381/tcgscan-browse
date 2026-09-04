@@ -26,6 +26,9 @@ const FIELD_ALIASES = {
     stage: 'stage',
     year: 'year',
     num: 'num',
+    theme: 'theme',
+    art: 'theme',
+    scene: 'theme',
     number: 'num',
     lang: 'lang',
     language: 'lang',
@@ -250,6 +253,12 @@ function fieldValues(card, key) {
         case 'artist':
         case 'illustrator':
             return card.illustrator ? [card.illustrator] : [];
+        case 'theme':
+            // Caption and tags as separate values: `fieldValues` semantics are "match ANY", so
+            // `theme:sunset` hits whether the word is in the sentence or in the tag list.
+            return card.sceneCaption || card.sceneTags?.length
+                ? [card.sceneCaption ?? '', ...(card.sceneTags ?? [])].filter(Boolean)
+                : [];
         case 'rarity':
             return card.rarity ? [card.rarity] : [];
         case 'set':
@@ -328,6 +337,10 @@ function lowered(card) {
     if (!entry) {
         entry = {
             name: card.name.toLowerCase(),
+            // sceneCaption/sceneTags are deliberately ABSENT here. They are reachable only through
+            // `theme:` — folding caption prose into the bare-word haystack would mean "energy" (336
+            // captions, and also a card type) and "powerful" (215) start dragging in hundreds of
+            // unrelated cards on ordinary searches.
             entity: [card.illustrator, card.rarity, card.stage, card.number, ...card.types, ...card.cardType]
                 .filter(Boolean)
                 .map((v) => v.toLowerCase()),
@@ -539,6 +552,7 @@ export const QUERY_MANUAL = [
         title: 'Target a field',
         rows: [
             ['artist:arita', 'illustrator (alias: illustrator:)'],
+            ['theme:underwater', 'what the artwork shows (aliases: art:, scene:)'],
             ['rarity:"holo rare"', 'rarity, quote multi-word values'],
             ['set:base', 'set name'],
             ['series:sword', 'series name'],
