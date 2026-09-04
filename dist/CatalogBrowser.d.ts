@@ -149,6 +149,12 @@ interface CatalogBrowserProps {
      */
     onColorSearch?: () => void;
     /**
+     * "Theme Search" button beside Tri-Color: the host runs its demonstration (a ready-made result
+     * set via `sendBrowseCommand({type:'showCards'})`, ungated) or its own picker. Omitted → no
+     * button. Same row, same NEW! nudge, same glow.
+     */
+    onThemeSearch?: () => void;
+    /**
      * The set of card ids the user OWNS (own ≥ 1 copy) — a collection-aware overlay layer the app
      * supplies (kit stays source-agnostic). When present: card tiles show an owned check, set tiles
      * show "X / Y · N%" completion, and the `have:` search token (have:yes / have:no, via the
@@ -162,5 +168,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

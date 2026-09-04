@@ -23,7 +23,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  */
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
+import { AccessibilityInfo, Animated, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, sortCards, } from './query';
 import { CARD_GRID_GAP, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, cardGridColumns, cardTierFor, cardTileWidthFor, } from './cardSize';
 import { browseState, subscribeBrowseCommand } from './state';
@@ -310,7 +310,7 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, ownedIds, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, ownedIds, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
     // given, else the session-sticky browseState. The toolbar toggle overrides locally; when the
@@ -333,10 +333,11 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     useImageManifest();
     // Catalog load phase — drives the search-source badge (on-device vs, later, server search).
     const catalogStatus = useCatalogStatus();
-    // Oscillating "NEW!" nudge next to the Tri-Color Search button (only while it's shown).
+    // Oscillating "NEW!" nudge next to the Tri-Color / Theme Search buttons (only while shown).
     const newWiggle = useRef(new Animated.Value(0)).current;
+    const featureRow = !!(onColorSearch || onThemeSearch);
     useEffect(() => {
-        if (!onColorSearch)
+        if (!featureRow)
             return;
         const anim = Animated.loop(Animated.sequence([
             Animated.timing(newWiggle, { toValue: 1, duration: 1600, useNativeDriver: false }),
@@ -344,7 +345,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         ]));
         anim.start();
         return () => anim.stop();
-    }, [onColorSearch, newWiggle]);
+    }, [featureRow, newWiggle]);
     // Printing-language bound: an explicit `languages` prop PINS this browser; otherwise it follows
     // the shared, user-facing preference (the EN/JP toggle). Subscribing here is what makes a toggle
     // rendered anywhere on the screen re-run this browser's searches.
@@ -678,6 +679,22 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const effParsed = useMemo(() => applyFeatureLocks({ ...parsed, sort: effSort.field, sortDir: effSort.dir }, lockedFeatures), 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [parsed, effSort, lockedFeatures?.join(',')]);
+    // A LOCKED theme: TYPED INTO THE BOX. The notice below says it was dropped; this also tells the
+    // host, once per distinct query, so it can put its own offer in front of the person — the
+    // notice is passive and easy to miss under a grid that still returned something.
+    const themeTyped = parsed.fields.some((f) => f.key === 'theme');
+    const themeLocked = themeTyped && isLocked(lockedFeatures, 'themeSearch');
+    const lastThemeNotified = useRef('');
+    useEffect(() => {
+        if (!themeLocked)
+            return;
+        const key = parsed.fields.filter((f) => f.key === 'theme').map((f) => f.value).join('|');
+        if (lastThemeNotified.current === key)
+            return;
+        lastThemeNotified.current = key;
+        onLockedFeature?.('themeSearch');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [themeLocked, parsed]);
     // What the lock dropped from what the user typed, so the UI can say so instead of appearing
     // to disagree with the query.
     const lockNotice = useMemo(() => lockedQueryNotice({ ...parsed, sort: effSort.field, sortDir: effSort.dir }, lockedFeatures), 
@@ -1391,7 +1408,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 setFocusIdx(-1);
         },
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [onColorSearch ? (_jsxs(View, { style: styles.triColorRow, children: [_jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: "Tri-Color Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Tri-Color Search" }) }), _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: compactSearch ? styles.searchCol : styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: "Tri-Color Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Tri-Color Search" }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: "Theme Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Theme Search" }) }) })) : null, _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: compactSearch ? styles.searchCol : styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
                                     ? `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards`
                                     : `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, compactSearch ? styles.searchFull : styles.searchFlex] }), _jsxs(View, { style: compactSearch ? styles.searchTools : styles.searchToolsInline, children: [compactSearch ? (_jsx(Text, { style: styles.searchHint, numberOfLines: 1, children: QUERY_HINT })) : null, languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), savedList.length > 0 ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, isCardLevel || !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
@@ -1563,6 +1580,49 @@ function FacetBar({ styles, options, selection, activeCount, open, onToggleOpen,
                                 return (_jsx(Pressable, { onPress: () => onToggleValue(facet.key, v), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: v }) }, v));
                             }) })] }, facet.key))) })) : null] }));
 }
+/**
+ * A HALO THAT SWELLS EVERY NOW AND THEN. Opacity and transform only, so it runs on the native
+ * driver and never touches layout; three pulses on arrival, then one every half minute or so,
+ * which is often enough to catch the eye and rare enough not to nag. Off under reduced motion.
+ */
+function Glow({ children, styles, delay = 0 }) {
+    const pulse = useRef(new Animated.Value(0)).current;
+    const [reduceMotion, setReduceMotion] = useState(false);
+    useEffect(() => {
+        let active = true;
+        AccessibilityInfo.isReduceMotionEnabled()
+            .then((on) => active && setReduceMotion(on))
+            .catch(() => { });
+        return () => {
+            active = false;
+        };
+    }, []);
+    useEffect(() => {
+        if (reduceMotion)
+            return;
+        const one = () => Animated.sequence([
+            Animated.timing(pulse, { toValue: 1, duration: 1500, useNativeDriver: true }),
+            Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: true }),
+        ]);
+        const anim = Animated.sequence([
+            Animated.delay(delay),
+            Animated.loop(Animated.sequence([one(), Animated.delay(2200)]), { iterations: 3 }),
+            Animated.loop(Animated.sequence([Animated.delay(28000), one()])),
+        ]);
+        anim.start();
+        return () => {
+            anim.stop();
+            pulse.setValue(0);
+        };
+    }, [pulse, reduceMotion, delay]);
+    return (_jsxs(View, { style: styles.glowWrap, children: [_jsx(Animated.View, { pointerEvents: "none", style: [
+                    styles.glowHalo,
+                    {
+                        opacity: pulse.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0, 0.45, 0] }),
+                        transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] }) }],
+                    },
+                ] }), children] }));
+}
 function makeStyles(t, taxTileHeight) {
     return StyleSheet.create({
         browser: { flex: 1 },
@@ -1653,6 +1713,10 @@ function makeStyles(t, taxTileHeight) {
         },
         triColorBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.3, color: t.accentText },
         newNudge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+        // The glow: a ring the button's own colour, sitting outside it, that swells and fades every
+        // so often — light coming off the button rather than the button changing size.
+        glowWrap: { position: 'relative' },
+        glowHalo: { position: 'absolute', top: -4, right: -4, bottom: -4, left: -4, borderRadius: 13, backgroundColor: t.accent },
         newArrow: { fontSize: 18, fontWeight: '900', color: t.accent, lineHeight: 20 },
         newText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.5, color: t.accent },
         // search manual panel

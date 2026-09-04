@@ -23,6 +23,7 @@
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   FlatList,
   type LayoutChangeEvent,
@@ -576,6 +577,12 @@ interface CatalogBrowserProps {
    */
   onColorSearch?: () => void;
   /**
+   * "Theme Search" button beside Tri-Color: the host runs its demonstration (a ready-made result
+   * set via `sendBrowseCommand({type:'showCards'})`, ungated) or its own picker. Omitted → no
+   * button. Same row, same NEW! nudge, same glow.
+   */
+  onThemeSearch?: () => void;
+  /**
    * The set of card ids the user OWNS (own ≥ 1 copy) — a collection-aware overlay layer the app
    * supplies (kit stays source-agnostic). When present: card tiles show an owned check, set tiles
    * show "X / Y · N%" completion, and the `have:` search token (have:yes / have:no, via the
@@ -614,6 +621,7 @@ export function CatalogBrowser({
   cardSize: cardSizeProp,
   onCardSizeChange,
   onColorSearch,
+  onThemeSearch,
   ownedIds,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
@@ -638,10 +646,11 @@ export function CatalogBrowser({
   // Catalog load phase — drives the search-source badge (on-device vs, later, server search).
   const catalogStatus = useCatalogStatus();
 
-  // Oscillating "NEW!" nudge next to the Tri-Color Search button (only while it's shown).
+  // Oscillating "NEW!" nudge next to the Tri-Color / Theme Search buttons (only while shown).
   const newWiggle = useRef(new Animated.Value(0)).current;
+  const featureRow = !!(onColorSearch || onThemeSearch);
   useEffect(() => {
-    if (!onColorSearch) return;
+    if (!featureRow) return;
     const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(newWiggle, { toValue: 1, duration: 1600, useNativeDriver: false }),
@@ -650,7 +659,7 @@ export function CatalogBrowser({
     );
     anim.start();
     return () => anim.stop();
-  }, [onColorSearch, newWiggle]);
+  }, [featureRow, newWiggle]);
 
   // Printing-language bound: an explicit `languages` prop PINS this browser; otherwise it follows
   // the shared, user-facing preference (the EN/JP toggle). Subscribing here is what makes a toggle
@@ -1016,6 +1025,20 @@ export function CatalogBrowser({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [parsed, effSort, lockedFeatures?.join(',')],
   );
+  // A LOCKED theme: TYPED INTO THE BOX. The notice below says it was dropped; this also tells the
+  // host, once per distinct query, so it can put its own offer in front of the person — the
+  // notice is passive and easy to miss under a grid that still returned something.
+  const themeTyped = parsed.fields.some((f) => f.key === 'theme');
+  const themeLocked = themeTyped && isLocked(lockedFeatures, 'themeSearch');
+  const lastThemeNotified = useRef('');
+  useEffect(() => {
+    if (!themeLocked) return;
+    const key = parsed.fields.filter((f) => f.key === 'theme').map((f) => f.value).join('|');
+    if (lastThemeNotified.current === key) return;
+    lastThemeNotified.current = key;
+    onLockedFeature?.('themeSearch');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeLocked, parsed]);
   // What the lock dropped from what the user typed, so the UI can say so instead of appearing
   // to disagree with the query.
   const lockNotice = useMemo(
@@ -1789,11 +1812,22 @@ export function CatalogBrowser({
   return (
     <View style={styles.browser} onLayout={onLayout}>
       <View style={styles.controls}>
-        {onColorSearch ? (
+        {featureRow ? (
           <View style={styles.triColorRow}>
-            <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel="Tri-Color Search">
-              <Text style={styles.triColorBtnText}>Tri-Color Search</Text>
-            </Pressable>
+            {onColorSearch ? (
+              <Glow styles={styles}>
+                <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel="Tri-Color Search">
+                  <Text style={styles.triColorBtnText}>Tri-Color Search</Text>
+                </Pressable>
+              </Glow>
+            ) : null}
+            {onThemeSearch ? (
+              <Glow styles={styles} delay={900}>
+                <Pressable onPress={onThemeSearch} style={styles.triColorBtn} accessibilityLabel="Theme Search">
+                  <Text style={styles.triColorBtnText}>Theme Search</Text>
+                </Pressable>
+              </Glow>
+            ) : null}
             <Animated.View
               style={[styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }]}
               pointerEvents="none">
@@ -2733,6 +2767,58 @@ function FacetBar({
   );
 }
 
+/**
+ * A HALO THAT SWELLS EVERY NOW AND THEN. Opacity and transform only, so it runs on the native
+ * driver and never touches layout; three pulses on arrival, then one every half minute or so,
+ * which is often enough to catch the eye and rare enough not to nag. Off under reduced motion.
+ */
+function Glow({ children, styles, delay = 0 }: { children: ReactNode; styles: ReturnType<typeof makeStyles>; delay?: number }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    let active = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((on) => active && setReduceMotion(on))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (reduceMotion) return;
+    const one = () =>
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 1500, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ]);
+    const anim = Animated.sequence([
+      Animated.delay(delay),
+      Animated.loop(Animated.sequence([one(), Animated.delay(2200)]), { iterations: 3 }),
+      Animated.loop(Animated.sequence([Animated.delay(28000), one()])),
+    ]);
+    anim.start();
+    return () => {
+      anim.stop();
+      pulse.setValue(0);
+    };
+  }, [pulse, reduceMotion, delay]);
+  return (
+    <View style={styles.glowWrap}>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.glowHalo,
+          {
+            opacity: pulse.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0, 0.45, 0] }),
+            transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] }) }],
+          },
+        ]}
+      />
+      {children}
+    </View>
+  );
+}
+
 function makeStyles(t: BrowseTheme, taxTileHeight: number) {
   return StyleSheet.create({
     browser: { flex: 1 },
@@ -2823,6 +2909,10 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     },
     triColorBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.3, color: t.accentText },
     newNudge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+    // The glow: a ring the button's own colour, sitting outside it, that swells and fades every
+    // so often — light coming off the button rather than the button changing size.
+    glowWrap: { position: 'relative' },
+    glowHalo: { position: 'absolute', top: -4, right: -4, bottom: -4, left: -4, borderRadius: 13, backgroundColor: t.accent },
     newArrow: { fontSize: 18, fontWeight: '900', color: t.accent, lineHeight: 20 },
     newText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.5, color: t.accent },
     // search manual panel
