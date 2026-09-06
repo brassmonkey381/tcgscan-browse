@@ -5,7 +5,7 @@
  * Our catalog is cards + sets (no sealed-product records), so a "product" is a SET,
  * previewed by a montage of its chase cards. Three clickable, infinite carousels:
  *   1. Sets  — released in the last `monthsBack` months + all upcoming (future-dated),
- *              shown `setsPerView` (4) at a time.
+ *              shown `setsPerView` (two to four, by width) at a time.
  *   2. Upcoming cards    — not yet released, soonest first.
  *   3. Recently released — newest released cards.
  * Each carousel loops (the arrows wrap around) and shows a fixed number at a time.
@@ -51,7 +51,13 @@ import type { CardAction } from './actions';
 /** Gap between tiles in a carousel (px). */
 const TILE_GAP = 10;
 /** Set tiles shown at once (the reference wall's cadence). */
-const SETS_PER_VIEW = 4;
+/** The most set tiles a row shows, and the width a tile wants before the row gives up one. Four
+ *  was fixed whatever the width, so a phone showed four 70px tiles with the countdown badge lying
+ *  across the logo; now a phone shows two, a tablet three, a desktop four. */
+const SETS_PER_VIEW_MAX = 4;
+const SET_TILE_TARGET_W = 210;
+/** Below this tile width the release badge steps down a size so it stays inside the montage. */
+const NARROW_SET_TILE_W = 170;
 /** Card carousels pack to roughly this tile width, then show as many as fit. */
 const CARD_TARGET_W = 104;
 /** Double-tap window (ms) for the carousel arrows: a second tap within this jumps to start/end. */
@@ -374,6 +380,7 @@ export function RecentProducts({
   // Scale the per-tile target by the shared size norm (bigger size → wider target → fewer/larger).
   const cardTarget = CARD_TARGET_W * CARD_SIZE_SCALE[cardSize];
   const cardsPerView = width > 0 ? Math.max(2, Math.min(9, Math.floor(width / cardTarget))) : 4;
+  const setsPerView = width > 0 ? Math.max(2, Math.min(SETS_PER_VIEW_MAX, Math.floor((width + TILE_GAP) / (SET_TILE_TARGET_W + TILE_GAP)))) : SETS_PER_VIEW_MAX;
 
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
 
@@ -498,7 +505,7 @@ export function RecentProducts({
             <View
               style={[styles.badge, tag.kind === 'countdown' && styles.badgeCountdown]}
               pointerEvents="none">
-              <Text style={styles.badgeText}>{tag.label}</Text>
+              <Text style={[styles.badgeText, tileWidth < NARROW_SET_TILE_W && styles.badgeTextNarrow]}>{tag.label}</Text>
             </View>
           );
         })()}
@@ -590,7 +597,7 @@ export function RecentProducts({
           <Text style={styles.subHeader}>Sets</Text>
           <Carousel
             items={setTiles}
-            visible={SETS_PER_VIEW}
+            visible={setsPerView}
             keyOf={(t) => t.set.id}
             renderItem={renderSet}
             styles={styles}
@@ -881,6 +888,9 @@ function makeStyles(t: BrowseTheme) {
     },
     // The countdown is the one that expires, so it gets the loudest treatment on the tile.
     badgeCountdown: { backgroundColor: t.danger },
+    // A narrow tile (phone) cannot hold "10 Days To-Go" at the full size without the badge
+    // covering the cards it sits on.
+    badgeTextNarrow: { fontSize: 11, lineHeight: 13 },
     badgeText: {
       color: t.accentText,
       fontSize: RELEASE_TAG_FONT_SIZE,

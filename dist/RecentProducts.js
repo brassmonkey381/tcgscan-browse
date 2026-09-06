@@ -6,7 +6,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * Our catalog is cards + sets (no sealed-product records), so a "product" is a SET,
  * previewed by a montage of its chase cards. Three clickable, infinite carousels:
  *   1. Sets  — released in the last `monthsBack` months + all upcoming (future-dated),
- *              shown `setsPerView` (4) at a time.
+ *              shown `setsPerView` (two to four, by width) at a time.
  *   2. Upcoming cards    — not yet released, soonest first.
  *   3. Recently released — newest released cards.
  * Each carousel loops (the arrows wrap around) and shows a fixed number at a time.
@@ -36,7 +36,13 @@ import { resolveTheme, tileShadow } from './theme';
 /** Gap between tiles in a carousel (px). */
 const TILE_GAP = 10;
 /** Set tiles shown at once (the reference wall's cadence). */
-const SETS_PER_VIEW = 4;
+/** The most set tiles a row shows, and the width a tile wants before the row gives up one. Four
+ *  was fixed whatever the width, so a phone showed four 70px tiles with the countdown badge lying
+ *  across the logo; now a phone shows two, a tablet three, a desktop four. */
+const SETS_PER_VIEW_MAX = 4;
+const SET_TILE_TARGET_W = 210;
+/** Below this tile width the release badge steps down a size so it stays inside the montage. */
+const NARROW_SET_TILE_W = 170;
 /** Card carousels pack to roughly this tile width, then show as many as fit. */
 const CARD_TARGET_W = 104;
 /** Double-tap window (ms) for the carousel arrows: a second tap within this jumps to start/end. */
@@ -239,6 +245,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     // Scale the per-tile target by the shared size norm (bigger size → wider target → fewer/larger).
     const cardTarget = CARD_TARGET_W * CARD_SIZE_SCALE[cardSize];
     const cardsPerView = width > 0 ? Math.max(2, Math.min(9, Math.floor(width / cardTarget))) : 4;
+    const setsPerView = width > 0 ? Math.max(2, Math.min(SETS_PER_VIEW_MAX, Math.floor((width + TILE_GAP) / (SET_TILE_TARGET_W + TILE_GAP)))) : SETS_PER_VIEW_MAX;
     const [actionCard, setActionCard] = useState(null);
     const open = (url) => {
         if (url)
@@ -314,7 +321,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
                         const tag = releaseTag(t.set.releaseDate, today);
                         if (!tag)
                             return null;
-                        return (_jsx(View, { style: [styles.badge, tag.kind === 'countdown' && styles.badgeCountdown], pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, children: tag.label }) }));
+                        return (_jsx(View, { style: [styles.badge, tag.kind === 'countdown' && styles.badgeCountdown], pointerEvents: "none", children: _jsx(Text, { style: [styles.badgeText, tileWidth < NARROW_SET_TILE_W && styles.badgeTextNarrow], children: tag.label }) }));
                     })()] }), _jsxs(View, { style: styles.tileFooter, children: [_jsxs(View, { style: styles.tileFooterLeft, children: [_jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
                                     .filter(Boolean)
                                     .join(' · ') }), storeLinks(t.shopUrl, ebaySearchUrl(t.set.name))] }), t.set.coverUri ? (_jsx(Image, { source: { uri: t.set.coverUri }, style: styles.tileLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `logo-${t.set.id}`, transition: 100 })) : null] })] }));
@@ -323,7 +330,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     // logo + name + date, styled like the Sealed carousel's set headers. Tapping opens the set.
     const renderCardHeader = (set, upcoming) => (_jsxs(Pressable, { style: styles.cardHeader, onPress: onOpenSet ? () => onOpenSet(set) : undefined, accessibilityRole: onOpenSet ? 'button' : undefined, accessibilityLabel: onOpenSet ? `Browse ${set.name}${upcoming ? ' (upcoming)' : ''}` : undefined, children: [_jsx(Text, { style: [styles.cardHeaderKicker, upcoming && styles.cardHeaderKickerUpcoming], children: releaseTag(set.releaseDate)?.label ?? 'NEW SET' }), _jsx(Text, { style: styles.cardHeaderName, numberOfLines: 3, children: set.name }), set.releaseDate ? _jsx(Text, { style: styles.cardHeaderDate, children: formatSetDate(set.releaseDate) }) : null, set.coverUri ? (_jsx(Image, { source: { uri: set.coverUri }, style: styles.cardHeaderLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `ch-logo-${set.id}`, transition: 100 })) : null] }));
     const renderCardRow = (row) => row.kind === 'header' ? renderCardHeader(row.set, row.upcoming) : renderCard(row.card);
-    return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [title ? _jsx(Text, { style: styles.header, children: title }) : null, setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Sets" }), _jsx(Carousel, { items: setTiles, visible: SETS_PER_VIEW, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, cardRows.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Cards" }), _jsx(Carousel, { items: cardRows, visible: cardsPerView, keyOf: (r) => r.key, renderItem: renderCardRow, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
+    return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [title ? _jsx(Text, { style: styles.header, children: title }) : null, setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Sets" }), _jsx(Carousel, { items: setTiles, visible: setsPerView, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, cardRows.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Cards" }), _jsx(Carousel, { items: cardRows, visible: cardsPerView, keyOf: (r) => r.key, renderItem: renderCardRow, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
 }
 /**
  * A clickable, infinite carousel: shows `visible` items at once, and the arrows step by
@@ -474,6 +481,9 @@ function makeStyles(t) {
         },
         // The countdown is the one that expires, so it gets the loudest treatment on the tile.
         badgeCountdown: { backgroundColor: t.danger },
+        // A narrow tile (phone) cannot hold "10 Days To-Go" at the full size without the badge
+        // covering the cards it sits on.
+        badgeTextNarrow: { fontSize: 11, lineHeight: 13 },
         badgeText: {
             color: t.accentText,
             fontSize: RELEASE_TAG_FONT_SIZE,
