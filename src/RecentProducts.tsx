@@ -522,8 +522,9 @@ export function RecentProducts({
           </Text>
           {storeLinks(t.shopUrl, ebaySearchUrl(t.set.name))}
         </View>
-        {t.set.coverUri ? (
-          // The set's official logo fills the footer's free corner.
+        {t.set.coverUri && tileWidth >= NARROW_SET_TILE_W ? (
+          // The set's official logo fills the footer's free corner. On a narrow tile there is no
+          // free corner: the logo sat on the name and the shop links, so the montage names the set.
           <Image
             source={{ uri: t.set.coverUri }}
             style={styles.tileLogo}
