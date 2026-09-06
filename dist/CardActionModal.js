@@ -11,15 +11,27 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  */
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { resolveLabel } from './actions';
 import { evolutionNeighbors } from './catalog';
 import { cardThumbUrl } from './config';
 import { formatUsd } from './prices';
 import { fetchCardDetail } from './search';
 import { lightTheme } from './theme';
+/**
+ * THE INSPECTION IMAGE IS AT LEAST AS BIG AS AN "L" GRID TILE. The sheet used to cap the image at
+ * 340px tall, which on a 63:88 card is 243px wide: smaller than the tiles it was opened from at
+ * the L size, so "look closer" showed less. The cap now follows the viewport instead (most of
+ * its height, so the facts and actions below still fit without the sheet scrolling on a laptop),
+ * and the sheet is wide enough for the 640px inspection tier to be worth loading.
+ */
+const SHEET_MAX_WIDTH = 460;
+const IMAGE_VIEWPORT_FRACTION = 0.6;
+const IMAGE_MAX_HEIGHT = 640;
 export function CardActionModal({ card, actions, value, onClose, theme = lightTheme }) {
     const styles = makeStyles(theme);
+    const { height: windowHeight } = useWindowDimensions();
+    const imageMaxHeight = Math.min(IMAGE_MAX_HEIGHT, Math.round(windowHeight * IMAGE_VIEWPORT_FRACTION));
     // 640px webp (inspection tier), resolved by id via the image manifest.
     const uri = cardThumbUrl(card.id, 640);
     const facts = [
@@ -56,7 +68,7 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
         .join('   ');
     // Primary first, then the rest — order within each group preserved.
     const ordered = [...actions].sort((a, b) => Number(b.kind === 'primary') - Number(a.kind === 'primary'));
-    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsxs(Pressable, { style: styles.sheet, onPress: () => { }, children: [_jsx(View, { style: styles.imageWrap, children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 120 })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "no image" }) })) }), _jsx(Text, { style: styles.name, numberOfLines: 2, children: card.name }), facts.map((f) => (_jsx(Text, { style: styles.fact, numberOfLines: 1, children: f }, f))), evoLine ? (_jsx(Text, { style: styles.evo, numberOfLines: 1, children: evoLine })) : null, card.imageSubstituted ? (_jsx(Text, { style: styles.caveat, children: "This image may differ slightly from the real card, it could carry a stamp, overlay, or signature we missed." })) : null, _jsxs(View, { style: styles.actions, children: [ordered.map((action) => {
+    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsxs(Pressable, { style: styles.sheet, onPress: () => { }, children: [_jsx(View, { style: [styles.imageWrap, { maxHeight: imageMaxHeight }], children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 120 })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "no image" }) })) }), _jsx(Text, { style: styles.name, numberOfLines: 2, children: card.name }), facts.map((f) => (_jsx(Text, { style: styles.fact, numberOfLines: 1, children: f }, f))), evoLine ? (_jsx(Text, { style: styles.evo, numberOfLines: 1, children: evoLine })) : null, card.imageSubstituted ? (_jsx(Text, { style: styles.caveat, children: "This image may differ slightly from the real card, it could carry a stamp, overlay, or signature we missed." })) : null, _jsxs(View, { style: styles.actions, children: [ordered.map((action) => {
                                 const primary = action.kind === 'primary';
                                 const destructive = action.kind === 'destructive';
                                 return (_jsx(Pressable, { style: [styles.action, primary && styles.actionPrimary], 
@@ -82,7 +94,9 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
  */
 export function MultiCardActionModal({ cards, onAddAll, addAllLabel = 'Add all to a binder', onFindSimilarAll, onMoreLikeAll, onLessLikeAll, onClose, theme = lightTheme, }) {
     const styles = makeStyles(theme);
-    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsxs(Pressable, { style: styles.sheet, onPress: () => { }, children: [_jsx(View, { style: styles.imageWrap, children: _jsx(ScrollView, { contentContainerStyle: styles.multiGrid, children: cards.map((c) => {
+    const { height: windowHeight } = useWindowDimensions();
+    const imageMaxHeight = Math.min(IMAGE_MAX_HEIGHT, Math.round(windowHeight * IMAGE_VIEWPORT_FRACTION));
+    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsxs(Pressable, { style: styles.sheet, onPress: () => { }, children: [_jsx(View, { style: [styles.imageWrap, { maxHeight: imageMaxHeight }], children: _jsx(ScrollView, { contentContainerStyle: styles.multiGrid, children: cards.map((c) => {
                                 const uri = cardThumbUrl(c.id, 245);
                                 return (_jsx(View, { style: styles.multiThumb, children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 80 })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "\u2014" }) })) }, c.id));
                             }) }) }), _jsxs(Text, { style: styles.name, numberOfLines: 1, children: [cards.length, " cards selected"] }), _jsxs(View, { style: styles.actions, children: [onAddAll ? (_jsx(Pressable, { style: [styles.action, styles.actionPrimary], onPress: () => {
@@ -110,7 +124,7 @@ function makeStyles(t) {
         },
         sheet: {
             width: '100%',
-            maxWidth: 340,
+            maxWidth: SHEET_MAX_WIDTH,
             borderRadius: 14,
             backgroundColor: t.background,
             padding: 14,
@@ -119,7 +133,8 @@ function makeStyles(t) {
         imageWrap: {
             width: '100%',
             aspectRatio: 63 / 88,
-            maxHeight: 340,
+            // maxHeight is set per render from the viewport (see CardActionModal).
+            alignSelf: 'center',
             borderRadius: 10,
             overflow: 'hidden',
             backgroundColor: t.imagePlaceholder,

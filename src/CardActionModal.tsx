@@ -10,7 +10,7 @@
  */
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import type { CardAction } from './actions';
 import { resolveLabel } from './actions';
@@ -30,8 +30,21 @@ interface CardActionModalProps {
   theme?: BrowseTheme;
 }
 
+/**
+ * THE INSPECTION IMAGE IS AT LEAST AS BIG AS AN "L" GRID TILE. The sheet used to cap the image at
+ * 340px tall, which on a 63:88 card is 243px wide: smaller than the tiles it was opened from at
+ * the L size, so "look closer" showed less. The cap now follows the viewport instead (most of
+ * its height, so the facts and actions below still fit without the sheet scrolling on a laptop),
+ * and the sheet is wide enough for the 640px inspection tier to be worth loading.
+ */
+const SHEET_MAX_WIDTH = 460;
+const IMAGE_VIEWPORT_FRACTION = 0.6;
+const IMAGE_MAX_HEIGHT = 640;
+
 export function CardActionModal({ card, actions, value, onClose, theme = lightTheme }: CardActionModalProps) {
   const styles = makeStyles(theme);
+  const { height: windowHeight } = useWindowDimensions();
+  const imageMaxHeight = Math.min(IMAGE_MAX_HEIGHT, Math.round(windowHeight * IMAGE_VIEWPORT_FRACTION));
   // 640px webp (inspection tier), resolved by id via the image manifest.
   const uri = cardThumbUrl(card.id, 640);
   const facts = [
@@ -75,7 +88,7 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
       <Pressable style={styles.backdrop} onPress={onClose}>
         {/* stopPropagation wrapper so taps inside the sheet don't dismiss */}
         <Pressable style={styles.sheet} onPress={() => {}}>
-          <View style={styles.imageWrap}>
+          <View style={[styles.imageWrap, { maxHeight: imageMaxHeight }]}>
             {uri ? (
               <Image source={{ uri }} style={styles.image} contentFit="contain" transition={120} />
             ) : (
@@ -174,11 +187,13 @@ export function MultiCardActionModal({
   theme?: BrowseTheme;
 }) {
   const styles = makeStyles(theme);
+  const { height: windowHeight } = useWindowDimensions();
+  const imageMaxHeight = Math.min(IMAGE_MAX_HEIGHT, Math.round(windowHeight * IMAGE_VIEWPORT_FRACTION));
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
-          <View style={styles.imageWrap}>
+          <View style={[styles.imageWrap, { maxHeight: imageMaxHeight }]}>
             <ScrollView contentContainerStyle={styles.multiGrid}>
               {cards.map((c) => {
                 const uri = cardThumbUrl(c.id, 245);
@@ -270,7 +285,7 @@ function makeStyles(t: BrowseTheme) {
     },
     sheet: {
       width: '100%',
-      maxWidth: 340,
+      maxWidth: SHEET_MAX_WIDTH,
       borderRadius: 14,
       backgroundColor: t.background,
       padding: 14,
@@ -279,7 +294,8 @@ function makeStyles(t: BrowseTheme) {
     imageWrap: {
       width: '100%',
       aspectRatio: 63 / 88,
-      maxHeight: 340,
+      // maxHeight is set per render from the viewport (see CardActionModal).
+      alignSelf: 'center',
       borderRadius: 10,
       overflow: 'hidden',
       backgroundColor: t.imagePlaceholder,
