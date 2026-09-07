@@ -52,6 +52,7 @@ interface SearchRow {
   score: number;
   total_count: number | string;
   language?: string | null; // 'en' | 'ja' (added to search_cards at the EN+JP cutover)
+  full_art_kind?: string | null; // optional: the server ranks by it itself; carried when present
 }
 
 /** Map an RPC row to a CatalogCard so it renders through the same tile/sheet as warm results. */
@@ -77,6 +78,7 @@ function rowToCard(r: SearchRow): CatalogCard {
     evolvesFrom: r.evolves_from ?? '',
     evolutionLine: r.evolution_line ?? [],
     language: r.language === 'ja' ? 'ja' : 'en',
+    fullArtKind: r.full_art_kind ?? '',
   };
 }
 

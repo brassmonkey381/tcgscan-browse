@@ -44,6 +44,9 @@ export interface CatalogCard {
     /** Short scene tags from the same pass ("underwater", "sunset", "crowd"). Same coverage as
      *  sceneCaption; searched together with it. */
     sceneTags?: string[];
+    /** The pipeline's `full_art_kind`: special_illustration_rare | illustration_rare |
+     *  named_full_art | double_rare | measured | ''. The themed ranking bands on it. */
+    fullArtKind: string;
     /** Printing language: 'en' (English) | 'ja' (Japanese). Defaults 'en' when a
      *  legacy/EN-only source omits it. Drives the language badge + facet. */
     language: CardLanguage;
@@ -148,6 +151,7 @@ export interface RawCard {
     language?: 'en' | 'ja';
     scene_caption?: string;
     scene_tags?: string[];
+    full_art_kind?: string;
 }
 export interface RawSet {
     id: number | string;

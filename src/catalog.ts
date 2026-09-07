@@ -66,6 +66,9 @@ export interface CatalogCard {
   /** Short scene tags from the same pass ("underwater", "sunset", "crowd"). Same coverage as
    *  sceneCaption; searched together with it. */
   sceneTags?: string[];
+  /** The pipeline's `full_art_kind`: special_illustration_rare | illustration_rare |
+   *  named_full_art | double_rare | measured | ''. The themed ranking bands on it. */
+  fullArtKind: string;
   /** Printing language: 'en' (English) | 'ja' (Japanese). Defaults 'en' when a
    *  legacy/EN-only source omits it. Drives the language badge + facet. */
   language: CardLanguage;
@@ -183,6 +186,7 @@ export interface RawCard {
   language?: 'en' | 'ja'; // printing language (combined EN+JP catalog); defaults 'en'
   scene_caption?: string; // artwork scene caption (sparse — captioned printings only)
   scene_tags?: string[]; // scene tags from the same pass (sparse, same cards)
+  full_art_kind?: string; // how much of the card is the picture (see CatalogCard.fullArtKind)
 }
 export interface RawSet {
   id: number | string;
@@ -357,6 +361,7 @@ class LocalCatalog implements Catalog {
         // not "empty caption".
         sceneCaption: raw_c.scene_caption,
         sceneTags: raw_c.scene_tags,
+        fullArtKind: raw_c.full_art_kind ?? '',
       };
       this.cards.set(card.id, card);
       this.all.push(card);

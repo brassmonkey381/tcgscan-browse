@@ -40,6 +40,12 @@ export interface QueryableCard {
     sceneCaption?: string;
     /** Scene tags from the same pass, searched together with the caption. */
     sceneTags?: string[];
+    /**
+     * How much of the card is the picture: 'special_illustration_rare', 'illustration_rare',
+     * 'named_full_art', 'double_rare', 'measured', or '' (the pipeline's `full_art_kind`). Read by
+     * the themed ranking only — see runQuery.
+     */
+    fullArtKind?: string;
 }
 /** The attribute a `sort:` orders by. Direction is carried separately (see SortDir). */
 export type QuerySort = 'relevance' | 'value' | 'date' | 'name' | 'hp' | 'stage';
@@ -93,7 +99,8 @@ export declare function scoreCard(card: QueryableCard, q: ParsedQuery, priceOf: 
 export declare function matchCard(card: QueryableCard, q: ParsedQuery, priceOf: (id: string) => number): boolean;
 /**
  * The one-call search: filter + rank + cap. Relevance = score desc (stable
- * within ties); explicit sort:value/newest/name overrides.
+ * within ties); explicit sort:value/newest/name overrides. A theme:/art: query
+ * bands by artwork kind first (see inside).
  */
 export declare function runQuery<T extends QueryableCard>(cards: T[], q: ParsedQuery, priceOf: (id: string) => number, limit?: number, ownedIds?: ReadonlySet<string>): T[];
 /** Order results per the query's sort field + direction (relevance = input order). */

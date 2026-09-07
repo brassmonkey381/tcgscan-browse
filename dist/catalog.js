@@ -157,6 +157,7 @@ class LocalCatalog {
                 // not "empty caption".
                 sceneCaption: raw_c.scene_caption,
                 sceneTags: raw_c.scene_tags,
+                fullArtKind: raw_c.full_art_kind ?? '',
             };
             this.cards.set(card.id, card);
             this.all.push(card);

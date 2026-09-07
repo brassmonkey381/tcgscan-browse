@@ -423,9 +423,16 @@ export function scoreCard(card, q, priceOf, opts) {
 export function matchCard(card, q, priceOf) {
     return scoreCard(card, q, priceOf) > 0;
 }
+/** The themed-search band per `full_art_kind`: the server's comparator, verbatim. Unlisted → 2. */
+const ART_BAND = {
+    special_illustration_rare: 0,
+    illustration_rare: 0,
+    named_full_art: 1,
+};
 /**
  * The one-call search: filter + rank + cap. Relevance = score desc (stable
- * within ties); explicit sort:value/newest/name overrides.
+ * within ties); explicit sort:value/newest/name overrides. A theme:/art: query
+ * bands by artwork kind first (see inside).
  */
 export function runQuery(cards, q, priceOf, limit = 200, ownedIds) {
     // Flag which bare words are really card names, so their set/series matches don't pollute.
@@ -437,8 +444,18 @@ export function runQuery(cards, q, priceOf, limit = 200, ownedIds) {
             scored.push({ card, score: s });
     }
     if (q.sort === 'relevance') {
+        // THEMED SEARCHES RANK THE PICTURE FIRST. `theme:ocean` is a search for artwork, and an
+        // Illustration Rare or Special Illustration Rare IS the artwork — the card is the picture.
+        // A named "(Full Art)" shows a character on a backdrop; everything else shows a frame. The
+        // server's `search_cards` (tcgscan-data migration 42) bands by `full_art_kind` under exactly
+        // two conditions, mirrored here so warm and cold search agree: a theme:/art: field is
+        // present, and the sort is relevance (an explicit sort:name/value/date/hp/stage is the person
+        // asking for something specific and is left alone). Without the band, 77 ocean results
+        // opened on twelve Ultra Rare full arts with the sixty IR/SIR matches underneath them.
+        const themed = q.fields.some((f) => f.key === 'theme');
+        const band = (c) => (themed ? (ART_BAND[c.fullArtKind ?? ''] ?? 2) : 0);
         // Tiebreak by id so this matches the server's `search_cards` ordering exactly (warm == cold).
-        scored.sort((a, b) => b.score - a.score || a.card.id.localeCompare(b.card.id));
+        scored.sort((a, b) => band(a.card) - band(b.card) || b.score - a.score || a.card.id.localeCompare(b.card.id));
         return scored.slice(0, limit).map((s) => s.card);
     }
     return sortCards(scored.map((s) => s.card), q, priceOf).slice(0, limit);
