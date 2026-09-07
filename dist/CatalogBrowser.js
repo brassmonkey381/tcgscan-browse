@@ -23,7 +23,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  */
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
+import { AccessibilityInfo, Animated, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
 import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, sortCards, } from './query';
 import { CARD_GRID_GAP, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, cardGridColumns, cardTierFor, cardTileWidthFor, } from './cardSize';
 import { browseState, subscribeBrowseCommand } from './state';
@@ -107,6 +107,15 @@ const SIZE_OPTIONS = [
  * comfortably in the compact branch; a 768pt tablet or a split-screen desktop pane stays wide.
  */
 const COMPACT_SEARCH_W = 500;
+/**
+ * Below this width the toolbar goes COMPACT: every facet is a dropdown chip and Sort is one too,
+ * so the whole control strip is one or two wrapping rows instead of a stack of horizontally
+ * scrolling chip rows, which on a phone were both tall and hard to scroll without also scrolling
+ * the page. Above it, facets with up to INLINE_FACET_MAX values stay as inline chips (one tap,
+ * every value visible) and only the long ones (Set) become dropdowns.
+ */
+const COMPACT_BAR_W = 720;
+const INLINE_FACET_MAX = 6;
 /** Stable array identity for the one sort the `sortByValue` lock covers (avoids a new array
  *  per render feeding SortBar's props). */
 const SORT_LOCKED_BY_VALUE = ['value'];
@@ -617,6 +626,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // pass; treating that as NOT compact keeps the wide layout as the default and avoids a visible
     // one-frame reflow on desktop, where the stacked form would otherwise flash first.
     const compactSearch = containerWidth > 0 && containerWidth < COMPACT_SEARCH_W;
+    const compactBar = containerWidth > 0 && containerWidth < COMPACT_BAR_W;
     const clearFilters = () => setSelection({});
     const q = cardQueryDebounced.trim();
     const searching = q.length > 0;
@@ -1420,13 +1430,13 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     };
     return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: "Tri-Color Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Tri-Color Search" }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: "Theme Search", children: _jsx(Text, { style: styles.triColorBtnText, children: "Theme Search" }) }) })) : null, _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: compactSearch ? styles.searchCol : styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
                                     ? `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards`
-                                    : `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, compactSearch ? styles.searchFull : styles.searchFlex] }), _jsxs(View, { style: compactSearch ? styles.searchTools : styles.searchToolsInline, children: [compactSearch ? (_jsx(Text, { style: styles.searchHint, numberOfLines: 1, children: QUERY_HINT })) : null, languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), savedList.length > 0 ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, isCardLevel || !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+                                    : `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, compactSearch ? styles.searchFull : styles.searchFlex] }), _jsxs(View, { style: compactSearch ? styles.searchTools : styles.searchToolsInline, children: [compactSearch ? (_jsx(Text, { style: styles.searchHint, numberOfLines: 1, children: QUERY_HINT })) : null, languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), savedList.length > 0 ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
                         !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [warm
                                         ? filteredCards.length === viewCards.length
                                             ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
                                             : `${filteredCards.length} of ${viewCards.length}`
-                                        : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarTo.injected
+                                        : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsxs(View, { style: styles.metaEnd, children: [warm ? (_jsxs(View, { style: styles.modeInline, accessibilityLabel: "On-device search, instant", children: [_jsx(View, { style: [styles.modeDot, styles.modeDotReady] }), _jsx(Text, { style: styles.modeText, children: "On-device" })] })) : null, _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarTo.injected
                                             ? similarCards.length > 0
                                                 ? `${filteredCards.length} cards · ${similarTo.name}`
                                                 : similarBusy
@@ -1446,16 +1456,16 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                             // Locked analytics: accent-ring the tab so the gated perk draws the eye.
                             const spotlight = t === 'analytics' && !!analyticsLocked && !on;
                             return (_jsx(Pressable, { onPress: () => setAnalyticsTab(t), style: [styles.tab, on && styles.tabOn, spotlight && styles.tabSpotlight], children: _jsx(Text, { style: [styles.tabText, on && styles.tabTextOn, spotlight && styles.tabTextSpotlight], children: label }) }, t));
-                        }) })) : null, isCardLevel && !analyticsView && (facetOptions.length > 0 || !!onColorSearch || !!ownedIds) ? (_jsx(FacetBar, { styles: styles, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, 
+                        }) })) : null, isCardLevel && !analyticsView ? (_jsx(FacetBar, { styles: styles, compact: compactBar, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, 
                         // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
                         // up while a color result set (similarTo.injected) is what's on screen.
                         onColorSearch: onColorSearch, colorActive: !!similarTo?.injected, 
                         // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
                         // injecting the have: token so it composes with the rest of the filters.
-                        onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned })) : null, !isCardLevel && !analyticsView && level !== 'coldidle' ? (_jsx(TaxonomyBar, { styles: styles, onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, size: cardSize, onPickSize: pickCardSize })) : null, isCardLevel && !analyticsView ? (_jsx(SortBar, { styles: styles, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize, lockedSorts: isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined })) : null, isCardLevel && canMultiSelect && !analyticsView ? (_jsx(View, { style: styles.selectRow, children: multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
+                        onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, trailing: _jsx(SortControls, { styles: styles, compact: compactBar, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize, lockedSorts: isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined }), children: canMultiSelect ? (multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
                                         setMultiSelectMode(false);
                                         clearSelection();
-                                    }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.selectToggle, children: _jsx(Text, { style: styles.selectToggleText, children: "\u2295 Select multiple" }) })) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
+                                    }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.facetToggle, children: _jsx(Text, { style: styles.facetToggleText, children: "\u2295 Select multiple" }) }))) : null })) : null, !isCardLevel && !analyticsView && level !== 'coldidle' ? (_jsx(TaxonomyBar, { styles: styles, onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, size: cardSize, onPickSize: pickCardSize })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
                 // Gated (e.g. guest): the app-supplied CTA replaces the analytics panels.
                 analyticsLocked) : catalog && analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : catalog && analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : (_jsx(FlatList, { ref: listRef, 
                 // Keyboard nav scrolls by index; a miss (virtualized far jump) is non-fatal.
@@ -1533,18 +1543,45 @@ function Breadcrumb({ styles, crumbs }) {
     return (_jsx(View, { style: styles.bcBar, children: crumbs.map((c, i) => (_jsxs(View, { style: styles.bcItem, children: [i > 0 ? _jsx(Text, { style: styles.bcSep, children: "\u203A" }) : null, _jsx(Text, { onPress: c.onPress, style: [styles.bcCrumb, c.onPress ? styles.bcLink : styles.bcCurrent], numberOfLines: 1, children: c.label })] }, `${c.label}-${i}`))) }));
 }
 /**
- * Compact sort control: a "Sort" label, a horizontal row of single-select field chips, and a
- * ↑/↓ direction toggle (hidden for Relevance, which has no direction). Mirrors the FacetBar chip
- * look. The chips drive the SAME sort the search box's `sort:` grammar sets.
+ * Sort + S/M/L, the right half of the control strip. Wide: the sort fields as chips (one tap,
+ * every option visible) with the ↑/↓ toggle. Compact: one dropdown chip naming the current sort,
+ * because six chips plus a toggle plus three size chips is wider than a phone, and a chip row that
+ * scrolls sideways inside a page that scrolls down is the interaction people complained about.
  */
-function SortBar({ styles, field, dir, onPick, onToggleDir, size, onPickSize, lockedSorts, }) {
-    return (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: "Sort" }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, style: styles.sortScroll, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: SORT_OPTIONS.map((o) => {
+function SortControls({ styles, compact, field, dir, onPick, onToggleDir, size, onPickSize, lockedSorts, }) {
+    const current = SORT_OPTIONS.find((o) => o.field === field)?.label ?? 'Relevance';
+    return (_jsxs(View, { style: styles.controlsEnd, children: [compact ? (_jsx(PickerMenu, { styles: styles, label: "Sort", title: "Sort by", summary: current, items: SORT_OPTIONS.map((o) => ({
+                    key: o.field,
+                    label: o.label,
+                    locked: lockedSorts?.includes(o.field),
+                })), selected: [field], onToggle: (key) => onPick(key), closeOnPick: true })) : (_jsx(View, { style: styles.chipRowInline, children: SORT_OPTIONS.map((o) => {
                     const on = o.field === field;
                     // Locked fields stay VISIBLE (hiding them makes the plan difference invisible, and the
                     // chip is the natural place to discover it) but read as locked and route to the upsell.
                     const lock = lockedSorts?.includes(o.field);
                     return (_jsx(Pressable, { onPress: () => onPick(o.field), style: [styles.chip, on && styles.chipOn, lock && styles.chipLocked], accessibilityState: { disabled: lock }, accessibilityLabel: lock ? `${o.label} (not included on your plan)` : o.label, children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn, lock && styles.chipTextLocked], numberOfLines: 1, children: lock ? `${o.label} ⋯` : o.label }) }, o.field));
-                }) }), field !== 'relevance' ? (_jsx(Pressable, { onPress: onToggleDir, style: styles.sortDir, accessibilityLabel: "Toggle sort direction", children: _jsx(Text, { style: styles.sortDirText, children: dir === 'asc' ? '↑' : '↓' }) })) : null, _jsx(SizeChips, { styles: styles, size: size, onPickSize: onPickSize })] }));
+                }) })), field !== 'relevance' ? (_jsx(Pressable, { onPress: onToggleDir, style: styles.sortDir, accessibilityLabel: "Toggle sort direction", children: _jsx(Text, { style: styles.sortDirText, children: dir === 'asc' ? '↑' : '↓' }) })) : null, _jsx(SizeChips, { styles: styles, size: size, onPickSize: onPickSize })] }));
+}
+/**
+ * A DROPDOWN CHIP. Reads "Label · Summary ▾" and opens a sheet listing the values, each a row
+ * with a check; multi-select toggles rows and stays open, single-select (closeOnPick) picks and
+ * closes. Used for every facet on a compact screen, for long facets (Set) on any screen, and for
+ * Sort when compact. A Modal rather than a popover because RN has no popover and the sheet is the
+ * same on all three platforms; it is dismissed by the backdrop, Done, or the hardware back.
+ */
+function PickerMenu({ styles, label, title, summary, items, selected, onToggle, closeOnPick, onClear, }) {
+    const [open, setOpen] = useState(false);
+    const n = selected.length;
+    const active = closeOnPick ? false : n > 0;
+    const text = summary ?? (n === 0 ? '' : n === 1 ? items.find((i) => i.key === selected[0])?.label ?? selected[0] : `${n}`);
+    return (_jsxs(_Fragment, { children: [_jsx(Pressable, { onPress: () => setOpen(true), style: [styles.facetToggle, active && styles.facetToggleOn], accessibilityRole: "button", accessibilityLabel: `${label}${text ? `: ${text}` : ''}`, children: _jsxs(Text, { style: [styles.facetToggleText, active && styles.facetToggleTextOn], numberOfLines: 1, children: [label, text ? ` · ${text}` : '', ' ▾'] }) }), open ? (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: () => setOpen(false), children: _jsx(Pressable, { style: styles.menuBackdrop, onPress: () => setOpen(false), children: _jsxs(Pressable, { style: styles.menuSheet, onPress: () => { }, children: [_jsxs(View, { style: styles.menuHead, children: [_jsx(Text, { style: styles.menuTitle, children: title ?? label }), onClear && n > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] }), _jsx(ScrollView, { style: styles.menuList, keyboardShouldPersistTaps: "handled", children: items.map((it) => {
+                                    const on = selected.includes(it.key);
+                                    return (_jsxs(Pressable, { onPress: () => {
+                                            onToggle(it.key);
+                                            if (closeOnPick)
+                                                setOpen(false);
+                                        }, style: [styles.menuItem, on && styles.menuItemOn], accessibilityRole: closeOnPick ? 'radio' : 'checkbox', accessibilityState: { checked: on, disabled: it.locked }, children: [_jsx(Text, { style: [styles.menuItemText, on && styles.menuItemTextOn, it.locked && styles.chipTextLocked], numberOfLines: 1, children: it.locked ? `${it.label} ⋯` : it.label }), _jsx(Text, { style: [styles.menuCheck, on && styles.menuItemTextOn], children: on ? '✓' : '' })] }, it.key));
+                                }) }), !closeOnPick ? (_jsx(Pressable, { onPress: () => setOpen(false), style: styles.menuDone, children: _jsx(Text, { style: styles.menuDoneText, children: "Done" }) })) : null] }) }) })) : null] }));
 }
 /**
  * The S / M / L control. Extracted because it now rides TWO rows: the sort bar at card level, and
@@ -1580,15 +1617,27 @@ function TaxonomyBar({ styles, onCycleOwned, ownedState, size, onPickSize, }) {
     return (_jsx(View, { style: styles.facetBar, children: _jsxs(View, { style: styles.facetHeader, children: [onCycleOwned ? (_jsx(CollectionChip, { styles: styles, onCycle: onCycleOwned, state: ownedState ?? null })) : null, _jsx(View, { style: styles.taxBarSpacer }), _jsx(SizeChips, { styles: styles, size: size, onPickSize: onPickSize })] }) }));
 }
 /**
- * Compact, expandable filter panel. Collapsed it's a single row (a Filters toggle + active
- * count + Clear); expanded it reveals one horizontal multi-select chip row per populated
- * facet — so it never eats the card viewport.
+ * The control strip and the filter panel under it.
+ *
+ * Collapsed it is one wrapping row: the Filters toggle (with the active count), Color,
+ * Collection, whatever the host puts in `children` (Select multiple), a spacer, and `trailing`
+ * (Sort + size). Open, the facets flow in a wrapping row of GROUPS rather than one horizontally
+ * scrolling row per facet: a facet with up to INLINE_FACET_MAX values shows its chips inline
+ * after its label, a longer one (Set, on a big series) is a dropdown chip, and on a compact screen
+ * every facet is a dropdown so the panel is two rows at most. Nothing scrolls sideways any more.
  */
-function FacetBar({ styles, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, onColorSearch, colorActive, onCycleOwned, ownedState, }) {
-    return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.facetHeader, children: [_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, activeCount > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', activeCount > 0 ? ` · ${activeCount}` : ''] }) }), onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: [styles.facetToggle, colorActive && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, colorActive && styles.facetToggleTextOn], children: "Color" }) })) : null, onCycleOwned ? (_jsx(CollectionChip, { styles: styles, onCycle: onCycleOwned, state: ownedState ?? null })) : null, activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] }), open ? (_jsx(View, { style: styles.facetRows, children: options.map(({ facet, values }) => (_jsxs(View, { style: styles.facetGroup, children: [_jsx(Text, { style: styles.facetLabel, children: facet.label }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: values.map((v) => {
-                                const on = (selection[facet.key] ?? []).includes(v);
+function FacetBar({ styles, compact, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, onColorSearch, colorActive, onCycleOwned, ownedState, trailing, children, }) {
+    const hasFacets = options.length > 0;
+    return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.controlsRow, children: [hasFacets ? (_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, activeCount > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', activeCount > 0 ? ` · ${activeCount}` : ''] }) })) : null, activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null, onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: [styles.facetToggle, colorActive && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, colorActive && styles.facetToggleTextOn], children: "Color" }) })) : null, onCycleOwned ? (_jsx(CollectionChip, { styles: styles, onCycle: onCycleOwned, state: ownedState ?? null })) : null, children, _jsx(View, { style: styles.controlsSpacer }), trailing] }), open && hasFacets ? (_jsx(View, { style: styles.facetFlow, children: options.map(({ facet, values }) => {
+                    const picked = selection[facet.key] ?? [];
+                    if (compact || values.length > INLINE_FACET_MAX) {
+                        return (_jsx(PickerMenu, { styles: styles, label: facet.label, items: values.map((v) => ({ key: v, label: v })), selected: picked, onToggle: (v) => onToggleValue(facet.key, v), onClear: () => picked.forEach((v) => onToggleValue(facet.key, v)) }, facet.key));
+                    }
+                    return (_jsxs(View, { style: styles.facetInline, children: [_jsx(Text, { style: styles.facetLabel, children: facet.label }), values.map((v) => {
+                                const on = picked.includes(v);
                                 return (_jsx(Pressable, { onPress: () => onToggleValue(facet.key, v), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: v }) }, v));
-                            }) })] }, facet.key))) })) : null] }));
+                            })] }, facet.key));
+                }) })) : null] }));
 }
 /**
  * A HALO THAT SWELLS EVERY NOW AND THEN. Opacity and transform only, so it runs on the native
@@ -1779,9 +1828,34 @@ function makeStyles(t, taxTileHeight) {
         facetToggleOn: { borderColor: t.accent },
         facetToggleText: { fontSize: 12, fontWeight: '600', color: t.subtext },
         facetToggleTextOn: { color: t.accent },
+        // The control strip: wraps, with a spacer that pushes Sort + size to the right edge on a wide
+        // screen and onto their own line on a narrow one.
+        controlsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+        controlsSpacer: { flexGrow: 1, flexBasis: 0, minWidth: 6 },
+        controlsEnd: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        chipRowInline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+        // The open filter panel: facet groups flow and wrap; each inline group is its label + chips.
+        facetFlow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, rowGap: 6 },
+        facetInline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingRight: 8 },
         facetRows: { gap: 4 },
         facetGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-        facetLabel: { fontSize: 11, fontWeight: '600', color: t.subtext, width: 58 },
+        facetLabel: { fontSize: 11, fontWeight: '600', color: t.subtext },
+        // The dropdown sheet a PickerMenu opens.
+        menuBackdrop: { flex: 1, backgroundColor: t.overlay, alignItems: 'center', justifyContent: 'center', padding: 20 },
+        menuSheet: { width: '100%', maxWidth: 360, maxHeight: '80%', borderRadius: 14, backgroundColor: t.background, padding: 10, gap: 6 },
+        menuHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6, paddingTop: 2 },
+        menuTitle: { fontSize: 14, fontWeight: '700', color: t.text },
+        menuList: { flexGrow: 0 },
+        menuItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 9, paddingHorizontal: 10, borderRadius: 9 },
+        menuItemOn: { backgroundColor: t.imagePlaceholder },
+        menuItemText: { fontSize: 13, color: t.text, flexShrink: 1 },
+        menuItemTextOn: { color: t.accent, fontWeight: '700' },
+        menuCheck: { fontSize: 13, fontWeight: '800', color: t.accent, width: 18, textAlign: 'right' },
+        menuDone: { alignItems: 'center', paddingVertical: 8, borderRadius: 9, backgroundColor: t.accent },
+        menuDoneText: { fontSize: 13, fontWeight: '700', color: t.accentText },
+        // The results row's right end: the on-device dot beside Clear.
+        metaEnd: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+        modeInline: { flexDirection: 'row', alignItems: 'center', gap: 5 },
         chipRow: { gap: 6, paddingRight: 8 },
         chip: {
             paddingHorizontal: 10,

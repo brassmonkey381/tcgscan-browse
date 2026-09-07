@@ -27,6 +27,7 @@ import {
   Animated,
   FlatList,
   type LayoutChangeEvent,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -197,6 +198,15 @@ const SIZE_OPTIONS: { size: CardSize; label: string }[] = [
  * comfortably in the compact branch; a 768pt tablet or a split-screen desktop pane stays wide.
  */
 const COMPACT_SEARCH_W = 500;
+/**
+ * Below this width the toolbar goes COMPACT: every facet is a dropdown chip and Sort is one too,
+ * so the whole control strip is one or two wrapping rows instead of a stack of horizontally
+ * scrolling chip rows, which on a phone were both tall and hard to scroll without also scrolling
+ * the page. Above it, facets with up to INLINE_FACET_MAX values stay as inline chips (one tap,
+ * every value visible) and only the long ones (Set) become dropdowns.
+ */
+const COMPACT_BAR_W = 720;
+const INLINE_FACET_MAX = 6;
 
 /** Stable array identity for the one sort the `sortByValue` lock covers (avoids a new array
  *  per render feeding SortBar's props). */
@@ -953,6 +963,7 @@ export function CatalogBrowser({
   // pass; treating that as NOT compact keeps the wide layout as the default and avoids a visible
   // one-frame reflow on desktop, where the stacked form would otherwise flash first.
   const compactSearch = containerWidth > 0 && containerWidth < COMPACT_SEARCH_W;
+  const compactBar = containerWidth > 0 && containerWidth < COMPACT_BAR_W;
 
   const clearFilters = () => setSelection({});
 
@@ -1924,7 +1935,10 @@ export function CatalogBrowser({
         ) : null}
         {/* Search-source badge: ⚡ on-device (catalog in memory) once warm, else ☁ server search
             with a tqdm-style download bar (% · MB · ETA) while the catalog loads. */}
-        {isCardLevel || !warm ? (
+        {/* While the catalog loads this is the progress readout and earns its row. Once warm it
+            becomes a dot at the end of the results row (below): "instant" is worth a word, not a
+            line, and the line was the first of five stacked above the first card. */}
+        {!warm ? (
           <View>
             <View style={styles.modeBadge}>
               <View style={[styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading]} />
@@ -1964,9 +1978,17 @@ export function CatalogBrowser({
               {' · '}
               {describeQuery(effParsed, viewCards)}
             </Text>
-            <Pressable onPress={() => onChangeQuery('')} hitSlop={8}>
-              <Text style={styles.clear}>Clear</Text>
-            </Pressable>
+            <View style={styles.metaEnd}>
+              {warm ? (
+                <View style={styles.modeInline} accessibilityLabel="On-device search, instant">
+                  <View style={[styles.modeDot, styles.modeDotReady]} />
+                  <Text style={styles.modeText}>On-device</Text>
+                </View>
+              ) : null}
+              <Pressable onPress={() => onChangeQuery('')} hitSlop={8}>
+                <Text style={styles.clear}>Clear</Text>
+              </Pressable>
+            </View>
           </View>
         ) : similarTo ? (
           <View style={styles.similarBar}>
@@ -2062,9 +2084,14 @@ export function CatalogBrowser({
             })}
           </View>
         ) : null}
-        {isCardLevel && !analyticsView && (facetOptions.length > 0 || !!onColorSearch || !!ownedIds) ? (
+        {/* ONE CONTROL STRIP. Filters, Color, Collection and Select multiple on the left; Sort and
+            S/M/L on the right; a spacer between that wraps the right half onto its own line when
+            the width runs out. This was five rows (badge, results, filters, sort, select), each
+            mostly empty; a browse should start with cards, not chrome. */}
+        {isCardLevel && !analyticsView ? (
           <FacetBar
             styles={styles}
+            compact={compactBar}
             options={facetOptions}
             selection={selection}
             activeCount={activeFilterCount}
@@ -2080,7 +2107,47 @@ export function CatalogBrowser({
             // injecting the have: token so it composes with the rest of the filters.
             onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
             ownedState={parsed.owned}
-          />
+            trailing={
+              <SortControls
+                styles={styles}
+                compact={compactBar}
+                field={effSort.field}
+                dir={effSort.dir}
+                onPick={pickSort}
+                onToggleDir={toggleSortDir}
+                size={cardSize}
+                onPickSize={pickCardSize}
+                lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
+              />
+            }>
+            {canMultiSelect ? (
+              multiSelectMode || selectedIds.length > 0 ? (
+                <>
+                  <Text style={styles.selectMeta} numberOfLines={1}>
+                    {selectedIds.length} selected{selectedIds.length < 2 ? ' · tap 2+' : ''}
+                  </Text>
+                  <Pressable
+                    disabled={selectedIds.length < 2}
+                    onPress={() => setMultiOpen(true)}
+                    style={[styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff]}>
+                    <Text style={styles.selectBtnText}>Continue →</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setMultiSelectMode(false);
+                      clearSelection();
+                    }}
+                    hitSlop={8}>
+                    <Text style={styles.clear}>Cancel</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <Pressable onPress={() => setMultiSelectMode(true)} style={styles.facetToggle}>
+                  <Text style={styles.facetToggleText}>⊕ Select multiple</Text>
+                </Pressable>
+              )
+            ) : null}
+          </FacetBar>
         ) : null}
         {/* Series/set levels get Collection + Size without waiting for a drill-down or a search. */}
         {!isCardLevel && !analyticsView && level !== 'coldidle' ? (
@@ -2091,47 +2158,6 @@ export function CatalogBrowser({
             size={cardSize}
             onPickSize={pickCardSize}
           />
-        ) : null}
-        {isCardLevel && !analyticsView ? (
-          <SortBar
-            styles={styles}
-            field={effSort.field}
-            dir={effSort.dir}
-            onPick={pickSort}
-            onToggleDir={toggleSortDir}
-            size={cardSize}
-            onPickSize={pickCardSize}
-            lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
-          />
-        ) : null}
-        {isCardLevel && canMultiSelect && !analyticsView ? (
-          <View style={styles.selectRow}>
-            {multiSelectMode || selectedIds.length > 0 ? (
-              <>
-                <Text style={styles.selectMeta} numberOfLines={1}>
-                  {selectedIds.length} selected{selectedIds.length < 2 ? ' · tap 2+' : ''}
-                </Text>
-                <Pressable
-                  disabled={selectedIds.length < 2}
-                  onPress={() => setMultiOpen(true)}
-                  style={[styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff]}>
-                  <Text style={styles.selectBtnText}>Continue →</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    setMultiSelectMode(false);
-                    clearSelection();
-                  }}
-                  hitSlop={8}>
-                  <Text style={styles.clear}>Cancel</Text>
-                </Pressable>
-              </>
-            ) : (
-              <Pressable onPress={() => setMultiSelectMode(true)} style={styles.selectToggle}>
-                <Text style={styles.selectToggleText}>⊕ Select multiple</Text>
-              </Pressable>
-            )}
-          </View>
         ) : null}
       </View>
 
@@ -2522,12 +2548,14 @@ function Breadcrumb({ styles, crumbs }: { styles: Styles; crumbs: Crumb[] }) {
 }
 
 /**
- * Compact sort control: a "Sort" label, a horizontal row of single-select field chips, and a
- * ↑/↓ direction toggle (hidden for Relevance, which has no direction). Mirrors the FacetBar chip
- * look. The chips drive the SAME sort the search box's `sort:` grammar sets.
+ * Sort + S/M/L, the right half of the control strip. Wide: the sort fields as chips (one tap,
+ * every option visible) with the ↑/↓ toggle. Compact: one dropdown chip naming the current sort,
+ * because six chips plus a toggle plus three size chips is wider than a phone, and a chip row that
+ * scrolls sideways inside a page that scrolls down is the interaction people complained about.
  */
-function SortBar({
+function SortControls({
   styles,
+  compact,
   field,
   dir,
   onPick,
@@ -2537,6 +2565,7 @@ function SortBar({
   lockedSorts,
 }: {
   styles: Styles;
+  compact: boolean;
   field: QuerySort;
   dir: SortDir;
   /** Sort fields the host has locked — rendered visibly locked, routed to the upsell on tap. */
@@ -2546,34 +2575,46 @@ function SortBar({
   size: CardSize;
   onPickSize: (size: CardSize) => void;
 }) {
+  const current = SORT_OPTIONS.find((o) => o.field === field)?.label ?? 'Relevance';
   return (
-    <View style={styles.facetGroup}>
-      <Text style={styles.facetLabel}>Sort</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.sortScroll}
-        contentContainerStyle={styles.chipRow}
-        keyboardShouldPersistTaps="handled">
-        {SORT_OPTIONS.map((o) => {
-          const on = o.field === field;
-          // Locked fields stay VISIBLE (hiding them makes the plan difference invisible, and the
-          // chip is the natural place to discover it) but read as locked and route to the upsell.
-          const lock = lockedSorts?.includes(o.field);
-          return (
-            <Pressable
-              key={o.field}
-              onPress={() => onPick(o.field)}
-              style={[styles.chip, on && styles.chipOn, lock && styles.chipLocked]}
-              accessibilityState={{ disabled: lock }}
-              accessibilityLabel={lock ? `${o.label} (not included on your plan)` : o.label}>
-              <Text style={[styles.chipText, on && styles.chipTextOn, lock && styles.chipTextLocked]} numberOfLines={1}>
-                {lock ? `${o.label} ⋯` : o.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+    <View style={styles.controlsEnd}>
+      {compact ? (
+        <PickerMenu
+          styles={styles}
+          label="Sort"
+          title="Sort by"
+          summary={current}
+          items={SORT_OPTIONS.map((o) => ({
+            key: o.field,
+            label: o.label,
+            locked: lockedSorts?.includes(o.field),
+          }))}
+          selected={[field]}
+          onToggle={(key) => onPick(key as QuerySort)}
+          closeOnPick
+        />
+      ) : (
+        <View style={styles.chipRowInline}>
+          {SORT_OPTIONS.map((o) => {
+            const on = o.field === field;
+            // Locked fields stay VISIBLE (hiding them makes the plan difference invisible, and the
+            // chip is the natural place to discover it) but read as locked and route to the upsell.
+            const lock = lockedSorts?.includes(o.field);
+            return (
+              <Pressable
+                key={o.field}
+                onPress={() => onPick(o.field)}
+                style={[styles.chip, on && styles.chipOn, lock && styles.chipLocked]}
+                accessibilityState={{ disabled: lock }}
+                accessibilityLabel={lock ? `${o.label} (not included on your plan)` : o.label}>
+                <Text style={[styles.chipText, on && styles.chipTextOn, lock && styles.chipTextLocked]} numberOfLines={1}>
+                  {lock ? `${o.label} ⋯` : o.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
       {field !== 'relevance' ? (
         <Pressable onPress={onToggleDir} style={styles.sortDir} accessibilityLabel="Toggle sort direction">
           <Text style={styles.sortDirText}>{dir === 'asc' ? '↑' : '↓'}</Text>
@@ -2581,6 +2622,98 @@ function SortBar({
       ) : null}
       <SizeChips styles={styles} size={size} onPickSize={onPickSize} />
     </View>
+  );
+}
+
+/**
+ * A DROPDOWN CHIP. Reads "Label · Summary ▾" and opens a sheet listing the values, each a row
+ * with a check; multi-select toggles rows and stays open, single-select (closeOnPick) picks and
+ * closes. Used for every facet on a compact screen, for long facets (Set) on any screen, and for
+ * Sort when compact. A Modal rather than a popover because RN has no popover and the sheet is the
+ * same on all three platforms; it is dismissed by the backdrop, Done, or the hardware back.
+ */
+function PickerMenu({
+  styles,
+  label,
+  title,
+  summary,
+  items,
+  selected,
+  onToggle,
+  closeOnPick,
+  onClear,
+}: {
+  styles: Styles;
+  label: string;
+  title?: string;
+  /** What the chip shows after the label; the count when several are picked. */
+  summary?: string;
+  items: { key: string; label: string; locked?: boolean }[];
+  selected: string[];
+  onToggle: (key: string) => void;
+  closeOnPick?: boolean;
+  onClear?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const n = selected.length;
+  const active = closeOnPick ? false : n > 0;
+  const text = summary ?? (n === 0 ? '' : n === 1 ? items.find((i) => i.key === selected[0])?.label ?? selected[0] : `${n}`);
+  return (
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={[styles.facetToggle, active && styles.facetToggleOn]}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}${text ? `: ${text}` : ''}`}>
+        <Text style={[styles.facetToggleText, active && styles.facetToggleTextOn]} numberOfLines={1}>
+          {label}
+          {text ? ` · ${text}` : ''}
+          {' ▾'}
+        </Text>
+      </Pressable>
+      {open ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+          <Pressable style={styles.menuBackdrop} onPress={() => setOpen(false)}>
+            <Pressable style={styles.menuSheet} onPress={() => {}}>
+              <View style={styles.menuHead}>
+                <Text style={styles.menuTitle}>{title ?? label}</Text>
+                {onClear && n > 0 ? (
+                  <Pressable onPress={onClear} hitSlop={8}>
+                    <Text style={styles.clear}>Clear</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <ScrollView style={styles.menuList} keyboardShouldPersistTaps="handled">
+                {items.map((it) => {
+                  const on = selected.includes(it.key);
+                  return (
+                    <Pressable
+                      key={it.key}
+                      onPress={() => {
+                        onToggle(it.key);
+                        if (closeOnPick) setOpen(false);
+                      }}
+                      style={[styles.menuItem, on && styles.menuItemOn]}
+                      accessibilityRole={closeOnPick ? 'radio' : 'checkbox'}
+                      accessibilityState={{ checked: on, disabled: it.locked }}>
+                      <Text style={[styles.menuItemText, on && styles.menuItemTextOn, it.locked && styles.chipTextLocked]} numberOfLines={1}>
+                        {it.locked ? `${it.label} ⋯` : it.label}
+                      </Text>
+                      <Text style={[styles.menuCheck, on && styles.menuItemTextOn]}>{on ? '✓' : ''}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              {!closeOnPick ? (
+                <Pressable onPress={() => setOpen(false)} style={styles.menuDone}>
+                  <Text style={styles.menuDoneText}>Done</Text>
+                </Pressable>
+              ) : null}
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
+    </>
   );
 }
 
@@ -2688,12 +2821,18 @@ interface FacetOption {
 }
 
 /**
- * Compact, expandable filter panel. Collapsed it's a single row (a Filters toggle + active
- * count + Clear); expanded it reveals one horizontal multi-select chip row per populated
- * facet — so it never eats the card viewport.
+ * The control strip and the filter panel under it.
+ *
+ * Collapsed it is one wrapping row: the Filters toggle (with the active count), Color,
+ * Collection, whatever the host puts in `children` (Select multiple), a spacer, and `trailing`
+ * (Sort + size). Open, the facets flow in a wrapping row of GROUPS rather than one horizontally
+ * scrolling row per facet: a facet with up to INLINE_FACET_MAX values shows its chips inline
+ * after its label, a longer one (Set, on a big series) is a dropdown chip, and on a compact screen
+ * every facet is a dropdown so the panel is two rows at most. Nothing scrolls sideways any more.
  */
 function FacetBar({
   styles,
+  compact,
   options,
   selection,
   activeCount,
@@ -2705,8 +2844,11 @@ function FacetBar({
   colorActive,
   onCycleOwned,
   ownedState,
+  trailing,
+  children,
 }: {
   styles: Styles;
+  compact: boolean;
   options: FacetOption[];
   selection: FacetSelection;
   activeCount: number;
@@ -2722,16 +2864,28 @@ function FacetBar({
   onCycleOwned?: () => void;
   /** Current collection filter: true=owned, false=missing, null=all (drives the chip label). */
   ownedState?: boolean | null;
+  /** The right end of the strip (Sort + size). */
+  trailing?: ReactNode;
+  /** Extra left-side controls (the host's Select multiple). */
+  children?: ReactNode;
 }) {
+  const hasFacets = options.length > 0;
   return (
     <View style={styles.facetBar}>
-      <View style={styles.facetHeader}>
-        <Pressable onPress={onToggleOpen} style={[styles.facetToggle, activeCount > 0 && styles.facetToggleOn]}>
-          <Text style={[styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn]}>
-            {open ? '▾ Filters' : '▸ Filters'}
-            {activeCount > 0 ? ` · ${activeCount}` : ''}
-          </Text>
-        </Pressable>
+      <View style={styles.controlsRow}>
+        {hasFacets ? (
+          <Pressable onPress={onToggleOpen} style={[styles.facetToggle, activeCount > 0 && styles.facetToggleOn]}>
+            <Text style={[styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn]}>
+              {open ? '▾ Filters' : '▸ Filters'}
+              {activeCount > 0 ? ` · ${activeCount}` : ''}
+            </Text>
+          </Pressable>
+        ) : null}
+        {activeCount > 0 ? (
+          <Pressable onPress={onClear} hitSlop={8}>
+            <Text style={styles.clear}>Clear</Text>
+          </Pressable>
+        ) : null}
         {onColorSearch ? (
           <Pressable onPress={onColorSearch} style={[styles.facetToggle, colorActive && styles.facetToggleOn]}>
             <Text style={[styles.facetToggleText, colorActive && styles.facetToggleTextOn]}>Color</Text>
@@ -2740,24 +2894,32 @@ function FacetBar({
         {onCycleOwned ? (
           <CollectionChip styles={styles} onCycle={onCycleOwned} state={ownedState ?? null} />
         ) : null}
-        {activeCount > 0 ? (
-          <Pressable onPress={onClear} hitSlop={8}>
-            <Text style={styles.clear}>Clear</Text>
-          </Pressable>
-        ) : null}
+        {children}
+        <View style={styles.controlsSpacer} />
+        {trailing}
       </View>
-      {open ? (
-        <View style={styles.facetRows}>
-          {options.map(({ facet, values }) => (
-            <View key={facet.key} style={styles.facetGroup}>
-              <Text style={styles.facetLabel}>{facet.label}</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.chipRow}
-                keyboardShouldPersistTaps="handled">
+      {open && hasFacets ? (
+        <View style={styles.facetFlow}>
+          {options.map(({ facet, values }) => {
+            const picked = selection[facet.key] ?? [];
+            if (compact || values.length > INLINE_FACET_MAX) {
+              return (
+                <PickerMenu
+                  key={facet.key}
+                  styles={styles}
+                  label={facet.label}
+                  items={values.map((v) => ({ key: v, label: v }))}
+                  selected={picked}
+                  onToggle={(v) => onToggleValue(facet.key, v)}
+                  onClear={() => picked.forEach((v) => onToggleValue(facet.key, v))}
+                />
+              );
+            }
+            return (
+              <View key={facet.key} style={styles.facetInline}>
+                <Text style={styles.facetLabel}>{facet.label}</Text>
                 {values.map((v) => {
-                  const on = (selection[facet.key] ?? []).includes(v);
+                  const on = picked.includes(v);
                   return (
                     <Pressable
                       key={v}
@@ -2769,9 +2931,9 @@ function FacetBar({
                     </Pressable>
                   );
                 })}
-              </ScrollView>
-            </View>
-          ))}
+              </View>
+            );
+          })}
         </View>
       ) : null}
     </View>
@@ -2976,9 +3138,34 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     facetToggleOn: { borderColor: t.accent },
     facetToggleText: { fontSize: 12, fontWeight: '600', color: t.subtext },
     facetToggleTextOn: { color: t.accent },
+    // The control strip: wraps, with a spacer that pushes Sort + size to the right edge on a wide
+    // screen and onto their own line on a narrow one.
+    controlsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+    controlsSpacer: { flexGrow: 1, flexBasis: 0, minWidth: 6 },
+    controlsEnd: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    chipRowInline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+    // The open filter panel: facet groups flow and wrap; each inline group is its label + chips.
+    facetFlow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, rowGap: 6 },
+    facetInline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingRight: 8 },
     facetRows: { gap: 4 },
     facetGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    facetLabel: { fontSize: 11, fontWeight: '600', color: t.subtext, width: 58 },
+    facetLabel: { fontSize: 11, fontWeight: '600', color: t.subtext },
+    // The dropdown sheet a PickerMenu opens.
+    menuBackdrop: { flex: 1, backgroundColor: t.overlay, alignItems: 'center', justifyContent: 'center', padding: 20 },
+    menuSheet: { width: '100%', maxWidth: 360, maxHeight: '80%', borderRadius: 14, backgroundColor: t.background, padding: 10, gap: 6 },
+    menuHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6, paddingTop: 2 },
+    menuTitle: { fontSize: 14, fontWeight: '700', color: t.text },
+    menuList: { flexGrow: 0 },
+    menuItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 9, paddingHorizontal: 10, borderRadius: 9 },
+    menuItemOn: { backgroundColor: t.imagePlaceholder },
+    menuItemText: { fontSize: 13, color: t.text, flexShrink: 1 },
+    menuItemTextOn: { color: t.accent, fontWeight: '700' },
+    menuCheck: { fontSize: 13, fontWeight: '800', color: t.accent, width: 18, textAlign: 'right' },
+    menuDone: { alignItems: 'center', paddingVertical: 8, borderRadius: 9, backgroundColor: t.accent },
+    menuDoneText: { fontSize: 13, fontWeight: '700', color: t.accentText },
+    // The results row's right end: the on-device dot beside Clear.
+    metaEnd: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    modeInline: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     chipRow: { gap: 6, paddingRight: 8 },
     chip: {
       paddingHorizontal: 10,
