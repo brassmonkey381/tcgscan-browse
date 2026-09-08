@@ -724,8 +724,7 @@ export const QUERY_MANUAL: ManualSection[] = [
     tab: 'artwork',
     rows: [
       ['theme:forest', 'cards whose ARTWORK shows a forest (aliases: art:, scene:)'],
-      ['theme:night theme:city', 'two ideas, both must show'],
-      ['theme:water -theme:beach', 'a leading minus takes an idea away'],
+      ['theme:night theme:city', 'two ideas, both must show; each theme you add narrows it'],
       ['theme:snow type:water', 'stacks with every other field, sort and filter'],
       ['theme:sunset rarity:illustration', 'the full-art printings of a scene'],
       // Informational rows carry the … mark, the convention a host cheatsheet uses to tell a
