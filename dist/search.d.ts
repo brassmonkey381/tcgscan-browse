@@ -27,7 +27,15 @@ export interface SearchPage {
      * Never true on the host's paid path, and never on an ordinary word search.
      */
     clamped: boolean;
+    /**
+     * A clamped page that should NOT have been: the host vouched for this caller (a token was
+     * offered) but its paid endpoint refused or failed, so the metered direct path answered. The
+     * UI says "temporarily limited" rather than selling an upgrade to someone who already pays —
+     * otherwise the first symptom of a broken endpoint is paying members quietly losing a feature.
+     */
+    degraded: boolean;
 }
+export declare function freeThemeDepth(): Promise<number>;
 /** True when the app is configured to reach the data server's REST API. */
 export declare function serverSearchAvailable(): boolean;
 /** Facet chip selection, facet key -> selected values (the kit's FacetSelection shape). */

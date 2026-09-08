@@ -447,6 +447,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const [serverTotal, setServerTotal] = useState(0);
     /** The meter: the direct path handed back only the free depth of a themed query. */
     const [serverClamped, setServerClamped] = useState(false);
+    /** ...and it should not have: the host's paid path refused or failed (see SearchPage.degraded). */
+    const [serverDegraded, setServerDegraded] = useState(false);
     const [serverLoading, setServerLoading] = useState(false);
     // Cold facet bar: facet key → values for the current query (search_facets, exclude-self).
     const [serverFacets, setServerFacets] = useState({});
@@ -777,8 +779,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             return; // a newer request superseded this one
         serverOffset.current = offset + page.cards.length;
         setServerTotal(page.total);
-        if (replace)
+        if (replace) {
             setServerClamped(page.clamped);
+            setServerDegraded(page.degraded);
+        }
         setServerPrice((prev) => (replace ? page.priceById : { ...prev, ...page.priceById }));
         setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
         setServerLoading(false);
@@ -788,6 +792,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             setServerCards([]);
             setServerTotal(0);
             setServerClamped(false);
+            setServerDegraded(false);
             setServerFacets({});
             serverOffset.current = 0;
             return;
@@ -1508,7 +1513,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     ? !catalog && coldSetLoading
                                         ? 'Loading set…'
                                         : 'No cards in this set.'
-                                    : 'Nothing here.' }), ListFooterComponent: _jsxs(View, { style: styles.footer, children: [searching && serverClamped && serverTotal > serverCards.length ? (_jsxs(Pressable, { style: styles.meterRow, accessibilityRole: "button", accessibilityLabel: `${serverTotal - serverCards.length} more matches, unlock artwork search`, onPress: () => onLockedFeature?.('themeSearch'), children: [_jsxs(Text, { style: styles.meterCount, children: ["+", serverTotal - serverCards.length, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Showing the top ", serverCards.length, ". Unlock artwork search to see them all \u2192"] })] })) : null, footer] }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
+                                    : 'Nothing here.' }), ListFooterComponent: _jsxs(View, { style: styles.footer, children: [searching && serverClamped && serverTotal > serverCards.length ? (serverDegraded ? (_jsxs(View, { style: styles.meterRow, accessibilityRole: "text", children: [_jsxs(Text, { style: styles.meterCount, children: ["+", serverTotal - serverCards.length, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Full artwork search is temporarily unavailable, so this shows the top ", serverCards.length, ". Try again in a moment."] })] })) : (_jsxs(Pressable, { style: styles.meterRow, accessibilityRole: "button", accessibilityLabel: `${serverTotal - serverCards.length} more matches, unlock artwork search`, onPress: () => onLockedFeature?.('themeSearch'), children: [_jsxs(Text, { style: styles.meterCount, children: ["+", serverTotal - serverCards.length, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Showing the top ", serverCards.length, ". Unlock artwork search to see them all \u2192"] })] }))) : null, footer] }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
                     setMultiOpen(false);
                     setMultiSelectMode(false);
                     clearSelection();

@@ -29,6 +29,32 @@ export interface SearchPage {
    * Never true on the host's paid path, and never on an ordinary word search.
    */
   clamped: boolean;
+  /**
+   * A clamped page that should NOT have been: the host vouched for this caller (a token was
+   * offered) but its paid endpoint refused or failed, so the metered direct path answered. The
+   * UI says "temporarily limited" rather than selling an upgrade to someone who already pays —
+   * otherwise the first symptom of a broken endpoint is paying members quietly losing a feature.
+   */
+  degraded: boolean;
+}
+
+/**
+ * The free depth of a themed query, read once from the data project's public `search_config`.
+ * Public precisely so the meter can be EXACT: "clamped" is `total > depth`, not an inference
+ * from the row count, which misses a page size at or under the depth. 0 (or unreadable) means
+ * the meter is off and the row-count fallback in searchCards is the only signal.
+ */
+let depthPromise: Promise<number> | null = null;
+export function freeThemeDepth(): Promise<number> {
+  if (!depthPromise) {
+    depthPromise = fetch(`${getApiUrl()}/search_config?select=free_theme_depth&limit=1`, {
+      headers: { apikey: getApiKey() },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: { free_theme_depth?: number }[]) => Number(rows?.[0]?.free_theme_depth) || 0)
+      .catch(() => 0);
+  }
+  return depthPromise;
 }
 
 /** True when the app is configured to reach the data server's REST API. */
@@ -142,7 +168,7 @@ export async function searchCards(
     languages: boundIn,
   }: { limit?: number; offset?: number; facets?: ServerFacetSelection; languages?: CardLanguage[] } = {},
 ): Promise<SearchPage> {
-  const empty: SearchPage = { cards: [], priceById: {}, total: 0, clamped: false };
+  const empty: SearchPage = { cards: [], priceById: {}, total: 0, clamped: false, degraded: false };
   if (!serverSearchAvailable()) return empty;
   const { parsed, languages } = foldLanguageTerms(parsedIn, boundIn);
   if (languages?.length === 0) return empty; // contradictory bound (e.g. EN-only + lang:ja)
@@ -169,10 +195,12 @@ export async function searchCards(
     // never a broken one. See ThemedSearchProxy in config.ts.
     let rows: SearchRow[] | null = null;
     let viaProxy = false;
+    let proxyTried = false;
     const proxy = themed ? getThemedSearchProxy() : null;
     if (proxy) {
       const token = await proxy.getToken().catch(() => null);
       if (token) {
+        proxyTried = true;
         try {
           const res = await fetch(proxy.url, {
             method: 'POST',
@@ -202,11 +230,15 @@ export async function searchCards(
     const priceById: Record<string, number> = {};
     for (const r of rows) priceById[String(r.id)] = Number(r.cur) || 0;
     const total = Number(rows[0].total_count) || cards.length;
-    // Depth-limited iff the server handed back fewer rows than this page could have held: an
-    // unclamped first page of `limit` over `total` matches is min(limit, total) rows long, so a
-    // shorter one was cut. Only a themed query on the direct path can be; only page 0 is judged.
-    const clamped = themed && !viaProxy && offset === 0 && cards.length < Math.min(limit, total);
-    return { cards, priceById, total, clamped };
+    // Depth-limited: the public free depth is the exact test (`total > depth`), and the row
+    // count is the fallback for when that read failed — an unclamped first page of `limit` over
+    // `total` matches is min(limit, total) rows long, so a shorter one was cut. Only a themed
+    // query on the direct path can be clamped; only page 0 is judged (the server pins it anyway).
+    const depth = themed && !viaProxy ? await freeThemeDepth() : 0;
+    const clamped =
+      themed && !viaProxy && offset === 0
+      && ((depth > 0 && total > depth) || cards.length < Math.min(limit, total));
+    return { cards, priceById, total, clamped, degraded: clamped && proxyTried };
   } catch {
     return empty; // offline / not configured, the caller falls back to client runQuery
   }

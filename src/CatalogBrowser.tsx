@@ -775,6 +775,8 @@ export function CatalogBrowser({
   const [serverTotal, setServerTotal] = useState(0);
   /** The meter: the direct path handed back only the free depth of a themed query. */
   const [serverClamped, setServerClamped] = useState(false);
+  /** ...and it should not have: the host's paid path refused or failed (see SearchPage.degraded). */
+  const [serverDegraded, setServerDegraded] = useState(false);
   const [serverLoading, setServerLoading] = useState(false);
   // Cold facet bar: facet key → values for the current query (search_facets, exclude-self).
   const [serverFacets, setServerFacets] = useState<Record<string, string[]>>({});
@@ -1127,7 +1129,10 @@ export function CatalogBrowser({
       if (serverToken.current !== token) return; // a newer request superseded this one
       serverOffset.current = offset + page.cards.length;
       setServerTotal(page.total);
-      if (replace) setServerClamped(page.clamped);
+      if (replace) {
+        setServerClamped(page.clamped);
+        setServerDegraded(page.degraded);
+      }
       setServerPrice((prev) => (replace ? page.priceById : { ...prev, ...page.priceById }));
       setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
       setServerLoading(false);
@@ -1139,6 +1144,7 @@ export function CatalogBrowser({
       setServerCards([]);
       setServerTotal(0);
       setServerClamped(false);
+      setServerDegraded(false);
       setServerFacets({});
       serverOffset.current = 0;
       return;
@@ -2246,14 +2252,24 @@ export function CatalogBrowser({
                 Tapping it hands the host the same `themeSearch` signal its lock uses, so the
                 host's own offer answers it. */}
             {searching && serverClamped && serverTotal > serverCards.length ? (
-              <Pressable
-                style={styles.meterRow}
-                accessibilityRole="button"
-                accessibilityLabel={`${serverTotal - serverCards.length} more matches, unlock artwork search`}
-                onPress={() => onLockedFeature?.('themeSearch')}>
-                <Text style={styles.meterCount}>+{serverTotal - serverCards.length} more matches</Text>
-                <Text style={styles.meterHint}>Showing the top {serverCards.length}. Unlock artwork search to see them all →</Text>
-              </Pressable>
+              serverDegraded ? (
+                // A paying caller whose paid path failed: say so, sell nothing.
+                <View style={styles.meterRow} accessibilityRole="text">
+                  <Text style={styles.meterCount}>+{serverTotal - serverCards.length} more matches</Text>
+                  <Text style={styles.meterHint}>
+                    Full artwork search is temporarily unavailable, so this shows the top {serverCards.length}. Try again in a moment.
+                  </Text>
+                </View>
+              ) : (
+                <Pressable
+                  style={styles.meterRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${serverTotal - serverCards.length} more matches, unlock artwork search`}
+                  onPress={() => onLockedFeature?.('themeSearch')}>
+                  <Text style={styles.meterCount}>+{serverTotal - serverCards.length} more matches</Text>
+                  <Text style={styles.meterHint}>Showing the top {serverCards.length}. Unlock artwork search to see them all →</Text>
+                </Pressable>
+              )
             ) : null}
             {footer}
           </View>

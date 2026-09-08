@@ -165,6 +165,7 @@ export {
   fetchCardDetail,
   fetchCardsByIds,
   fetchSetCards,
+  freeThemeDepth,
   searchCards,
   searchFacets,
   serverSearchAvailable,
