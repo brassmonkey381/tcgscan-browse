@@ -119,8 +119,16 @@ export declare const QUERY_HINT = "try: charizard hp>200 date>2023 sort:value";
  * The search user manual — data, not UI, so every app renders the same manual
  * in its own components (the "?" help panel).
  */
+/** The "?" panel's tabs, in display order. A section belongs to exactly one. */
+export type ManualTab = 'basics' | 'fields' | 'artwork' | 'collection' | 'more';
+export declare const MANUAL_TABS: {
+    id: ManualTab;
+    label: string;
+}[];
 export interface ManualSection {
     title: string;
+    /** Which tab of the "?" panel shows this section (see MANUAL_TABS). */
+    tab: ManualTab;
     rows: [code: string, description: string][];
 }
 export declare const QUERY_MANUAL: ManualSection[];

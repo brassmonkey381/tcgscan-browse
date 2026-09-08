@@ -23,7 +23,7 @@ export { fetchCardDetail, fetchCardsByIds, fetchSetCards, freeThemeDepth, search
 export { loadTaxonomy, useTaxonomy } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, } from './sealed';
 export { SEALED_GROUPS, sealedGroupOf } from './sealed-groups';
-export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, } from './query';
+export { describeQuery, matchCard, parseQuery, MANUAL_TABS, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, } from './query';
 export { daysUntilRelease, isUpcoming, releaseTag, todayISO, JUST_RELEASED_DAYS, RECENT_DAYS, RELEASE_SOON_DAYS, RELEASE_TAG_FONT_SIZE, RELEASE_TAG_LINE_HEIGHT, VERY_RECENT_DAYS, } from './releaseTag';
 export { hydrateSavedSearches, isSearchSaved, listSavedSearches, removeSavedSearch, subscribeSavedSearches, toggleSavedSearch, } from './savedSearches';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, } from './state';

@@ -41,7 +41,9 @@ import {
   describeQuery,
   parseQuery,
   QUERY_HINT,
+  MANUAL_TABS,
   QUERY_MANUAL,
+  type ManualTab,
   runQuery,
   sortCards,
   type QuerySort,
@@ -2548,9 +2550,20 @@ function VUnionTile({
   );
 }
 
+/** The "?" panel's last tab, kept for the page's life so reopening it lands where you were. */
+let manualTabPref: ManualTab = 'basics';
+
 /** The "?" panel: the search grammar manual (content lives in browse/query.ts,
- *  shared with the sibling app; this just renders it compactly). */
+ *  shared with the sibling app; this just renders it compactly, one tab at a time). */
 function SearchManual({ styles, onClose }: { styles: Styles; onClose: () => void }) {
+  // TABS, not one scroll: the manual grew to fifty-odd rows, and a reader who opened it for the
+  // artwork search should not read the sort grammar to reach it. The tab is remembered while the
+  // browser is mounted, so closing and reopening lands where you were.
+  const [tab, setTab] = useState<ManualTab>(manualTabPref);
+  const pick = (t: ManualTab) => {
+    manualTabPref = t;
+    setTab(t);
+  };
   return (
     <View style={styles.manual}>
       <View style={styles.manualHeader}>
@@ -2559,7 +2572,19 @@ function SearchManual({ styles, onClose }: { styles: Styles; onClose: () => void
           <Text style={styles.clear}>Close</Text>
         </Pressable>
       </View>
-      {QUERY_MANUAL.map((section) => (
+      <View style={styles.manualTabs} accessibilityRole="tablist">
+        {MANUAL_TABS.map((t) => (
+          <Pressable
+            key={t.id}
+            onPress={() => pick(t.id)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: t.id === tab }}
+            style={[styles.manualTab, t.id === tab && styles.manualTabOn]}>
+            <Text style={[styles.manualTabText, t.id === tab && styles.manualTabTextOn]}>{t.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (
         <View key={section.title} style={styles.manualSection}>
           <Text style={styles.manualSectionTitle}>{section.title}</Text>
           {section.rows.map(([code, description]) => (
@@ -3150,6 +3175,17 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     },
     manualHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     manualTitle: { fontSize: 13, fontWeight: '700', color: t.text },
+    manualTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    manualTab: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    manualTabOn: { backgroundColor: t.accent, borderColor: t.accent },
+    manualTabText: { fontSize: 12, fontWeight: '600', color: t.subtext },
+    manualTabTextOn: { color: '#fff' },
     manualSection: { gap: 3 },
     manualSectionTitle: {
       fontSize: 11,

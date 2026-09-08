@@ -557,9 +557,17 @@ export function describeQuery(q, matched = []) {
 }
 /** Placeholder/help line advertising the grammar (shared by both apps' search boxes). */
 export const QUERY_HINT = 'try: charizard hp>200 date>2023 sort:value';
+export const MANUAL_TABS = [
+    { id: 'basics', label: 'Basics' },
+    { id: 'fields', label: 'Fields' },
+    { id: 'artwork', label: 'Artwork' },
+    { id: 'collection', label: 'Collection' },
+    { id: 'more', label: 'More' },
+];
 export const QUERY_MANUAL = [
     {
         title: 'Just type words',
+        tab: 'basics',
         rows: [
             ['charizard', 'matches names first, then artist, set, series, rarity, type, stage, number'],
             ['arita fire', 'every word must match somewhere, combine freely'],
@@ -567,9 +575,10 @@ export const QUERY_MANUAL = [
     },
     {
         title: 'Target a field',
+        tab: 'fields',
         rows: [
             ['artist:arita', 'illustrator (alias: illustrator:)'],
-            ['theme:underwater', 'what the artwork shows (aliases: art:, scene:)'],
+            ['theme:underwater', 'what the artwork shows, see the Artwork tab'],
             ['rarity:"holo rare"', 'rarity, quote multi-word values'],
             ['set:base', 'set name'],
             ['series:sword', 'series name'],
@@ -580,7 +589,23 @@ export const QUERY_MANUAL = [
         ],
     },
     {
+        // ARTWORK SEARCH: what the picture shows. Examples name a few scenes that read well on a
+        // page; the vocabulary itself is not listed, on purpose. Plain words about a picture work.
+        title: 'Search the picture',
+        tab: 'artwork',
+        rows: [
+            ['theme:forest', 'cards whose ARTWORK shows a forest (aliases: art:, scene:)'],
+            ['theme:night theme:city', 'two ideas, both must show'],
+            ['theme:water -theme:beach', 'a leading minus takes an idea away'],
+            ['theme:snow type:water', 'stacks with every other field, sort and filter'],
+            ['theme:sunset rarity:illustration', 'the full-art printings of a scene'],
+            ['try what you see', 'forest, water, snow, night, city, sky, sunset, flowers, and any plain word about a picture'],
+            ['top matches', 'free accounts see the top few and how many more there are; PRO and VIP see every match'],
+        ],
+    },
+    {
         title: 'Compare numbers & dates',
+        tab: 'basics',
         rows: [
             ['>$100', 'value at least $100 (also <$5, >=, <=, or value>100)'],
             ['hp>200', 'printed HP, also hp<=60, hp:120 (exactly)'],
@@ -592,6 +617,7 @@ export const QUERY_MANUAL = [
     },
     {
         title: 'Sort',
+        tab: 'basics',
         rows: [
             ['sort:value', 'priciest first (tiles show values), add :asc for cheapest'],
             ['sort:newest', 'newest release first (sort:oldest for oldest)'],
@@ -603,6 +629,7 @@ export const QUERY_MANUAL = [
     },
     {
         title: 'Your collection',
+        tab: 'collection',
         rows: [
             ['have:no', 'cards you’re missing, combine with set:… to fill a set'],
             ['have:yes', 'cards you already own (alias: owned:, collection:)'],
@@ -611,6 +638,7 @@ export const QUERY_MANUAL = [
     },
     {
         title: 'More',
+        tab: 'more',
         rows: [
             ['grey line', 'shows how your search was understood, tweak from there'],
             ['≈ similar', 'select a card, then tap ≈ similar for visual look-alikes'],
@@ -623,6 +651,7 @@ export const QUERY_MANUAL = [
     },
     {
         title: 'On the web',
+        tab: 'more',
         rows: [
             ['↑ ↓ ← →', 'arrow keys move the card focus; Enter opens it, Esc closes'],
             ['Ctrl/Shift-click', 'select several cards, release to act on all of them'],

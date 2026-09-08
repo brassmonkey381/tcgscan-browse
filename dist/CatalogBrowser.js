@@ -24,7 +24,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
-import { describeQuery, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, sortCards, } from './query';
+import { describeQuery, parseQuery, QUERY_HINT, MANUAL_TABS, QUERY_MANUAL, runQuery, sortCards, } from './query';
 import { CARD_GRID_GAP, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, cardGridColumns, cardTierFor, cardTileWidthFor, } from './cardSize';
 import { browseState, subscribeBrowseCommand } from './state';
 import { hydrateSavedSearches, isSearchSaved, listSavedSearches, removeSavedSearch, subscribeSavedSearches, toggleSavedSearch, } from './savedSearches';
@@ -1555,10 +1555,20 @@ function VUnionTile({ styles, group, width, onPress, }) {
     const uri = cardThumbUrl(group.pieces[0], 245);
     return (_jsxs(Pressable, { style: [styles.cardTile, { width }], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: group.pieces[0], transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "V-UNION" }) })), _jsx(View, { style: styles.vunionTag, children: _jsx(Text, { style: styles.vunionTagText, children: "V-UNION" }) })] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: group.label })] }));
 }
+/** The "?" panel's last tab, kept for the page's life so reopening it lands where you were. */
+let manualTabPref = 'basics';
 /** The "?" panel: the search grammar manual (content lives in browse/query.ts,
- *  shared with the sibling app; this just renders it compactly). */
+ *  shared with the sibling app; this just renders it compactly, one tab at a time). */
 function SearchManual({ styles, onClose }) {
-    return (_jsxs(View, { style: styles.manual, children: [_jsxs(View, { style: styles.manualHeader, children: [_jsx(Text, { style: styles.manualTitle, children: "Search syntax" }), _jsx(Pressable, { onPress: onClose, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Close" }) })] }), QUERY_MANUAL.map((section) => (_jsxs(View, { style: styles.manualSection, children: [_jsx(Text, { style: styles.manualSectionTitle, children: section.title }), section.rows.map(([code, description]) => (_jsxs(View, { style: styles.manualRow, children: [_jsx(Text, { style: styles.manualCode, children: code }), _jsx(Text, { style: styles.manualDesc, children: description })] }, code)))] }, section.title)))] }));
+    // TABS, not one scroll: the manual grew to fifty-odd rows, and a reader who opened it for the
+    // artwork search should not read the sort grammar to reach it. The tab is remembered while the
+    // browser is mounted, so closing and reopening lands where you were.
+    const [tab, setTab] = useState(manualTabPref);
+    const pick = (t) => {
+        manualTabPref = t;
+        setTab(t);
+    };
+    return (_jsxs(View, { style: styles.manual, children: [_jsxs(View, { style: styles.manualHeader, children: [_jsx(Text, { style: styles.manualTitle, children: "Search syntax" }), _jsx(Pressable, { onPress: onClose, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Close" }) })] }), _jsx(View, { style: styles.manualTabs, accessibilityRole: "tablist", children: MANUAL_TABS.map((t) => (_jsx(Pressable, { onPress: () => pick(t.id), accessibilityRole: "tab", accessibilityState: { selected: t.id === tab }, style: [styles.manualTab, t.id === tab && styles.manualTabOn], children: _jsx(Text, { style: [styles.manualTabText, t.id === tab && styles.manualTabTextOn], children: t.label }) }, t.id))) }), QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (_jsxs(View, { style: styles.manualSection, children: [_jsx(Text, { style: styles.manualSectionTitle, children: section.title }), section.rows.map(([code, description]) => (_jsxs(View, { style: styles.manualRow, children: [_jsx(Text, { style: styles.manualCode, children: code }), _jsx(Text, { style: styles.manualDesc, children: description })] }, code)))] }, section.title)))] }));
 }
 /** Series › Set path; tap an ancestor to drill up. */
 function Breadcrumb({ styles, crumbs }) {
@@ -1811,6 +1821,17 @@ function makeStyles(t, taxTileHeight) {
         },
         manualHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
         manualTitle: { fontSize: 13, fontWeight: '700', color: t.text },
+        manualTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+        manualTab: {
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: t.border,
+        },
+        manualTabOn: { backgroundColor: t.accent, borderColor: t.accent },
+        manualTabText: { fontSize: 12, fontWeight: '600', color: t.subtext },
+        manualTabTextOn: { color: '#fff' },
         manualSection: { gap: 3 },
         manualSectionTitle: {
             fontSize: 11,

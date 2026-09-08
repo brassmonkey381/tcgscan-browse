@@ -23,7 +23,7 @@ export { fetchCardDetail, fetchCardsByIds, fetchSetCards, freeThemeDepth, search
 export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, type SealedCatalog, type SealedProduct, type SealedSet, } from './sealed';
 export { SEALED_GROUPS, sealedGroupOf, type SealedGroup } from './sealed-groups';
-export { describeQuery, matchCard, parseQuery, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, type CompareField, type CompareOp, type Comparison, type FieldKey, type ManualSection, type ParsedQuery, type QueryableCard, type QuerySort, type SortDir, } from './query';
+export { describeQuery, matchCard, parseQuery, MANUAL_TABS, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, type CompareField, type CompareOp, type Comparison, type FieldKey, type ManualSection, type ManualTab, type ParsedQuery, type QueryableCard, type QuerySort, type SortDir, } from './query';
 export { daysUntilRelease, isUpcoming, releaseTag, todayISO, JUST_RELEASED_DAYS, RECENT_DAYS, RELEASE_SOON_DAYS, RELEASE_TAG_FONT_SIZE, RELEASE_TAG_LINE_HEIGHT, VERY_RECENT_DAYS, type ReleaseTag, type ReleaseTagKind, } from './releaseTag';
 export { hydrateSavedSearches, isSearchSaved, listSavedSearches, removeSavedSearch, subscribeSavedSearches, toggleSavedSearch, type SavedSearch, } from './savedSearches';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, type CardSize, } from './state';
