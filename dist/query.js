@@ -599,8 +599,10 @@ export const QUERY_MANUAL = [
             ['theme:water -theme:beach', 'a leading minus takes an idea away'],
             ['theme:snow type:water', 'stacks with every other field, sort and filter'],
             ['theme:sunset rarity:illustration', 'the full-art printings of a scene'],
-            ['try what you see', 'forest, water, snow, night, city, sky, sunset, flowers, and any plain word about a picture'],
-            ['top matches', 'free accounts see the top few and how many more there are; PRO and VIP see every match'],
+            // Informational rows carry the … mark, the convention a host cheatsheet uses to tell a
+            // note from a runnable example.
+            ['forest, water, snow, night…', 'try what you see: city, sky, sunset, flowers, any plain word about a picture'],
+            ['top few…', 'free accounts see the top matches and how many more there are; PRO and VIP see every match'],
         ],
     },
     {
