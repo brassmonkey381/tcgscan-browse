@@ -28,19 +28,25 @@ const FIELD_ALIASES = {
     num: 'num',
     theme: 'theme',
     art: 'theme',
-    scene: 'theme',
+    // scene: is an artwork namespace (ART_NAMESPACES), parsed before this table is consulted.
     number: 'num',
     lang: 'lang',
     language: 'lang',
 };
 /**
- * The namespaces an artwork tag can carry, negatable as `-<namespace>:<value>` (sent as
- * theme:-<namespace>:<value>, which the server matches against the qualified tag exactly).
- * Negation only: the positive form of these is not a field, and stays a search word.
+ * THE ARTWORK NAMESPACES. An artwork tag is carried both bare and qualified (`water` and
+ * `scene:water`), so `<namespace>:<value>` is a themed search on the qualified string: exact
+ * where the bare word is broad. `pokemon:pikachu` is the cards that verifiably SHOW a Pikachu;
+ * `theme:pikachu` adds every tag containing the word. Both forms go out as a theme field
+ * (theme:object:sparkles), included or, with a leading minus, excluded (theme:-object:sparkles).
  */
-const NEGATABLE_NAMESPACES = new Set([
-    'scene', 'object', 'action', 'mood', 'style', 'medium', 'flag', 'pokemon', 'people', 'cameo', 'scale', 'subjects',
-]);
+const ART_NAMESPACES = new Set(['scene', 'object', 'action', 'mood', 'style', 'medium', 'flag', 'pokemon', 'people']);
+/**
+ * Exact-match keys of the artwork data (data project migration 45) that are NOT substrings of
+ * the artwork text. Their negation works through the same theme:- door; their positive form
+ * needs a real field the parser does not have yet, so it stays a search word for now.
+ */
+const NEGATABLE_NAMESPACES = new Set([...ART_NAMESPACES, 'cameo', 'scale', 'subjects']);
 /**
  * `lang:` values normalize to the raw 'en'/'ja' codes HERE, on the client, so the field arrives at
  * the server as an exact code and `search_cards` can compare it with plain equality. Keeping the
@@ -229,6 +235,17 @@ export function parseQuery(raw) {
             // Colon form of a numeric/date field means "equals": hp:120, date:2023.
             if (value && addComparison(out, rawKey, '=', value)) {
                 out.hasStructure = true;
+                continue;
+            }
+            // A namespaced INCLUSION: object:sparkles is the themed search on the qualified tag (see
+            // ART_NAMESPACES), the precise cousin of theme:sparkles.
+            if (ART_NAMESPACES.has(rawKey) && value) {
+                // scene:-beach, the minus on the value, is the same exclusion as -scene:beach.
+                const bare = value.replace(/^-+/, '');
+                if (bare) {
+                    out.fields.push({ key: 'theme', value: value.startsWith('-') ? `-${rawKey}:${bare}` : `${rawKey}:${bare}` });
+                    out.hasStructure = true;
+                }
                 continue;
             }
             const key = FIELD_ALIASES[rawKey];
@@ -634,7 +651,8 @@ export const QUERY_MANUAL = [
         title: 'Search the picture',
         tab: 'artwork',
         rows: [
-            ['theme:forest', 'cards whose ARTWORK shows a forest (aliases: art:, scene:)'],
+            ['theme:forest', 'cards whose ARTWORK shows a forest (alias: art:)'],
+            ['pokemon:pikachu', 'cards that show a Pikachu, whatever the name says; scene:, object:, mood: and action: narrow the same way'],
             ['theme:night theme:city', 'two ideas, both must show; each theme you add narrows it'],
             ['theme:water -theme:beach', 'a leading minus takes an idea away'],
             ['theme:snow type:water', 'stacks with every other field, sort and filter'],
