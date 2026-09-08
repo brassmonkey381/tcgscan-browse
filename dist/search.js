@@ -11,7 +11,7 @@
  * card being in the in-memory catalog. Fails soft (empty) — server search is an enhancement.
  */
 import { numberKey } from './catalog';
-import { getApiKey, getApiUrl } from './config';
+import { getApiKey, getApiUrl, getThemedSearchProxy } from './config';
 /** True when the app is configured to reach the data server's REST API. */
 export function serverSearchAvailable() {
     return Boolean(getApiUrl() && getApiKey());
@@ -82,42 +82,77 @@ function foldLanguageTerms(parsed, bound) {
  * OR within). Returns tile-ready cards + their prices + the real total.
  */
 export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, languages: boundIn, } = {}) {
-    const empty = { cards: [], priceById: {}, total: 0 };
+    const empty = { cards: [], priceById: {}, total: 0, clamped: false };
     if (!serverSearchAvailable())
         return empty;
     const { parsed, languages } = foldLanguageTerms(parsedIn, boundIn);
     if (languages?.length === 0)
         return empty; // contradictory bound (e.g. EN-only + lang:ja)
     try {
-        const res = await fetch(`${getApiUrl()}/rpc/search_cards`, {
-            method: 'POST',
-            headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                p_words: parsed.words,
-                p_fields: parsed.fields.map((f) => ({ key: f.key, value: f.value })),
-                p_compares: parsed.comparisons.map((c) => ({ field: c.field, op: c.op, value: c.value })),
-                p_facets: packFacets(facets),
-                p_min_price: parsed.minPrice,
-                p_max_price: parsed.maxPrice,
-                p_sort: parsed.sort,
-                p_dir: parsed.sortDir,
-                p_limit: limit,
-                p_offset: offset,
-                // Only sent when constrained, so the unconstrained default still matches the pre-language
-                // RPC overload — the language migration only gates language-CONSTRAINED cold search.
-                ...(languages?.length ? { p_lang: languages } : {}),
-            }),
+        const body = JSON.stringify({
+            p_words: parsed.words,
+            p_fields: parsed.fields.map((f) => ({ key: f.key, value: f.value })),
+            p_compares: parsed.comparisons.map((c) => ({ field: c.field, op: c.op, value: c.value })),
+            p_facets: packFacets(facets),
+            p_min_price: parsed.minPrice,
+            p_max_price: parsed.maxPrice,
+            p_sort: parsed.sort,
+            p_dir: parsed.sortDir,
+            p_limit: limit,
+            p_offset: offset,
+            // Only sent when constrained, so the unconstrained default still matches the pre-language
+            // RPC overload — the language migration only gates language-CONSTRAINED cold search.
+            ...(languages?.length ? { p_lang: languages } : {}),
         });
-        if (!res.ok)
-            return empty;
-        const rows = (await res.json());
+        const themed = parsed.fields.some((f) => f.key === 'theme');
+        // THE PAID PATH FIRST, for a themed query with a host proxy and a caller it vouches for. A
+        // refusal (guest, free account, expired grant) or any failure falls through to the direct
+        // call below, which the data project meters — so the worst case is the free experience,
+        // never a broken one. See ThemedSearchProxy in config.ts.
+        let rows = null;
+        let viaProxy = false;
+        const proxy = themed ? getThemedSearchProxy() : null;
+        if (proxy) {
+            const token = await proxy.getToken().catch(() => null);
+            if (token) {
+                try {
+                    const res = await fetch(proxy.url, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body,
+                    });
+                    if (res.ok) {
+                        rows = (await res.json());
+                        viaProxy = true;
+                    }
+                }
+                catch {
+                    rows = null; // the direct path answers
+                }
+            }
+        }
+        if (!rows) {
+            const res = await fetch(`${getApiUrl()}/rpc/search_cards`, {
+                method: 'POST',
+                headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
+                body,
+            });
+            if (!res.ok)
+                return empty;
+            rows = (await res.json());
+        }
         if (!rows.length)
             return empty;
         const cards = rows.map(rowToCard);
         const priceById = {};
         for (const r of rows)
             priceById[String(r.id)] = Number(r.cur) || 0;
-        return { cards, priceById, total: Number(rows[0].total_count) || cards.length };
+        const total = Number(rows[0].total_count) || cards.length;
+        // Depth-limited iff the server handed back fewer rows than this page could have held: an
+        // unclamped first page of `limit` over `total` matches is min(limit, total) rows long, so a
+        // shorter one was cut. Only a themed query on the direct path can be; only page 0 is judged.
+        const clamped = themed && !viaProxy && offset === 0 && cards.length < Math.min(limit, total);
+        return { cards, priceById, total, clamped };
     }
     catch {
         return empty; // offline / not configured, the caller falls back to client runQuery

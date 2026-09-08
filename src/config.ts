@@ -54,6 +54,22 @@ export interface SavedSearchStore {
   save?: (searches: unknown[]) => void;
 }
 
+/**
+ * THE PAID PATH FOR THEMED SEARCH. `theme:` / `art:` / `scene:` queries always run on the server
+ * (the data project meters them for anonymous callers: top N rows plus the true total), and a
+ * host that sells the unmetered version routes them through its own endpoint, which checks the
+ * caller's entitlement and forwards with a key the data project does not clamp. The kit only
+ * knows the URL and how to get a bearer token; `getToken` returning null means "take the direct,
+ * metered path" — the right answer for a guest, a signed-out visitor, or a free account, and it
+ * costs no round trip. A proxy that answers 401/403 (or fails) degrades to the same direct path.
+ */
+export interface ThemedSearchProxy {
+  /** The host's endpoint. Receives the `search_cards` RPC body verbatim; answers with its rows. */
+  url: string;
+  /** The caller's bearer token when they may search unmetered, else null. */
+  getToken: () => Promise<string | null>;
+}
+
 export interface BrowseConfig {
   /**
    * Base URL for catalog.json / prices-summary.json / alternates.json.
@@ -114,10 +130,12 @@ export interface BrowseConfig {
    * session-only on native (see SavedSearchStore).
    */
   savedSearchStore?: SavedSearchStore;
+  /** See ThemedSearchProxy. Absent: every themed query takes the direct, metered path. */
+  themedSearch?: ThemedSearchProxy;
 }
 
 const config: Required<
-  Omit<BrowseConfig, 'cache' | 'catalogSource' | 'languageStore' | 'savedSearchStore'>
+  Omit<BrowseConfig, 'cache' | 'catalogSource' | 'languageStore' | 'savedSearchStore' | 'themedSearch'>
 > = {
   browseUrl: '/browse',
   imgBase: '',
@@ -131,6 +149,12 @@ const config: Required<
 let catalogSource: CatalogSource | null = null;
 let languageStore: LanguageStore | null = null;
 let savedSearchStore: SavedSearchStore | null = null;
+let themedSearch: ThemedSearchProxy | null = null;
+
+/** The host's paid themed-search endpoint, or null for the direct, metered path only. */
+export function getThemedSearchProxy(): ThemedSearchProxy | null {
+  return themedSearch;
+}
 
 /** Set the data-server origins. Call once from the app before any browse use. */
 export function configureBrowse(next: BrowseConfig): void {
@@ -145,6 +169,7 @@ export function configureBrowse(next: BrowseConfig): void {
   catalogSource = next.catalogSource ?? null;
   languageStore = next.languageStore ?? null;
   savedSearchStore = next.savedSearchStore ?? null;
+  themedSearch = next.themedSearch ?? null;
   setManifestCache(next.cache ?? null);
 }
 

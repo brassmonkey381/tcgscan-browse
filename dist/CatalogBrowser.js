@@ -433,10 +433,20 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // Cold path (catalog not loaded yet): text search runs against the server's search_cards RPC.
     // We accumulate pages, guarding against out-of-order responses with a monotonic request token.
     const warm = Boolean(catalog);
-    const coldSearch = !warm && serverSearchAvailable();
+    // A THEMED QUERY IS ALWAYS A SERVER QUERY, warm or not. The data project meters `theme:` for
+    // anonymous callers (top N rows, true total) and answers a host's paid path unmetered; a warm
+    // client that answered from its own bundle would make that meter decorative — a free account
+    // is one sign-up from the whole tag set — and it is also what lets the captions leave the
+    // bundle. Read off the raw query here because `parsed` is built further down; the parser's
+    // own verdict (`themeTyped`) governs everything after. A theme the host has LOCKED is stripped
+    // by applyFeatureLocks and runs as an ordinary query, so it stays warm.
+    const themedQuery = /(^|\s)(theme|art|scene):/i.test(cardQueryDebounced) && !isLocked(lockedFeatures, 'themeSearch');
+    const coldSearch = (!warm || themedQuery) && serverSearchAvailable();
     const [serverCards, setServerCards] = useState([]);
     const [serverPrice, setServerPrice] = useState({});
     const [serverTotal, setServerTotal] = useState(0);
+    /** The meter: the direct path handed back only the free depth of a themed query. */
+    const [serverClamped, setServerClamped] = useState(false);
     const [serverLoading, setServerLoading] = useState(false);
     // Cold facet bar: facet key → values for the current query (search_facets, exclude-self).
     const [serverFacets, setServerFacets] = useState({});
@@ -725,7 +735,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // similar-mode results, or the set's cards.
     const viewCards = useMemo(() => {
         // Cold search: the accumulated server-search pages (already language-constrained server-side).
-        if (!catalog && searching) {
+        // A themed query is served this way even when warm — see `themedQuery`.
+        if ((!catalog || (themedQuery && coldSearch)) && searching) {
             // OWNERSHIP IS THE ONE FILTER THE SERVER CANNOT PRE-APPLY: it never sees the collection, so
             // unlike the language bound there is nothing to thread into the call. Cold mode therefore
             // filters the returned page, which thins a page instead of searching the whole corpus - the
@@ -766,6 +777,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             return; // a newer request superseded this one
         serverOffset.current = offset + page.cards.length;
         setServerTotal(page.total);
+        if (replace)
+            setServerClamped(page.clamped);
         setServerPrice((prev) => (replace ? page.priceById : { ...prev, ...page.priceById }));
         setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
         setServerLoading(false);
@@ -774,6 +787,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         if (!coldSearch || !searching) {
             setServerCards([]);
             setServerTotal(0);
+            setServerClamped(false);
             setServerFacets({});
             serverOffset.current = 0;
             return;
@@ -886,7 +900,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // End-reached: grow the client window (local views) or fetch the next server page.
     const onEndReached = () => {
         if (!localView) {
-            if (coldSearch && !serverLoading && serverCards.length < serverTotal) {
+            // A clamped page has nothing behind it to fetch: the meter row says what was withheld.
+            if (coldSearch && !serverLoading && !serverClamped && serverCards.length < serverTotal) {
                 fetchServerPage(serverOffset.current, false);
             }
             return;
@@ -1432,11 +1447,13 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     ? `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards`
                                     : `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", style: [styles.search, compactSearch ? styles.searchFull : styles.searchFlex] }), _jsxs(View, { style: compactSearch ? styles.searchTools : styles.searchToolsInline, children: [compactSearch ? (_jsx(Text, { style: styles.searchHint, numberOfLines: 1, children: QUERY_HINT })) : null, languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), savedList.length > 0 ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
-                        !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [warm
+                        !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [warm && !coldSearch
                                         ? filteredCards.length === viewCards.length
                                             ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
                                             : `${filteredCards.length} of ${viewCards.length}`
-                                        : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsxs(View, { style: styles.metaEnd, children: [warm ? (_jsxs(View, { style: styles.modeInline, accessibilityLabel: "On-device search, instant", children: [_jsx(View, { style: [styles.modeDot, styles.modeDotReady] }), _jsx(Text, { style: styles.modeText, children: "On-device" })] })) : null, _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarTo.injected
+                                        : serverClamped
+                                            ? `Top ${serverCards.length} of ${serverTotal} matches`
+                                            : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards)] }), _jsxs(View, { style: styles.metaEnd, children: [warm ? (_jsxs(View, { style: styles.modeInline, accessibilityLabel: "On-device search, instant", children: [_jsx(View, { style: [styles.modeDot, styles.modeDotReady] }), _jsx(Text, { style: styles.modeText, children: "On-device" })] })) : null, _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarTo.injected
                                             ? similarCards.length > 0
                                                 ? `${filteredCards.length} cards · ${similarTo.name}`
                                                 : similarBusy
@@ -1491,7 +1508,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     ? !catalog && coldSetLoading
                                         ? 'Loading set…'
                                         : 'No cards in this set.'
-                                    : 'Nothing here.' }), ListFooterComponent: _jsx(View, { style: styles.footer, children: footer }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
+                                    : 'Nothing here.' }), ListFooterComponent: _jsxs(View, { style: styles.footer, children: [searching && serverClamped && serverTotal > serverCards.length ? (_jsxs(Pressable, { style: styles.meterRow, accessibilityRole: "button", accessibilityLabel: `${serverTotal - serverCards.length} more matches, unlock artwork search`, onPress: () => onLockedFeature?.('themeSearch'), children: [_jsxs(Text, { style: styles.meterCount, children: ["+", serverTotal - serverCards.length, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Showing the top ", serverCards.length, ". Unlock artwork search to see them all \u2192"] })] })) : null, footer] }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
                     setMultiOpen(false);
                     setMultiSelectMode(false);
                     clearSelection();
@@ -1900,6 +1917,19 @@ function makeStyles(t, taxTileHeight) {
         column: { gap: GRID_GAP, justifyContent: 'flex-start' },
         listContent: { paddingBottom: 16 },
         empty: { textAlign: 'center', color: t.subtext, marginTop: 24, fontSize: 13 },
+        meterRow: {
+            marginHorizontal: 12,
+            marginTop: 8,
+            marginBottom: 16,
+            padding: 14,
+            borderRadius: 12,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: t.border,
+            backgroundColor: t.panel,
+            gap: 4,
+        },
+        meterCount: { fontSize: 15, fontWeight: '700', color: t.text },
+        meterHint: { fontSize: 12, color: t.subtext },
         footer: { paddingTop: 4 },
         // series/set grid tiles
         taxTile: {

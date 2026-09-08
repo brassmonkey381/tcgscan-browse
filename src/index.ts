@@ -25,6 +25,7 @@ export {
   type CatalogSource,
   type LanguageStore,
   type SavedSearchStore,
+  type ThemedSearchProxy,
 } from './config';
 
 export {

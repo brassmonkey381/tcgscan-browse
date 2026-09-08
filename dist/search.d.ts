@@ -20,6 +20,13 @@ export interface SearchPage {
     priceById: Record<string, number>;
     /** Real match count for the whole query (RPC `total_count` window), for the results header. */
     total: number;
+    /**
+     * THE METER. True when a themed query came back depth-limited: the server kept the true total
+     * but handed over only the first few rows (an anonymous caller's `free_theme_depth`). The
+     * caller shows "top N, +M more" and does not page — there is nothing more to fetch this way.
+     * Never true on the host's paid path, and never on an ordinary word search.
+     */
+    clamped: boolean;
 }
 /** True when the app is configured to reach the data server's REST API. */
 export declare function serverSearchAvailable(): boolean;

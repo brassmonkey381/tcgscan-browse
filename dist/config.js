@@ -21,6 +21,11 @@ const config = {
 let catalogSource = null;
 let languageStore = null;
 let savedSearchStore = null;
+let themedSearch = null;
+/** The host's paid themed-search endpoint, or null for the direct, metered path only. */
+export function getThemedSearchProxy() {
+    return themedSearch;
+}
 /** Set the data-server origins. Call once from the app before any browse use. */
 export function configureBrowse(next) {
     config.browseUrl = next.browseUrl;
@@ -34,6 +39,7 @@ export function configureBrowse(next) {
     catalogSource = next.catalogSource ?? null;
     languageStore = next.languageStore ?? null;
     savedSearchStore = next.savedSearchStore ?? null;
+    themedSearch = next.themedSearch ?? null;
     setManifestCache(next.cache ?? null);
 }
 /** The app-supplied persistence for starred searches, or null for the platform default. */

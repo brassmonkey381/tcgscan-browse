@@ -7,7 +7,7 @@
  * once at startup (from app code, where EXPO_PUBLIC_* env inlining works) and
  * inject app-specific actions (place/portfolio-add/find-similar) via props.
  */
-export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, cdnImageUrl, productUrl, setShopUrl, affiliateUrl, ebaySearchUrl, ebayCardSearchUrl, type BrowseConfig, type CatalogSource, type LanguageStore, type SavedSearchStore, } from './config';
+export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, cdnImageUrl, productUrl, setShopUrl, affiliateUrl, ebaySearchUrl, ebayCardSearchUrl, type BrowseConfig, type CatalogSource, type LanguageStore, type SavedSearchStore, type ThemedSearchProxy, } from './config';
 export { effectiveLanguages, getBrowseLanguages, hydrateBrowseLanguages, languageLabel, languageShortLabel, LANGUAGE_ORDER, normalizeLanguages, setBrowseLanguages, subscribeBrowseLanguages, useBrowseLanguages, } from './language';
 export { LanguageToggle } from './LanguageToggle';
 export { applyFeatureLocks, FEATURE_LABELS, isLocked, lockedQueryNotice, type BrowseFeature, } from './features';
