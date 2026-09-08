@@ -143,8 +143,8 @@ export function parseQuery(raw) {
         sortDir: 'desc',
         hasStructure: false,
     };
-    // Tokenize: key:"quoted value" | key:value | "quoted words" | word | >$n | key>n
-    const tokens = raw.match(/[a-zA-Z]+:"[^"]*"|[a-zA-Z_]+[<>]=?[^\s"]+|[a-zA-Z]+:[^\s"]+|"[^"]*"|[^\s"]+/g) ?? [];
+    // Tokenize: key:"quoted value" | key:value | -key:value | "quoted words" | word | >$n | key>n
+    const tokens = raw.match(/-?[a-zA-Z]+:"[^"]*"|[a-zA-Z_]+[<>]=?[^\s"]+|-?[a-zA-Z]+:[^\s"]+|"[^"]*"|[^\s"]+/g) ?? [];
     for (const token of tokens) {
         // Bare price bound: >$100, <=$5 (the $ is optional so >100 works too).
         const price = token.match(/^(>=|<=|>|<)\$?(\d+(?:\.\d+)?)$/);
@@ -163,10 +163,33 @@ export function parseQuery(raw) {
             out.hasStructure = true;
             continue;
         }
-        const kv = token.match(/^([a-zA-Z]+):(.+)$/);
+        const kv = token.match(/^(-?)([a-zA-Z]+):(.+)$/);
         if (kv) {
-            const rawKey = kv[1].toLowerCase();
-            const value = kv[2].replace(/^"|"$/g, '').toLowerCase().trim();
+            const negated = kv[1] === '-';
+            const rawKey = kv[2].toLowerCase();
+            const value = kv[3].replace(/^"|"$/g, '').toLowerCase().trim();
+            // EXCLUSION: `-theme:beach` (the form people know from GitHub and Gmail) is what the manual
+            // documents; the server's contract is a minus on the VALUE (`theme:-beach`, data project
+            // migration 45), so the kit rewrites one to the other on the way out and accepts both. Only
+            // the themed fields negate; a minus on any other key is left to fall through as a word. An
+            // empty negation (`-theme:` cannot tokenize, but `theme:-` can) is dropped rather than sent,
+            // where the server would read it as a positive match on "-" and find nothing.
+            if (negated || (FIELD_ALIASES[rawKey] === 'theme' && value.startsWith('-'))) {
+                if (FIELD_ALIASES[rawKey] === 'theme') {
+                    const bare = value.replace(/^-+/, '');
+                    if (bare) {
+                        out.fields.push({ key: 'theme', value: `-${bare}` });
+                        out.hasStructure = true;
+                    }
+                    continue;
+                }
+                if (negated) {
+                    const word = token.toLowerCase().trim();
+                    if (word)
+                        out.words.push(word);
+                    continue;
+                }
+            }
             if (rawKey === 'sort') {
                 const s = parseSort(value);
                 if (s) {
@@ -596,6 +619,7 @@ export const QUERY_MANUAL = [
         rows: [
             ['theme:forest', 'cards whose ARTWORK shows a forest (aliases: art:, scene:)'],
             ['theme:night theme:city', 'two ideas, both must show; each theme you add narrows it'],
+            ['theme:water -theme:beach', 'a leading minus takes an idea away'],
             ['theme:snow type:water', 'stacks with every other field, sort and filter'],
             ['theme:sunset rarity:illustration', 'the full-art printings of a scene'],
             // Informational rows carry the … mark, the convention a host cheatsheet uses to tell a
