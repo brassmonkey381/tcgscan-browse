@@ -34,6 +34,14 @@ const FIELD_ALIASES = {
     language: 'lang',
 };
 /**
+ * The namespaces an artwork tag can carry, negatable as `-<namespace>:<value>` (sent as
+ * theme:-<namespace>:<value>, which the server matches against the qualified tag exactly).
+ * Negation only: the positive form of these is not a field, and stays a search word.
+ */
+const NEGATABLE_NAMESPACES = new Set([
+    'scene', 'object', 'action', 'mood', 'style', 'medium', 'flag', 'pokemon', 'people', 'cameo', 'scale', 'subjects',
+]);
+/**
  * `lang:` values normalize to the raw 'en'/'ja' codes HERE, on the client, so the field arrives at
  * the server as an exact code and `search_cards` can compare it with plain equality. Keeping the
  * synonyms client-side is what lets warm and cold search stay byte-identical (the parity rule in
@@ -175,10 +183,19 @@ export function parseQuery(raw) {
             // empty negation (`-theme:` cannot tokenize, but `theme:-` can) is dropped rather than sent,
             // where the server would read it as a positive match on "-" and find nothing.
             if (negated || (FIELD_ALIASES[rawKey] === 'theme' && value.startsWith('-'))) {
-                if (FIELD_ALIASES[rawKey] === 'theme') {
+                // NAMESPACED EXCLUSION keeps its namespace. theme: and art: are deliberately bare, so
+                // `-theme:water` negates the word wherever it appears; but `-scene:water` means "not a
+                // water SCENE" and goes out as theme:-scene:water, which the server matches exactly
+                // against the qualified tag. Stripping the namespace excluded every card with any tag
+                // containing the word (object, action, the bare legacy tag) and could cancel the positive
+                // term outright (theme:water -scene:water came back empty). The same shape works for the
+                // other namespaces the artwork carries, so they negate here too, negation only: a
+                // positive object:sparkles is not a field this parser knows.
+                const namespace = FIELD_ALIASES[rawKey] === 'theme' && rawKey !== 'scene' ? '' : NEGATABLE_NAMESPACES.has(rawKey) ? rawKey : null;
+                if (namespace !== null) {
                     const bare = value.replace(/^-+/, '');
                     if (bare) {
-                        out.fields.push({ key: 'theme', value: `-${bare}` });
+                        out.fields.push({ key: 'theme', value: namespace ? `-${namespace}:${bare}` : `-${bare}` });
                         out.hasStructure = true;
                     }
                     continue;
