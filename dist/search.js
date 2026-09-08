@@ -132,7 +132,10 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
         let proxyTried = false;
         const proxy = themed ? getThemedSearchProxy() : null;
         if (proxy) {
-            const token = await proxy.getToken().catch(() => null);
+            // The host sees which themes are asked for, so it can vouch for a caller on one query and
+            // not another (a theme it gives away to everyone) without a wasted round trip on the rest.
+            const themes = parsed.fields.filter((f) => f.key === 'theme').map((f) => f.value);
+            const token = await proxy.getToken({ themes }).catch(() => null);
             if (token) {
                 proxyTried = true;
                 try {

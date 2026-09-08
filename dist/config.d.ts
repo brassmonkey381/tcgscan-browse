@@ -49,12 +49,16 @@ export interface SavedSearchStore {
  * knows the URL and how to get a bearer token; `getToken` returning null means "take the direct,
  * metered path" — the right answer for a guest, a signed-out visitor, or a free account, and it
  * costs no round trip. A proxy that answers 401/403 (or fails) degrades to the same direct path.
+ * `getToken` is told which themes the query asks for, so a host that gives one theme away to
+ * everyone can offer a guest's token for that query alone.
  */
 export interface ThemedSearchProxy {
     /** The host's endpoint. Receives the `search_cards` RPC body verbatim; answers with its rows. */
     url: string;
-    /** The caller's bearer token when they may search unmetered, else null. */
-    getToken: () => Promise<string | null>;
+    /** The caller's bearer token when they may search unmetered for these themes, else null. */
+    getToken: (query: {
+        themes: string[];
+    }) => Promise<string | null>;
 }
 export interface BrowseConfig {
     /**
