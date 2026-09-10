@@ -155,6 +155,12 @@ interface CatalogBrowserProps {
      */
     onThemeSearch?: () => void;
     /**
+     * What that button says. "Theme Search" named the FEATURE, so a reader could not tell it from
+     * the paid thing in the search box and pressed it expecting a picker; a host that runs one
+     * fixed query as a demonstration should name the query instead. Default keeps the old wording.
+     */
+    themeSearchLabel?: string;
+    /**
      * The set of card ids the user OWNS (own ≥ 1 copy) — a collection-aware overlay layer the app
      * supplies (kit stays source-agnostic). When present: card tiles show an owned check, set tiles
      * show "X / Y · N%" completion, and the `have:` search token (have:yes / have:no, via the
@@ -168,5 +174,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, themeSearchLabel, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

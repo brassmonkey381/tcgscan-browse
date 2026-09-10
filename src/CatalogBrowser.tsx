@@ -595,6 +595,12 @@ interface CatalogBrowserProps {
    */
   onThemeSearch?: () => void;
   /**
+   * What that button says. "Theme Search" named the FEATURE, so a reader could not tell it from
+   * the paid thing in the search box and pressed it expecting a picker; a host that runs one
+   * fixed query as a demonstration should name the query instead. Default keeps the old wording.
+   */
+  themeSearchLabel?: string;
+  /**
    * The set of card ids the user OWNS (own ≥ 1 copy) — a collection-aware overlay layer the app
    * supplies (kit stays source-agnostic). When present: card tiles show an owned check, set tiles
    * show "X / Y · N%" completion, and the `have:` search token (have:yes / have:no, via the
@@ -634,6 +640,7 @@ export function CatalogBrowser({
   onCardSizeChange,
   onColorSearch,
   onThemeSearch,
+  themeSearchLabel = 'Theme Search',
   ownedIds,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
@@ -1868,8 +1875,8 @@ export function CatalogBrowser({
             ) : null}
             {onThemeSearch ? (
               <Glow styles={styles} delay={900}>
-                <Pressable onPress={onThemeSearch} style={styles.triColorBtn} accessibilityLabel="Theme Search">
-                  <Text style={styles.triColorBtnText}>Theme Search</Text>
+                <Pressable onPress={onThemeSearch} style={styles.triColorBtn} accessibilityLabel={themeSearchLabel}>
+                  <Text style={styles.triColorBtnText}>{themeSearchLabel}</Text>
                 </Pressable>
               </Glow>
             ) : null}
