@@ -28,10 +28,14 @@ export interface SearchPage {
      */
     clamped: boolean;
     /**
-     * A clamped page that should NOT have been: the host vouched for this caller (a token was
-     * offered) but its paid endpoint refused or failed, so the metered direct path answered. The
-     * UI says "temporarily limited" rather than selling an upgrade to someone who already pays —
-     * otherwise the first symptom of a broken endpoint is paying members quietly losing a feature.
+     * A clamped page that should NOT have been: the host's paid endpoint BROKE, so the metered
+     * direct path answered. The UI says "temporarily limited" rather than selling an upgrade to
+     * someone who already pays — otherwise the first symptom of a broken endpoint is paying members
+     * quietly losing a feature.
+     *
+     * Broke, not refused. A 401 or 403 is the endpoint working correctly and saying the caller does
+     * not hold the feature, which is the ordinary free case; only a 5xx, a missing function or a
+     * network failure sets this. See `proxyBroke` in searchCards.
      */
     degraded: boolean;
 }

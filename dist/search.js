@@ -129,7 +129,16 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
         // never a broken one. See ThemedSearchProxy in config.ts.
         let rows = null;
         let viaProxy = false;
-        let proxyTried = false;
+        /**
+         * The paid path was asked and BROKE, as opposed to answering "this caller does not hold it".
+         *
+         * Only this earns the degraded message. A host cannot always know a caller's entitlement
+         * before it calls — michi offers a token for every signed-in account and lets the function
+         * read the ledger — so 401 and 403 are the normal reply for a free account, and the metered
+         * result that follows is exactly right. Treating any refusal as a breakage told every free
+         * member that artwork search was "temporarily unavailable" when nothing was wrong with it.
+         */
+        let proxyBroke = false;
         const proxy = themed ? getThemedSearchProxy() : null;
         if (proxy) {
             // The host sees which themes are asked for, so it can vouch for a caller on one query and
@@ -137,7 +146,6 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
             const themes = parsed.fields.filter((f) => f.key === 'theme').map((f) => f.value);
             const token = await proxy.getToken({ themes }).catch(() => null);
             if (token) {
-                proxyTried = true;
                 try {
                     const res = await fetch(proxy.url, {
                         method: 'POST',
@@ -148,9 +156,13 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
                         rows = (await res.json());
                         viaProxy = true;
                     }
+                    else if (res.status !== 401 && res.status !== 403) {
+                        proxyBroke = true; // 5xx, a bad gateway, a misconfigured function
+                    }
                 }
                 catch {
                     rows = null; // the direct path answers
+                    proxyBroke = true; // offline, CORS, DNS: the endpoint did not get to have an opinion
                 }
             }
         }
@@ -178,7 +190,7 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
         const depth = themed && !viaProxy ? await freeThemeDepth() : 0;
         const clamped = themed && !viaProxy && offset === 0
             && ((depth > 0 && total > depth) || cards.length < Math.min(limit, total));
-        return { cards, priceById, total, clamped, degraded: clamped && proxyTried };
+        return { cards, priceById, total, clamped, degraded: clamped && proxyBroke };
     }
     catch {
         return empty; // offline / not configured, the caller falls back to client runQuery
