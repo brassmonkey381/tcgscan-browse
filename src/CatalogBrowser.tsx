@@ -2273,10 +2273,12 @@ export function CatalogBrowser({
                 <Pressable
                   style={styles.meterRow}
                   accessibilityRole="button"
-                  accessibilityLabel={`${serverTotal - serverCards.length} more matches, unlock artwork search`}
+                  accessibilityLabel={`${serverTotal - serverCards.length} more matches, see them all with PRO`}
                   onPress={() => onLockedFeature?.('themeSearch')}>
                   <Text style={styles.meterCount}>+{serverTotal - serverCards.length} more matches</Text>
-                  <Text style={styles.meterHint}>Showing the top {serverCards.length}. Unlock artwork search to see them all →</Text>
+                  {/* NAMES THE PLAN. "Unlock artwork search" did not say what unlocks it, so the
+                      row read as a dead end rather than as an offer with a price. */}
+                  <Text style={styles.meterHint}>Showing the top {serverCards.length}. PRO searches every match →</Text>
                 </Pressable>
               )
             ) : null}
