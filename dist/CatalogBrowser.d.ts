@@ -149,6 +149,12 @@ interface CatalogBrowserProps {
      */
     onColorSearch?: () => void;
     /**
+     * What that button says. "Tri-Color Search" named the MECHANISM, which meant nothing to a reader
+     * who had not used it; a host that sells it as a way to search by colour should be able to say
+     * so. Default keeps the old wording.
+     */
+    colorSearchLabel?: string;
+    /**
      * "Theme Search" button beside Tri-Color: the host runs its demonstration (a ready-made result
      * set via `sendBrowseCommand({type:'showCards'})`, ungated) or its own picker. Omitted → no
      * button. Same row, same NEW! nudge, same glow.
@@ -174,5 +180,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, themeSearchLabel, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

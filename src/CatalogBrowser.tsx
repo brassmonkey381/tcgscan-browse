@@ -589,6 +589,12 @@ interface CatalogBrowserProps {
    */
   onColorSearch?: () => void;
   /**
+   * What that button says. "Tri-Color Search" named the MECHANISM, which meant nothing to a reader
+   * who had not used it; a host that sells it as a way to search by colour should be able to say
+   * so. Default keeps the old wording.
+   */
+  colorSearchLabel?: string;
+  /**
    * "Theme Search" button beside Tri-Color: the host runs its demonstration (a ready-made result
    * set via `sendBrowseCommand({type:'showCards'})`, ungated) or its own picker. Omitted → no
    * button. Same row, same NEW! nudge, same glow.
@@ -640,6 +646,7 @@ export function CatalogBrowser({
   onCardSizeChange,
   onColorSearch,
   onThemeSearch,
+  colorSearchLabel = 'Tri-Color Search',
   themeSearchLabel = 'Theme Search',
   ownedIds,
 }: CatalogBrowserProps) {
@@ -1868,8 +1875,8 @@ export function CatalogBrowser({
           <View style={styles.triColorRow}>
             {onColorSearch ? (
               <Glow styles={styles}>
-                <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel="Tri-Color Search">
-                  <Text style={styles.triColorBtnText}>Tri-Color Search</Text>
+                <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel={colorSearchLabel}>
+                  <Text style={styles.triColorBtnText}>{colorSearchLabel}</Text>
                 </Pressable>
               </Glow>
             ) : null}
