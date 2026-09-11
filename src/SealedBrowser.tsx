@@ -259,9 +259,18 @@ export function SealedBrowser({
                   recyclingKey={p.id}
                 />
                 {onAdd ? (
+                  // Nested Pressable captures its own tap, so the tile's own press does not fire.
+                  //
+                  // NO `accessibilityRole="button"` HERE, which is what the card grid's quick
+                  // action already does (CatalogBrowser's cardQuick) and what this one wrongly did
+                  // not. react-native-web maps that role onto a real <button>, and this sits inside
+                  // the tile's own button, so declaring it emitted `<button> cannot contain a
+                  // nested <button>` on every sealed tile: invalid HTML that React 19 warns will
+                  // break hydration, which is exactly what a statically-rendered web build does.
+                  // The press is unaffected (RNW binds onPress either way) and the label stays, so
+                  // a screen reader still announces "Add <product>".
                   <Pressable
                     hitSlop={6}
-                    accessibilityRole="button"
                     accessibilityLabel={`Add ${p.name}`}
                     onPress={() => onAdd(p)}
                     style={styles.quick}>
