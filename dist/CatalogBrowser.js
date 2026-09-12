@@ -449,6 +449,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const [serverClamped, setServerClamped] = useState(false);
     /** ...and it should not have: the host's paid path refused or failed (see SearchPage.degraded). */
     const [serverDegraded, setServerDegraded] = useState(false);
+    /**
+     * ...or the server did not answer at all (SearchPage.failed). Kept apart from an empty result
+     * so the empty state can say "not responding, retry" instead of "No cards match", which is what
+     * a statement timeout on the data project looked like for as long as it lasted.
+     */
+    const [serverFailed, setServerFailed] = useState(false);
     const [serverLoading, setServerLoading] = useState(false);
     // Cold facet bar: facet key → values for the current query (search_facets, exclude-self).
     const [serverFacets, setServerFacets] = useState({});
@@ -782,6 +788,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         if (replace) {
             setServerClamped(page.clamped);
             setServerDegraded(page.degraded);
+            setServerFailed(page.failed);
         }
         setServerPrice((prev) => (replace ? page.priceById : { ...prev, ...page.priceById }));
         setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
@@ -793,6 +800,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             setServerTotal(0);
             setServerClamped(false);
             setServerDegraded(false);
+            setServerFailed(false);
             setServerFacets({});
             serverOffset.current = 0;
             return;
@@ -1495,7 +1503,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 // Render a growing window of the (uncapped) results — reveal more as you scroll.
                 data: visibleData, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, 
                 // Hide the scrollbar indicator (scroll still works) — the grid reads cleaner without it.
-                showsVerticalScrollIndicator: false, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", onEndReachedThreshold: 0.8, onEndReached: onEndReached, initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: _jsx(Text, { style: styles.empty, children: searching
+                showsVerticalScrollIndicator: false, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", onEndReachedThreshold: 0.8, onEndReached: onEndReached, initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: searching && coldSearch && serverFailed && !serverLoading ? (_jsxs(View, { children: [_jsx(Text, { style: styles.empty, children: "Search is not responding right now." }), _jsx(Pressable, { onPress: () => fetchServerPage(0, true), hitSlop: 8, accessibilityRole: "button", accessibilityLabel: "Retry the search", children: _jsx(Text, { style: [styles.clear, { textAlign: 'center' }], children: "Retry" }) })] })) : (_jsx(Text, { style: styles.empty, children: searching
                         ? !warm && serverLoading
                             ? 'Searching…'
                             : `No cards match “${q}”.`
@@ -1513,7 +1521,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     ? !catalog && coldSetLoading
                                         ? 'Loading set…'
                                         : 'No cards in this set.'
-                                    : 'Nothing here.' }), ListFooterComponent: _jsxs(View, { style: styles.footer, children: [searching && serverClamped && serverTotal > serverCards.length ? (serverDegraded ? (_jsxs(View, { style: styles.meterRow, accessibilityRole: "text", children: [_jsxs(Text, { style: styles.meterCount, children: ["+", serverTotal - serverCards.length, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Full artwork search is temporarily unavailable, so this shows the top ", serverCards.length, ". Try again in a moment."] })] })) : (_jsxs(Pressable, { style: styles.meterRow, accessibilityRole: "button", accessibilityLabel: `${serverTotal - serverCards.length} more matches, unlock every match`, onPress: () => onLockedFeature?.('themeSearch'), children: [_jsxs(Text, { style: styles.meterCount, children: ["+", serverTotal - serverCards.length, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Showing the top ", serverCards.length, ". Unlock every match \u2192"] })] }))) : null, footer] }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
+                                    : 'Nothing here.' })), ListFooterComponent: _jsxs(View, { style: styles.footer, children: [searching && serverClamped && serverTotal > serverCards.length ? (serverDegraded ? (_jsxs(View, { style: styles.meterRow, accessibilityRole: "text", children: [_jsxs(Text, { style: styles.meterCount, children: ["+", serverTotal - serverCards.length, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Full artwork search is temporarily unavailable, so this shows the top ", serverCards.length, ". Try again in a moment."] })] })) : (_jsxs(Pressable, { style: styles.meterRow, accessibilityRole: "button", accessibilityLabel: `${serverTotal - serverCards.length} more matches, unlock every match`, onPress: () => onLockedFeature?.('themeSearch'), children: [_jsxs(Text, { style: styles.meterCount, children: ["+", serverTotal - serverCards.length, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Showing the top ", serverCards.length, ". Unlock every match \u2192"] })] }))) : null, footer] }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
                     setMultiOpen(false);
                     setMultiSelectMode(false);
                     clearSelection();

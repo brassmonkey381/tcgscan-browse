@@ -38,6 +38,18 @@ export interface SearchPage {
      * network failure sets this. See `proxyBroke` in searchCards.
      */
     degraded: boolean;
+    /**
+     * THE SERVER DID NOT ANSWER, as opposed to answering "nothing matches".
+     *
+     * The page is still empty — everything here fails soft — but an empty page used to be the only
+     * signal, so a 500 rendered as a confident "No cards match". On 2026-09-12 the data project's
+     * `search_cards` hit its statement timeout on every query without a free-text word, and for as
+     * long as that lasted `type:fire` told every user there were no Fire cards. Nobody could tell an
+     * outage from a bad query, including the people debugging it. Set on a non-OK response or a
+     * thrown fetch; never on a genuine zero-row answer, and never when server search is simply not
+     * configured or the language bound is contradictory, since those are answers too.
+     */
+    failed: boolean;
 }
 export declare function freeThemeDepth(): Promise<number>;
 /** True when the app is configured to reach the data server's REST API. */

@@ -100,7 +100,8 @@ function foldLanguageTerms(parsed, bound) {
  * OR within). Returns tile-ready cards + their prices + the real total.
  */
 export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, languages: boundIn, } = {}) {
-    const empty = { cards: [], priceById: {}, total: 0, clamped: false, degraded: false };
+    const empty = { cards: [], priceById: {}, total: 0, clamped: false, degraded: false, failed: false };
+    const failed = { ...empty, failed: true };
     if (!serverSearchAvailable())
         return empty;
     const { parsed, languages } = foldLanguageTerms(parsedIn, boundIn);
@@ -173,7 +174,7 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
                 body,
             });
             if (!res.ok)
-                return empty;
+                return failed;
             rows = (await res.json());
         }
         if (!rows.length)
@@ -190,10 +191,12 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
         const depth = themed && !viaProxy ? await freeThemeDepth() : 0;
         const clamped = themed && !viaProxy && offset === 0
             && ((depth > 0 && total > depth) || cards.length < Math.min(limit, total));
-        return { cards, priceById, total, clamped, degraded: clamped && proxyBroke };
+        return { cards, priceById, total, clamped, degraded: clamped && proxyBroke, failed: false };
     }
     catch {
-        return empty; // offline / not configured, the caller falls back to client runQuery
+        // Offline, DNS, CORS, a body that is not JSON. There is no local fallback for a cold search
+        // (no catalog to run the query over), so the caller says the server did not answer.
+        return failed;
     }
 }
 /** The card columns the direct PostgREST fetchers select (matches SearchRow minus cur/score). */

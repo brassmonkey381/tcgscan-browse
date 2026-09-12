@@ -40,6 +40,18 @@ export interface SearchPage {
    * network failure sets this. See `proxyBroke` in searchCards.
    */
   degraded: boolean;
+  /**
+   * THE SERVER DID NOT ANSWER, as opposed to answering "nothing matches".
+   *
+   * The page is still empty — everything here fails soft — but an empty page used to be the only
+   * signal, so a 500 rendered as a confident "No cards match". On 2026-09-12 the data project's
+   * `search_cards` hit its statement timeout on every query without a free-text word, and for as
+   * long as that lasted `type:fire` told every user there were no Fire cards. Nobody could tell an
+   * outage from a bad query, including the people debugging it. Set on a non-OK response or a
+   * thrown fetch; never on a genuine zero-row answer, and never when server search is simply not
+   * configured or the language bound is contradictory, since those are answers too.
+   */
+  failed: boolean;
 }
 
 /**
@@ -172,7 +184,8 @@ export async function searchCards(
     languages: boundIn,
   }: { limit?: number; offset?: number; facets?: ServerFacetSelection; languages?: CardLanguage[] } = {},
 ): Promise<SearchPage> {
-  const empty: SearchPage = { cards: [], priceById: {}, total: 0, clamped: false, degraded: false };
+  const empty: SearchPage = { cards: [], priceById: {}, total: 0, clamped: false, degraded: false, failed: false };
+  const failed: SearchPage = { ...empty, failed: true };
   if (!serverSearchAvailable()) return empty;
   const { parsed, languages } = foldLanguageTerms(parsedIn, boundIn);
   if (languages?.length === 0) return empty; // contradictory bound (e.g. EN-only + lang:ja)
@@ -240,7 +253,7 @@ export async function searchCards(
         headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
         body,
       });
-      if (!res.ok) return empty;
+      if (!res.ok) return failed;
       rows = (await res.json()) as SearchRow[];
     }
     if (!rows.length) return empty;
@@ -256,9 +269,11 @@ export async function searchCards(
     const clamped =
       themed && !viaProxy && offset === 0
       && ((depth > 0 && total > depth) || cards.length < Math.min(limit, total));
-    return { cards, priceById, total, clamped, degraded: clamped && proxyBroke };
+    return { cards, priceById, total, clamped, degraded: clamped && proxyBroke, failed: false };
   } catch {
-    return empty; // offline / not configured, the caller falls back to client runQuery
+    // Offline, DNS, CORS, a body that is not JSON. There is no local fallback for a cold search
+    // (no catalog to run the query over), so the caller says the server did not answer.
+    return failed;
   }
 }
 

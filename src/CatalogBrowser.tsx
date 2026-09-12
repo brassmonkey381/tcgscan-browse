@@ -793,6 +793,12 @@ export function CatalogBrowser({
   const [serverClamped, setServerClamped] = useState(false);
   /** ...and it should not have: the host's paid path refused or failed (see SearchPage.degraded). */
   const [serverDegraded, setServerDegraded] = useState(false);
+  /**
+   * ...or the server did not answer at all (SearchPage.failed). Kept apart from an empty result
+   * so the empty state can say "not responding, retry" instead of "No cards match", which is what
+   * a statement timeout on the data project looked like for as long as it lasted.
+   */
+  const [serverFailed, setServerFailed] = useState(false);
   const [serverLoading, setServerLoading] = useState(false);
   // Cold facet bar: facet key → values for the current query (search_facets, exclude-self).
   const [serverFacets, setServerFacets] = useState<Record<string, string[]>>({});
@@ -1148,6 +1154,7 @@ export function CatalogBrowser({
       if (replace) {
         setServerClamped(page.clamped);
         setServerDegraded(page.degraded);
+        setServerFailed(page.failed);
       }
       setServerPrice((prev) => (replace ? page.priceById : { ...prev, ...page.priceById }));
       setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
@@ -1161,6 +1168,7 @@ export function CatalogBrowser({
       setServerTotal(0);
       setServerClamped(false);
       setServerDegraded(false);
+      setServerFailed(false);
       setServerFacets({});
       serverOffset.current = 0;
       return;
@@ -2239,6 +2247,20 @@ export function CatalogBrowser({
         windowSize={9}
         removeClippedSubviews
         ListEmptyComponent={
+          searching && coldSearch && serverFailed && !serverLoading ? (
+            // THE SERVER DID NOT ANSWER. Not "No cards match": that sentence is a claim about the
+            // catalog, and making it on a 500 is how a search outage passes for an empty result.
+            <View>
+              <Text style={styles.empty}>Search is not responding right now.</Text>
+              <Pressable
+                onPress={() => fetchServerPage(0, true)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Retry the search">
+                <Text style={[styles.clear, { textAlign: 'center' }]}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : (
           <Text style={styles.empty}>
             {searching
               ? !warm && serverLoading
@@ -2260,6 +2282,7 @@ export function CatalogBrowser({
                       : 'No cards in this set.'
                     : 'Nothing here.'}
           </Text>
+          )
         }
         ListFooterComponent={
           <View style={styles.footer}>
