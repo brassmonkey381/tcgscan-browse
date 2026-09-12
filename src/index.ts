@@ -146,7 +146,6 @@ export {
   colorSearchAvailable,
   colorServerAvailable,
   findSimilarByColor,
-  findSimilarByColorServer,
   getColorIndex,
   labToSrgb,
   loadColorIndex,

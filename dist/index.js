@@ -18,7 +18,7 @@ export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, } from '
 export { resolveActions, resolveLabel, } from './actions';
 export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE } from './theme';
 export { findSimilar, findSimilarToMany, findSimilarWeighted, getSimilarityModel, listSimilarityModels, refineWeights, setSimilarityModel, similarAvailable, } from './similar';
-export { ColorIndex, colorSearchAvailable, colorServerAvailable, findSimilarByColor, findSimilarByColorServer, getColorIndex, labToSrgb, loadColorIndex, searchByColor, searchByColorServer, searchByColors, searchByColorsServer, srgbToLab, useColorIndex, } from './color';
+export { ColorIndex, colorSearchAvailable, colorServerAvailable, findSimilarByColor, getColorIndex, labToSrgb, loadColorIndex, searchByColor, searchByColorServer, searchByColors, searchByColorsServer, srgbToLab, useColorIndex, } from './color';
 export { fetchCardDetail, fetchCardsByIds, fetchSetCards, freeThemeDepth, searchCards, searchFacets, serverSearchAvailable, } from './search';
 export { loadTaxonomy, useTaxonomy } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, } from './sealed';

@@ -98,11 +98,6 @@ export declare function searchByColorsServer(query: Lab[], region: ColorRegion, 
     limit?: number;
     languages?: CardLanguage[];
 }): Promise<ColorHit[]>;
-/** MODAL via the server: cards with the nearest palette to `productId`. Fails soft ([]). */
-export declare function findSimilarByColorServer(productId: string, region: ColorRegion, { limit, languages }?: {
-    limit?: number;
-    languages?: CardLanguage[];
-}): Promise<ColorHit[]>;
 /** True when EITHER color path is usable (on-device index loaded, or server reachable). */
 export declare function colorSearchAvailable(): boolean;
 /**
@@ -127,8 +122,19 @@ export declare function searchByColors(query: Lab[], region: ColorRegion, opts?:
     languages?: CardLanguage[];
 }): Promise<string[]>;
 /**
- * MODAL (hybrid): ids of cards with the palette nearest `productId`, nearest first. On-device when
- * the index holds the card, else the server RPC. Returns ids only.
+ * MODAL: ids of cards with the palette nearest `productId`, nearest first. ON-DEVICE ONLY.
+ *
+ * IT USED TO FALL BACK TO A SERVER RPC and there is no longer a server to fall back to.
+ * `find_similar_by_color` was dropped from the data project on 2026-09-11 rather than carried
+ * through the grant boundary, because it never worked: 0 successes in 6 calls, every one a 57014
+ * statement timeout at 3.1 to 3.5 seconds, anonymous and unmetered. The fallback returned [] on
+ * any non-2xx, so for as long as anyone has measured it this branch has produced an empty list
+ * after a three second wait. Removing it changes the wait, not the answer.
+ *
+ * The on-device path is untouched and was always the one doing the work: a card the colour index
+ * holds answers locally in microseconds. A card it does not hold now returns [] immediately, which
+ * is what the server branch returned anyway. michi's ColorSearchSheet already shows a note for the
+ * empty case, which is why this degrades quietly rather than looking broken.
  */
 export declare function findSimilarByColor(productId: string, region: ColorRegion, opts?: {
     limit?: number;

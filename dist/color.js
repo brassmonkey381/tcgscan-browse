@@ -4,10 +4,14 @@
  *   2. SIMILAR  — from one card, get cards with the nearest palette ("find similar by color").
  * Both support a REGION toggle: 'noborder' (full card face) vs 'art' (illustration only).
  *
- * HYBRID (mirrors the embedding path): compute on-device when a client is WARM (the small
- * color blob is loaded), else fall back to the data server's RPCs (guest / gated / cold). Both
- * paths use the identical CIELAB values + metric, so results match. See tcgscan-data-science's
+ * HYBRID, BUT ONLY FOR THE PICKER NOW. Compute on-device when a client is WARM (the small color
+ * blob is loaded), else fall back to the data server's RPCs (guest / gated / cold). Both paths use
+ * the identical CIELAB values + metric, so results match. See tcgscan-data-science's
  * docs/COLOR-SIMILARITY.md for the full data contract.
+ *
+ * SIMILAR (2) lost its server arm on 2026-09-11: `find_similar_by_color` was dropped rather than
+ * carried through the grant boundary because it had never once succeeded, timing out at three
+ * seconds on every call. See findSimilarByColor. The picker's two RPCs are healthy and stayed.
  *
  * Fails soft everywhere — color search is a bonus, never a dependency.
  */
@@ -325,30 +329,6 @@ export async function searchByColorsServer(query, region, { limit = 60, language
         return [];
     }
 }
-/** MODAL via the server: cards with the nearest palette to `productId`. Fails soft ([]). */
-export async function findSimilarByColorServer(productId, region, { limit = 30, languages } = {}) {
-    if (!colorServerAvailable() || !productId)
-        return [];
-    try {
-        const res = await fetchWithTimeout(`${getApiUrl()}/rpc/find_similar_by_color`, {
-            method: 'POST',
-            headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                p_product_id: productId,
-                p_region: region,
-                p_limit: limit,
-                ...langArg(languages),
-            }),
-        });
-        if (!res.ok)
-            return [];
-        const rows = (await res.json());
-        return rows.map((r) => ({ id: r.product_id, score: r.dist }));
-    }
-    catch {
-        return [];
-    }
-}
 // ---- Hybrid (prefer on-device when warm, else server) ------------------------------------
 /** True when EITHER color path is usable (on-device index loaded, or server reachable). */
 export function colorSearchAvailable() {
@@ -379,14 +359,24 @@ export async function searchByColors(query, region, opts = {}) {
     return (await searchByColorsServer(query, region, opts)).map((h) => h.id);
 }
 /**
- * MODAL (hybrid): ids of cards with the palette nearest `productId`, nearest first. On-device when
- * the index holds the card, else the server RPC. Returns ids only.
+ * MODAL: ids of cards with the palette nearest `productId`, nearest first. ON-DEVICE ONLY.
+ *
+ * IT USED TO FALL BACK TO A SERVER RPC and there is no longer a server to fall back to.
+ * `find_similar_by_color` was dropped from the data project on 2026-09-11 rather than carried
+ * through the grant boundary, because it never worked: 0 successes in 6 calls, every one a 57014
+ * statement timeout at 3.1 to 3.5 seconds, anonymous and unmetered. The fallback returned [] on
+ * any non-2xx, so for as long as anyone has measured it this branch has produced an empty list
+ * after a three second wait. Removing it changes the wait, not the answer.
+ *
+ * The on-device path is untouched and was always the one doing the work: a card the colour index
+ * holds answers locally in microseconds. A card it does not hold now returns [] immediately, which
+ * is what the server branch returned anyway. michi's ColorSearchSheet already shows a note for the
+ * empty case, which is why this degrades quietly rather than looking broken.
  */
 export async function findSimilarByColor(productId, region, opts = {}) {
-    if (indexLoaded?.has(productId)) {
-        return indexLoaded
-            .findSimilar(productId, region, opts.limit ?? 30, languageGate(opts.languages) ?? undefined)
-            .map((h) => h.id);
-    }
-    return (await findSimilarByColorServer(productId, region, opts)).map((h) => h.id);
+    if (!indexLoaded?.has(productId))
+        return [];
+    return indexLoaded
+        .findSimilar(productId, region, opts.limit ?? 30, languageGate(opts.languages) ?? undefined)
+        .map((h) => h.id);
 }
