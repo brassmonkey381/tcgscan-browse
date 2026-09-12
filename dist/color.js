@@ -14,7 +14,7 @@
 import { useEffect, useState } from 'react';
 import { getLoadedCatalog } from './catalog';
 import { getApiKey, getApiUrl, getColorUrl } from './config';
-import { effectiveLanguages } from './language';
+import { LANGUAGE_ORDER, effectiveLanguages } from './language';
 const RPC_TIMEOUT_MS = 12000;
 function fetchWithTimeout(url, init) {
     const controller = new AbortController();
@@ -46,10 +46,27 @@ function languageGate(languages) {
         return !card || allowed.has(card.language);
     };
 }
-/** `p_lang` body fragment for the server colour RPCs; omitted when unconstrained. */
+/**
+ * `p_lang` body fragment for the server colour RPCs. ALWAYS SENT, including when unconstrained.
+ *
+ * It used to be omitted for an unconstrained search, which reads as the natural encoding of "no
+ * bound" but costs roughly 2x on the wire: measured 1090ms -> 538ms for search_by_color and
+ * 1535ms -> 859ms for search_by_colors, with identical result sets over 25 rows. Both functions
+ * sit near the 3s statement timeout and both have been observed failing at it on a cold first
+ * call, so halving the runtime is headroom against a real outage, not a micro-optimisation.
+ *
+ * Sending every language is EXACTLY equivalent to omitting the bound, by construction rather than
+ * by luck: `effectiveLanguages` returns undefined precisely when the selection already covers
+ * LANGUAGE_ORDER (language.ts:144), so "unconstrained" and "en and ja" are the same set.
+ *
+ * The `??` is load-bearing. An empty array is a CONTRADICTORY bound, not an absent one (the EN/JP
+ * toggle on English while the facet chip asks for Japanese), and the server reads `p_lang '{}'` as
+ * no rows, which is the honest answer. `??` passes `[]` through untouched and only fills in for
+ * undefined; a truthiness test would too, but `||` here would silently turn "nothing qualifies"
+ * into "everything qualifies".
+ */
 function langArg(languages) {
-    const eff = effectiveLanguages(languages);
-    return eff ? { p_lang: eff } : {};
+    return { p_lang: effectiveLanguages(languages) ?? LANGUAGE_ORDER };
 }
 // ---- sRGB <-> CIELAB (mirror rgb_to_lab in tcgscan/analysis/colors.py) --------------------
 /** sRGB (0..255) → CIELAB. Feed a picked swatch through this before searchByColor. */
