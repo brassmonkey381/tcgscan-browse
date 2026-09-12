@@ -122,13 +122,18 @@ const FIELD_ALIASES: Record<string, FieldKey> = {
  * `theme:pikachu` adds every tag containing the word. Both forms go out as a theme field
  * (theme:object:sparkles), included or, with a leading minus, excluded (theme:-object:sparkles).
  */
-const ART_NAMESPACES = new Set(['scene', 'object', 'action', 'mood', 'style', 'medium', 'flag', 'pokemon', 'people']);
-/**
- * Exact-match keys of the artwork data (data project migration 45) that are NOT substrings of
- * the artwork text. Their negation works through the same theme:- door; their positive form
- * needs a real field the parser does not have yet, so it stays a search word for now.
- */
-const NEGATABLE_NAMESPACES = new Set([...ART_NAMESPACES, 'cameo', 'scale', 'subjects']);
+const ART_NAMESPACES = new Set([
+  'scene', 'object', 'action', 'mood', 'style', 'medium', 'flag', 'pokemon', 'people',
+  // The structural tags (data project migration 45) are tags like any other -- the export
+  // emits them qualified-only -- so since migration 49 they take the same door: scale:small
+  // goes out as theme:scale:small and the server matches the token exactly. Before 49 they
+  // had server-side keys of their own that this parser never sent (only the negated form
+  // reached it); now the positive form works and there is one path instead of four.
+  'cameo', 'scale', 'subjects',
+]);
+
+/** Kept as a name for the negation branch below; it is the same set now (migration 49). */
+const NEGATABLE_NAMESPACES = ART_NAMESPACES;
 
 /**
  * `lang:` values normalize to the raw 'en'/'ja' codes HERE, on the client, so the field arrives at
@@ -326,6 +331,14 @@ export function parseQuery(raw: string): ParsedQuery {
           out.fields.push({ key: 'theme', value: value.startsWith('-') ? `-${rawKey}:${bare}` : `${rawKey}:${bare}` });
           out.hasStructure = true;
         }
+        continue;
+      }
+      // A namespace with an EMPTY value (`cameo:""`) asks for any card carrying that tag family.
+      // It goes out as the bare namespace word, which the server's bare rule prefix-matches
+      // against `cameo` and every `cameo:<species>` (migration 49).
+      if (ART_NAMESPACES.has(rawKey) && !value) {
+        out.fields.push({ key: 'theme', value: rawKey });
+        out.hasStructure = true;
         continue;
       }
       const key = FIELD_ALIASES[rawKey];
