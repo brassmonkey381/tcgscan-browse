@@ -122,6 +122,21 @@ export interface BrowseConfig {
     savedSearchStore?: SavedSearchStore;
     /** See ThemedSearchProxy. Absent: every themed query takes the direct, metered path. */
     themedSearch?: ThemedSearchProxy;
+    /**
+     * The card game the host is showing, as outbound links need it. Omit for Pokémon (the kit's
+     * original behaviour, byte for byte). A host showing another game (tcgscan-app's One Piece mode)
+     * sets both, so "shop this set" and "Find on eBay" stop pointing at the Pokémon category.
+     */
+    productLine?: ProductLine;
+}
+/** Outbound-link identity of a card game. */
+export interface ProductLine {
+    /** TCGplayer category slug for set pages, e.g. 'one-piece-card-game'. Default 'pokemon'
+     *  (Japanese sets route to 'pokemon-japan' only while this is the Pokémon default). */
+    tcgplayerCategory?: string;
+    /** eBay category id that card searches are scoped to; '' searches all of eBay. Default '2536'
+     *  (Pokémon TCG). */
+    ebayCategory?: string;
 }
 /** The host's paid themed-search endpoint, or null for the direct, metered path only. */
 export declare function getThemedSearchProxy(): ThemedSearchProxy | null;
@@ -158,7 +173,8 @@ export declare function affiliateUrl(destination: string): string;
  */
 export declare function productUrl(id: string): string;
 /**
- * A tracked eBay Partner Network search deep link for `query`, scoped to the Pokémon TCG category,
+ * A tracked eBay Partner Network search deep link for `query`, scoped to the configured card
+ * category (Pokémon TCG unless `productLine` says otherwise; unscoped when that is ''),
  * using the configured campaign id + customid (see configureBrowse). Returns '' when no campaign id
  * is configured, so callers hide eBay links on unconfigured builds. `mkevt=1` + `mkcid`/`mkrid` are
  * what make EPN attribution fire — confirmed against EPN's link tool for the US marketplace.
@@ -177,6 +193,8 @@ export declare function ebayCardSearchUrl(card: {
  * Japanese sets live under a SEPARATE TCGPlayer category — `pokemon-japan` (e.g.
  * …/pokemon-japan/m3-nihil-zero) — so pass the set's `language` to route JP there; anything
  * other than 'ja' (default) uses the English `pokemon` category.
+ *
+ * Another game (configureBrowse `productLine`) uses its own category for every set.
  */
 export declare function setShopUrl(urlName: string, language?: CardLanguage): string;
 /**

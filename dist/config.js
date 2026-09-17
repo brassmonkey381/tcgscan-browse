@@ -18,6 +18,10 @@ const config = {
     ebayCampaignId: '',
     ebayCustomId: '',
 };
+/** eBay's "Pokémon TCG" category — scoping a search to it keeps results on cards. */
+const EBAY_POKEMON_TCG_CATEGORY = '2536';
+const POKEMON_LINE = { tcgplayerCategory: 'pokemon', ebayCategory: EBAY_POKEMON_TCG_CATEGORY };
+let productLine = POKEMON_LINE;
 let catalogSource = null;
 let languageStore = null;
 let savedSearchStore = null;
@@ -40,6 +44,7 @@ export function configureBrowse(next) {
     languageStore = next.languageStore ?? null;
     savedSearchStore = next.savedSearchStore ?? null;
     themedSearch = next.themedSearch ?? null;
+    productLine = { ...POKEMON_LINE, ...(next.productLine ?? {}) };
     setManifestCache(next.cache ?? null);
 }
 /** The app-supplied persistence for starred searches, or null for the platform default. */
@@ -117,10 +122,9 @@ export function affiliateUrl(destination) {
 export function productUrl(id) {
     return id ? affiliateUrl(`https://www.tcgplayer.com/product/${id}`) : '';
 }
-/** eBay's "Pokémon TCG" category — scoping a search to it keeps results on cards. */
-const EBAY_POKEMON_TCG_CATEGORY = '2536';
 /**
- * A tracked eBay Partner Network search deep link for `query`, scoped to the Pokémon TCG category,
+ * A tracked eBay Partner Network search deep link for `query`, scoped to the configured card
+ * category (Pokémon TCG unless `productLine` says otherwise; unscoped when that is ''),
  * using the configured campaign id + customid (see configureBrowse). Returns '' when no campaign id
  * is configured, so callers hide eBay links on unconfigured builds. `mkevt=1` + `mkcid`/`mkrid` are
  * what make EPN attribution fire — confirmed against EPN's link tool for the US marketplace.
@@ -132,7 +136,7 @@ export function ebaySearchUrl(query) {
         return '';
     const parts = [
         `_nkw=${encodeURIComponent(q)}`,
-        `_sacat=${EBAY_POKEMON_TCG_CATEGORY}`,
+        productLine.ebayCategory ? `_sacat=${productLine.ebayCategory}` : '',
         'mkcid=1',
         'mkrid=711-53200-19255-0',
         'siteid=0',
@@ -155,13 +159,16 @@ export function ebayCardSearchUrl(card) {
  * Japanese sets live under a SEPARATE TCGPlayer category — `pokemon-japan` (e.g.
  * …/pokemon-japan/m3-nihil-zero) — so pass the set's `language` to route JP there; anything
  * other than 'ja' (default) uses the English `pokemon` category.
+ *
+ * Another game (configureBrowse `productLine`) uses its own category for every set.
  */
 export function setShopUrl(urlName, language) {
     const slug = urlName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
-    const category = language === 'ja' ? 'pokemon-japan' : 'pokemon';
+    const pokemon = productLine.tcgplayerCategory === POKEMON_LINE.tcgplayerCategory;
+    const category = pokemon && language === 'ja' ? 'pokemon-japan' : productLine.tcgplayerCategory;
     return slug
         ? affiliateUrl(`https://www.tcgplayer.com/categories/trading-and-collectible-card-games/${category}/${slug}`)
         : '';

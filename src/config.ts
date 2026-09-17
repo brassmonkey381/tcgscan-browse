@@ -134,10 +134,26 @@ export interface BrowseConfig {
   savedSearchStore?: SavedSearchStore;
   /** See ThemedSearchProxy. Absent: every themed query takes the direct, metered path. */
   themedSearch?: ThemedSearchProxy;
+  /**
+   * The card game the host is showing, as outbound links need it. Omit for Pokémon (the kit's
+   * original behaviour, byte for byte). A host showing another game (tcgscan-app's One Piece mode)
+   * sets both, so "shop this set" and "Find on eBay" stop pointing at the Pokémon category.
+   */
+  productLine?: ProductLine;
+}
+
+/** Outbound-link identity of a card game. */
+export interface ProductLine {
+  /** TCGplayer category slug for set pages, e.g. 'one-piece-card-game'. Default 'pokemon'
+   *  (Japanese sets route to 'pokemon-japan' only while this is the Pokémon default). */
+  tcgplayerCategory?: string;
+  /** eBay category id that card searches are scoped to; '' searches all of eBay. Default '2536'
+   *  (Pokémon TCG). */
+  ebayCategory?: string;
 }
 
 const config: Required<
-  Omit<BrowseConfig, 'cache' | 'catalogSource' | 'languageStore' | 'savedSearchStore' | 'themedSearch'>
+  Omit<BrowseConfig, 'cache' | 'catalogSource' | 'languageStore' | 'savedSearchStore' | 'themedSearch' | 'productLine'>
 > = {
   browseUrl: '/browse',
   imgBase: '',
@@ -148,6 +164,10 @@ const config: Required<
   ebayCampaignId: '',
   ebayCustomId: '',
 };
+/** eBay's "Pokémon TCG" category — scoping a search to it keeps results on cards. */
+const EBAY_POKEMON_TCG_CATEGORY = '2536';
+const POKEMON_LINE: Required<ProductLine> = { tcgplayerCategory: 'pokemon', ebayCategory: EBAY_POKEMON_TCG_CATEGORY };
+let productLine: Required<ProductLine> = POKEMON_LINE;
 let catalogSource: CatalogSource | null = null;
 let languageStore: LanguageStore | null = null;
 let savedSearchStore: SavedSearchStore | null = null;
@@ -172,6 +192,7 @@ export function configureBrowse(next: BrowseConfig): void {
   languageStore = next.languageStore ?? null;
   savedSearchStore = next.savedSearchStore ?? null;
   themedSearch = next.themedSearch ?? null;
+  productLine = { ...POKEMON_LINE, ...(next.productLine ?? {}) };
   setManifestCache(next.cache ?? null);
 }
 
@@ -255,11 +276,9 @@ export function productUrl(id: string): string {
   return id ? affiliateUrl(`https://www.tcgplayer.com/product/${id}`) : '';
 }
 
-/** eBay's "Pokémon TCG" category — scoping a search to it keeps results on cards. */
-const EBAY_POKEMON_TCG_CATEGORY = '2536';
-
 /**
- * A tracked eBay Partner Network search deep link for `query`, scoped to the Pokémon TCG category,
+ * A tracked eBay Partner Network search deep link for `query`, scoped to the configured card
+ * category (Pokémon TCG unless `productLine` says otherwise; unscoped when that is ''),
  * using the configured campaign id + customid (see configureBrowse). Returns '' when no campaign id
  * is configured, so callers hide eBay links on unconfigured builds. `mkevt=1` + `mkcid`/`mkrid` are
  * what make EPN attribution fire — confirmed against EPN's link tool for the US marketplace.
@@ -270,7 +289,7 @@ export function ebaySearchUrl(query: string): string {
   if (!campid || !q) return '';
   const parts = [
     `_nkw=${encodeURIComponent(q)}`,
-    `_sacat=${EBAY_POKEMON_TCG_CATEGORY}`,
+    productLine.ebayCategory ? `_sacat=${productLine.ebayCategory}` : '',
     'mkcid=1',
     'mkrid=711-53200-19255-0',
     'siteid=0',
@@ -295,13 +314,16 @@ export function ebayCardSearchUrl(card: { name: string; setName?: string; number
  * Japanese sets live under a SEPARATE TCGPlayer category — `pokemon-japan` (e.g.
  * …/pokemon-japan/m3-nihil-zero) — so pass the set's `language` to route JP there; anything
  * other than 'ja' (default) uses the English `pokemon` category.
+ *
+ * Another game (configureBrowse `productLine`) uses its own category for every set.
  */
 export function setShopUrl(urlName: string, language?: CardLanguage): string {
   const slug = urlName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  const category = language === 'ja' ? 'pokemon-japan' : 'pokemon';
+  const pokemon = productLine.tcgplayerCategory === POKEMON_LINE.tcgplayerCategory;
+  const category = pokemon && language === 'ja' ? 'pokemon-japan' : productLine.tcgplayerCategory;
   return slug
     ? affiliateUrl(
         `https://www.tcgplayer.com/categories/trading-and-collectible-card-games/${category}/${slug}`,

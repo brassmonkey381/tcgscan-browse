@@ -24,6 +24,7 @@ export {
   type BrowseConfig,
   type CatalogSource,
   type LanguageStore,
+  type ProductLine,
   type SavedSearchStore,
   type ThemedSearchProxy,
 } from './config';
