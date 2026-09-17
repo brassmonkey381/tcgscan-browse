@@ -55,12 +55,18 @@ export {
 export {
   hydrateImageManifest,
   imageManifestReady,
+  imageManifestRevision,
+  loadImageManifest,
+  registerImageManifest,
+  secondaryManifestReady,
   subscribeImageManifest,
   useImageManifest,
   type ManifestCache,
+  type SecondaryManifest,
 } from './images';
 
 export {
+  buildCatalog,
   evolutionNeighbors,
   formatSetDate,
   getCatalog,

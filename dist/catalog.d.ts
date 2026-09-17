@@ -201,6 +201,20 @@ export declare function seriesDateRange(s: {
     releaseDate: string;
 }): string;
 /**
+ * Build a Catalog from a RAW catalog the host already has — a second game's public catalog.json,
+ * a fixture, a test double — WITHOUT touching the shared load-once catalog below.
+ *
+ * The kit's own loader is one global: one browseUrl, one promise, one `loaded`. That is right for
+ * the app's main catalog and wrong for a host that must hold two at once (michi-maker's mixed
+ * binder browses Pokémon and One Piece in the same session). `LocalCatalog` is private, so without
+ * this the host would have to reimplement search, drill-down and facets over its own data
+ * structure, forking the `Catalog` contract this package owns.
+ *
+ * Purely additive: it shares no state with `loadCatalog`/`getCatalog`, so nothing about the primary
+ * catalog's lifecycle changes.
+ */
+export declare function buildCatalog(raw: RawCatalog, onProgress?: (fraction: number) => void): Promise<Catalog>;
+/**
  * Where the shared catalog is in its lifecycle:
  *  - 'idle'        nothing started
  *  - 'downloading' fetching catalog.json (off-thread)

@@ -11,8 +11,8 @@ export { configureBrowse, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolv
 export { effectiveLanguages, getBrowseLanguages, hydrateBrowseLanguages, languageLabel, languageShortLabel, LANGUAGE_ORDER, normalizeLanguages, setBrowseLanguages, subscribeBrowseLanguages, useBrowseLanguages, } from './language';
 export { LanguageToggle } from './LanguageToggle';
 export { applyFeatureLocks, FEATURE_LABELS, isLocked, lockedQueryNotice, } from './features';
-export { hydrateImageManifest, imageManifestReady, subscribeImageManifest, useImageManifest, } from './images';
-export { evolutionNeighbors, formatSetDate, getCatalog, getCatalogStatus, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, subscribeCatalogStatus, useCatalogStatus, } from './catalog';
+export { hydrateImageManifest, imageManifestReady, imageManifestRevision, loadImageManifest, registerImageManifest, secondaryManifestReady, subscribeImageManifest, useImageManifest, } from './images';
+export { buildCatalog, evolutionNeighbors, formatSetDate, getCatalog, getCatalogStatus, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, subscribeCatalogStatus, useCatalogStatus, } from './catalog';
 export { formatUsd, getCardPrices, getPriceSummary, getValueSeries, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, TIME_RANGES, usePriceSummary, windowByRange, } from './prices';
 export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, } from './analytics';
 export { resolveActions, resolveLabel, } from './actions';
