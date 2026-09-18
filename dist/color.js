@@ -245,9 +245,16 @@ export class ColorIndex {
  */
 const indexPromises = new Map();
 const indexesLoaded = new Map();
-/** Load-once on-device color index from the configured color URL. Fails soft → null. */
-export function loadColorIndex() {
-    const url = getColorUrl();
+/**
+ * Load-once on-device color index. Fails soft → null.
+ *
+ * `url` overrides the configured one for THIS CALL only — for a host that needs another game's
+ * palettes without changing what the rest of the session is pointed at (michi composing a One
+ * Piece page from inside a Pokémon binder). Global `setColorUrl` is right for a whole surface
+ * switching games; this is right for one query, and it cannot race with a concurrent one.
+ */
+export function loadColorIndex(colorUrl) {
+    const url = colorUrl || getColorUrl();
     const existing = indexPromises.get(url);
     if (existing)
         return existing;
@@ -265,9 +272,12 @@ export function loadColorIndex() {
     indexPromises.set(url, pending);
     return pending;
 }
-/** The loaded on-device index FOR THE ACTIVE GAME, or null if not (yet) loaded. */
-export function getColorIndex() {
-    return indexesLoaded.get(getColorUrl()) ?? null;
+/**
+ * The loaded on-device index FOR THE ACTIVE GAME, or null if not (yet) loaded. `colorUrl` asks
+ * for a specific game's instead, the same override `loadColorIndex` takes.
+ */
+export function getColorIndex(colorUrl) {
+    return indexesLoaded.get(colorUrl || getColorUrl()) ?? null;
 }
 /**
  * React hook: kicks off the on-device index load when `enabled` and returns it once ready (null
