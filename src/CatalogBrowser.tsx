@@ -493,6 +493,19 @@ interface CatalogBrowserProps {
    * the action WITHOUT opening the sheet. Reuses the shared `CardAction` model.
    */
   quickAction?: (card: CatalogCard) => CardAction | undefined;
+  /**
+   * INTERCEPT A PLAIN TILE TAP. Return true to say the tap was consumed — the single-card sheet
+   * does not open and nothing else happens with it.
+   *
+   * For a host that has put the browser into a mode where tapping a card means something other
+   * than "tell me about this card": michi's colour eyedropper, where the sheet opening in front of
+   * the grid is the whole problem. Without this the only tap that does not open the sheet is the
+   * `quickAction` pill, which is a deliberately tiny target and reads as a second, separate thing
+   * to hit rather than "the card".
+   *
+   * Select mode still wins: a tap there is already spoken for.
+   */
+  onCardTap?: (card: CatalogCard) => boolean;
   /** Where analytics tiles/bars navigate on tap. Defaults to `onPickCard`. */
   onOpenCard?: (cardId: string) => void;
   /** Artwork-panel + tonal-insert sections, rendered as the list footer so they stay
@@ -630,6 +643,7 @@ export function CatalogBrowser({
   pickCardsLabel,
   cardActions,
   quickAction,
+  onCardTap,
   onOpenCard,
   footer,
   analytics,
@@ -1817,7 +1831,16 @@ export function CatalogBrowser({
         focused={index === focusIdx}
         // In select mode (toggle, or web Ctrl/Shift) a tap toggles selection; else it opens
         // the single-card sheet.
-        onPress={() => (isSelecting() ? toggleSelected(c.id) : setActionCard(c))}
+        onPress={() => {
+          if (isSelecting()) {
+            toggleSelected(c.id);
+            return;
+          }
+          // The host may have claimed this tap (see onCardTap) — e.g. a colour pick, where the
+          // card sheet opening over the grid is exactly what must not happen.
+          if (onCardTap?.(c)) return;
+          setActionCard(c);
+        }}
         multiSelected={selectedIds.includes(c.id)}
         // The name always owns this line — it is the only thing distinguishing one tile's art
         // from the next, and it must not be spent on a number shown elsewhere.

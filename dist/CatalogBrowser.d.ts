@@ -53,6 +53,19 @@ interface CatalogBrowserProps {
      * the action WITHOUT opening the sheet. Reuses the shared `CardAction` model.
      */
     quickAction?: (card: CatalogCard) => CardAction | undefined;
+    /**
+     * INTERCEPT A PLAIN TILE TAP. Return true to say the tap was consumed — the single-card sheet
+     * does not open and nothing else happens with it.
+     *
+     * For a host that has put the browser into a mode where tapping a card means something other
+     * than "tell me about this card": michi's colour eyedropper, where the sheet opening in front of
+     * the grid is the whole problem. Without this the only tap that does not open the sheet is the
+     * `quickAction` pill, which is a deliberately tiny target and reads as a second, separate thing
+     * to hit rather than "the card".
+     *
+     * Select mode still wins: a tap there is already spoken for.
+     */
+    onCardTap?: (card: CatalogCard) => boolean;
     /** Where analytics tiles/bars navigate on tap. Defaults to `onPickCard`. */
     onOpenCard?: (cardId: string) => void;
     /** Artwork-panel + tonal-insert sections, rendered as the list footer so they stay
@@ -180,5 +193,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

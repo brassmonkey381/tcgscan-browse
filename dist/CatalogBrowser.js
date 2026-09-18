@@ -319,7 +319,7 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', ownedIds, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', ownedIds, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
     // given, else the session-sticky browseState. The toolbar toggle overrides locally; when the
@@ -1398,7 +1398,17 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             tier: cardTierFor(tileW), selected: c.id === selectedCardId, focused: index === focusIdx, 
             // In select mode (toggle, or web Ctrl/Shift) a tap toggles selection; else it opens
             // the single-card sheet.
-            onPress: () => (isSelecting() ? toggleSelected(c.id) : setActionCard(c)), multiSelected: selectedIds.includes(c.id), 
+            onPress: () => {
+                if (isSelecting()) {
+                    toggleSelected(c.id);
+                    return;
+                }
+                // The host may have claimed this tap (see onCardTap) — e.g. a colour pick, where the
+                // card sheet opening over the grid is exactly what must not happen.
+                if (onCardTap?.(c))
+                    return;
+                setActionCard(c);
+            }, multiSelected: selectedIds.includes(c.id), 
             // The name always owns this line — it is the only thing distinguishing one tile's art
             // from the next, and it must not be spent on a number shown elsewhere.
             label: c.name, 
