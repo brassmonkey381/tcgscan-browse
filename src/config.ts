@@ -238,6 +238,27 @@ export function getColorUrl(): string {
 }
 
 /**
+ * Point the colour features at ONE GAME'S palettes, without touching the rest of the config.
+ *
+ * For a host that serves one game per page load this never needs calling: the default derives
+ * from `browseUrl` and is already right. It exists for a host that browses a SECOND game inside a
+ * session configured for the first — michi, whose binder is Pokémon's but whose picker can browse
+ * One Piece from its own published catalog. There `browseUrl` stays Pokémon's, so colour search
+ * asked Pokémon's blob, got Pokémon ids, and the browser filtered every one of them away against
+ * the One Piece catalog: "No color matches", for a game that had just published 6,907 palettes.
+ *
+ * `configureBrowse` is not the tool for that — it resets the catalog source, the language store,
+ * the manifest cache and the product line, all of which belong to the host's primary game. This
+ * sets the one field. Pass '' to go back to the default.
+ *
+ * Cheap to call repeatedly: the colour index is keyed by URL (see color.ts), so switching games
+ * back and forth keeps both loaded rather than re-downloading either.
+ */
+export function setColorUrl(url: string): void {
+  config.colorUrl = url;
+}
+
+/**
  * Resolve a raw catalog image path to a fully-usable image URL. Absolute URLs
  * (`http(s)://…`) pass through untouched; site-root-relative paths get the
  * imgBase prepended so an origin swap stays centralized here.

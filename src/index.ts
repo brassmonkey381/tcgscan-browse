@@ -18,6 +18,7 @@ export {
   cdnImageUrl,
   productUrl,
   setShopUrl,
+  setColorUrl,
   affiliateUrl,
   ebaySearchUrl,
   ebayCardSearchUrl,
