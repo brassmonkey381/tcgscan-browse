@@ -275,31 +275,44 @@ export class ColorIndex {
   }
 }
 
-// Load-once module index (Path A). Null until loaded / after a failed load.
-let indexPromise: Promise<ColorIndex | null> | null = null;
-let indexLoaded: ColorIndex | null = null;
+/**
+ * Load-once module index (Path A), KEYED BY THE URL IT WAS LOADED FROM.
+ *
+ * It used to be a bare load-once singleton, which was true while one bucket held the only
+ * palettes. It stopped being true when a second game published its own: `getColorUrl()` derives
+ * from the active `browseUrl`, so switching games changes the URL — but the loaded index did not
+ * change with it, and `configureBrowse` resets a dozen other caches and not this one. A session
+ * that browsed Pokemon and then One Piece would answer One Piece colour queries out of Pokemon's
+ * palettes, and return Pokemon ids. A page reload per game hid it; a mixed binder does not reload.
+ *
+ * Keyed rather than merely reset, so the two coexist: switching back does not re-download.
+ */
+const indexPromises = new Map<string, Promise<ColorIndex | null>>();
+const indexesLoaded = new Map<string, ColorIndex>();
 
 /** Load-once on-device color index from the configured color URL. Fails soft → null. */
 export function loadColorIndex(): Promise<ColorIndex | null> {
-  if (!indexPromise) {
-    const idx = new ColorIndex();
-    indexPromise = idx
-      .load(getColorUrl())
-      .then(() => {
-        indexLoaded = idx;
-        return idx;
-      })
-      .catch(() => {
-        indexPromise = null; // allow a later retry
-        return null;
-      });
-  }
-  return indexPromise;
+  const url = getColorUrl();
+  const existing = indexPromises.get(url);
+  if (existing) return existing;
+  const idx = new ColorIndex();
+  const pending = idx
+    .load(url)
+    .then(() => {
+      indexesLoaded.set(url, idx);
+      return idx;
+    })
+    .catch(() => {
+      indexPromises.delete(url); // allow a later retry
+      return null;
+    });
+  indexPromises.set(url, pending);
+  return pending;
 }
 
-/** The loaded on-device index, or null if not (yet) loaded. */
+/** The loaded on-device index FOR THE ACTIVE GAME, or null if not (yet) loaded. */
 export function getColorIndex(): ColorIndex | null {
-  return indexLoaded;
+  return indexesLoaded.get(getColorUrl()) ?? null;
 }
 
 /**
@@ -308,7 +321,8 @@ export function getColorIndex(): ColorIndex | null {
  * already local; guests can leave it false and use the server path. Fail-soft: stays null on error.
  */
 export function useColorIndex(enabled: boolean): ColorIndex | null {
-  const [idx, setIdx] = useState<ColorIndex | null>(indexLoaded);
+  // Seeded from the ACTIVE game's index (getColorIndex), never from whichever game loaded first.
+  const [idx, setIdx] = useState<ColorIndex | null>(getColorIndex);
   useEffect(() => {
     if (!enabled || idx) return;
     let cancelled = false;
@@ -384,7 +398,7 @@ export async function searchByColorsServer(
 
 /** True when EITHER color path is usable (on-device index loaded, or server reachable). */
 export function colorSearchAvailable(): boolean {
-  return Boolean(indexLoaded) || colorServerAvailable();
+  return Boolean(getColorIndex()) || colorServerAvailable();
 }
 
 /**
@@ -396,8 +410,10 @@ export async function searchByColor(
   region: ColorRegion,
   opts: { limit?: number; lambda?: number; languages?: CardLanguage[] } = {},
 ): Promise<string[]> {
-  if (indexLoaded) {
-    return indexLoaded
+  // The ACTIVE game's index (keyed by colour URL) — never whichever game loaded first.
+  const local = getColorIndex();
+  if (local) {
+    return local
       .searchByColor(pick, region, opts.limit ?? 60, opts.lambda ?? 25, languageGate(opts.languages) ?? undefined)
       .map((h) => h.id);
   }
@@ -413,8 +429,9 @@ export async function searchByColors(
   region: ColorRegion,
   opts: { limit?: number; languages?: CardLanguage[] } = {},
 ): Promise<string[]> {
-  if (indexLoaded) {
-    return indexLoaded
+  const local = getColorIndex();
+  if (local) {
+    return local
       .searchByColors(query, region, opts.limit ?? 60, languageGate(opts.languages) ?? undefined)
       .map((h) => h.id);
   }
@@ -441,8 +458,9 @@ export async function findSimilarByColor(
   region: ColorRegion,
   opts: { limit?: number; languages?: CardLanguage[] } = {},
 ): Promise<string[]> {
-  if (!indexLoaded?.has(productId)) return [];
-  return indexLoaded
+  const local = getColorIndex();
+  if (!local?.has(productId)) return [];
+  return local
     .findSimilar(productId, region, opts.limit ?? 30, languageGate(opts.languages) ?? undefined)
     .map((h) => h.id);
 }

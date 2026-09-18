@@ -231,29 +231,43 @@ export class ColorIndex {
         return out.sort((x, y) => x.score - y.score).slice(0, topN);
     }
 }
-// Load-once module index (Path A). Null until loaded / after a failed load.
-let indexPromise = null;
-let indexLoaded = null;
+/**
+ * Load-once module index (Path A), KEYED BY THE URL IT WAS LOADED FROM.
+ *
+ * It used to be a bare load-once singleton, which was true while one bucket held the only
+ * palettes. It stopped being true when a second game published its own: `getColorUrl()` derives
+ * from the active `browseUrl`, so switching games changes the URL — but the loaded index did not
+ * change with it, and `configureBrowse` resets a dozen other caches and not this one. A session
+ * that browsed Pokemon and then One Piece would answer One Piece colour queries out of Pokemon's
+ * palettes, and return Pokemon ids. A page reload per game hid it; a mixed binder does not reload.
+ *
+ * Keyed rather than merely reset, so the two coexist: switching back does not re-download.
+ */
+const indexPromises = new Map();
+const indexesLoaded = new Map();
 /** Load-once on-device color index from the configured color URL. Fails soft → null. */
 export function loadColorIndex() {
-    if (!indexPromise) {
-        const idx = new ColorIndex();
-        indexPromise = idx
-            .load(getColorUrl())
-            .then(() => {
-            indexLoaded = idx;
-            return idx;
-        })
-            .catch(() => {
-            indexPromise = null; // allow a later retry
-            return null;
-        });
-    }
-    return indexPromise;
+    const url = getColorUrl();
+    const existing = indexPromises.get(url);
+    if (existing)
+        return existing;
+    const idx = new ColorIndex();
+    const pending = idx
+        .load(url)
+        .then(() => {
+        indexesLoaded.set(url, idx);
+        return idx;
+    })
+        .catch(() => {
+        indexPromises.delete(url); // allow a later retry
+        return null;
+    });
+    indexPromises.set(url, pending);
+    return pending;
 }
-/** The loaded on-device index, or null if not (yet) loaded. */
+/** The loaded on-device index FOR THE ACTIVE GAME, or null if not (yet) loaded. */
 export function getColorIndex() {
-    return indexLoaded;
+    return indexesLoaded.get(getColorUrl()) ?? null;
 }
 /**
  * React hook: kicks off the on-device index load when `enabled` and returns it once ready (null
@@ -261,7 +275,8 @@ export function getColorIndex() {
  * already local; guests can leave it false and use the server path. Fail-soft: stays null on error.
  */
 export function useColorIndex(enabled) {
-    const [idx, setIdx] = useState(indexLoaded);
+    // Seeded from the ACTIVE game's index (getColorIndex), never from whichever game loaded first.
+    const [idx, setIdx] = useState(getColorIndex);
     useEffect(() => {
         if (!enabled || idx)
             return;
@@ -332,15 +347,17 @@ export async function searchByColorsServer(query, region, { limit = 60, language
 // ---- Hybrid (prefer on-device when warm, else server) ------------------------------------
 /** True when EITHER color path is usable (on-device index loaded, or server reachable). */
 export function colorSearchAvailable() {
-    return Boolean(indexLoaded) || colorServerAvailable();
+    return Boolean(getColorIndex()) || colorServerAvailable();
 }
 /**
  * PICKER (hybrid): ids of cards prominently featuring `pick`, nearest first. Uses the on-device
  * index when loaded, else the server RPC. Returns ids only (resolve via catalog / fetchCardsByIds).
  */
 export async function searchByColor(pick, region, opts = {}) {
-    if (indexLoaded) {
-        return indexLoaded
+    // The ACTIVE game's index (keyed by colour URL) — never whichever game loaded first.
+    const local = getColorIndex();
+    if (local) {
+        return local
             .searchByColor(pick, region, opts.limit ?? 60, opts.lambda ?? 25, languageGate(opts.languages) ?? undefined)
             .map((h) => h.id);
     }
@@ -351,8 +368,9 @@ export async function searchByColor(pick, region, opts = {}) {
  * with weights), nearest first. On-device when the index is loaded, else the server RPC.
  */
 export async function searchByColors(query, region, opts = {}) {
-    if (indexLoaded) {
-        return indexLoaded
+    const local = getColorIndex();
+    if (local) {
+        return local
             .searchByColors(query, region, opts.limit ?? 60, languageGate(opts.languages) ?? undefined)
             .map((h) => h.id);
     }
@@ -374,9 +392,10 @@ export async function searchByColors(query, region, opts = {}) {
  * empty case, which is why this degrades quietly rather than looking broken.
  */
 export async function findSimilarByColor(productId, region, opts = {}) {
-    if (!indexLoaded?.has(productId))
+    const local = getColorIndex();
+    if (!local?.has(productId))
         return [];
-    return indexLoaded
+    return local
         .findSimilar(productId, region, opts.limit ?? 30, languageGate(opts.languages) ?? undefined)
         .map((h) => h.id);
 }

@@ -75,7 +75,7 @@ export declare class ColorIndex {
 }
 /** Load-once on-device color index from the configured color URL. Fails soft → null. */
 export declare function loadColorIndex(): Promise<ColorIndex | null>;
-/** The loaded on-device index, or null if not (yet) loaded. */
+/** The loaded on-device index FOR THE ACTIVE GAME, or null if not (yet) loaded. */
 export declare function getColorIndex(): ColorIndex | null;
 /**
  * React hook: kicks off the on-device index load when `enabled` and returns it once ready (null
