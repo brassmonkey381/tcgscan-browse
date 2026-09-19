@@ -620,6 +620,21 @@ async function loadCatalogFrom(base: string): Promise<Catalog> {
     }
     text += decoder.decode();
     const raw = JSON.parse(text) as RawCatalog;
+    /**
+     * LET GO OF THE TEXT BEFORE BUILDING, which is most of the cold-start memory spike.
+     *
+     * Three copies of the catalog exist on the way in: the decoded TEXT (~22 MB for Pokemon), the
+     * PARSED graph it becomes, and the BUILT index `LocalCatalog` allocates from that graph. The
+     * build is deliberately chunked over many turns of the event loop, so without this line the
+     * string stays reachable for the whole of it and all three are resident at once — measured at
+     * a 70-80 MB peak against a ~30 MB steady state.
+     *
+     * The parse needs the text and the build needs the graph, so two copies at a time is the floor
+     * without a streaming parser. This drops the peak to that floor for one assignment. Engines may
+     * collect a dead binding on their own; Hermes is the one that matters here and is the least
+     * likely to, so it is written down rather than hoped for.
+     */
+    text = '';
     return LocalCatalog.build(raw, (f) =>
       setCatalogStatus('parsing', DOWNLOAD_FRACTION + (1 - DOWNLOAD_FRACTION) * f, {
         received,
