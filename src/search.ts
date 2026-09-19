@@ -322,6 +322,50 @@ const cardByIdCache = new Map<string, CatalogCard>();
 const cardByIdInflight = new Map<string, Promise<void>>();
 
 /**
+ * REMEMBERING WHAT THE SERVER DOES NOT KNOW, which the positive caches above cannot express.
+ *
+ * Both id lookups here cached hits and forgot misses, so an id this server can never answer was
+ * re-requested every single time it was asked for. That is not hypothetical: the card action sheet
+ * calls `fetchCardDetail` on every open of a card with no evolution line, and for a card belonging
+ * to ANOTHER GAME the Pokemon RPC cannot answer, ever — so opening the same card twenty times sent
+ * twenty requests that were all going to fail, on a rate-limited endpoint, from a render path.
+ *
+ * A miss expires rather than being pinned for the session: an id can be genuinely absent today and
+ * present after the next publish, and a collector who adds a brand-new card should not have to
+ * relaunch the app to see it. Five minutes is long enough to kill a repaint storm and short enough
+ * that nobody notices the wait.
+ *
+ * Only an ANSWER counts as a miss. A failed fetch, a non-OK response or a thrown request proves
+ * nothing about the card and is left to retry — otherwise one flaky moment would hide a card until
+ * the cooldown lapsed.
+ */
+const MISS_TTL_MS = 5 * 60_000;
+
+function missCache() {
+  const seenAt = new Map<string, number>();
+  return {
+    /** True while this id is known-absent and still inside the cooldown. */
+    has(id: string): boolean {
+      const at = seenAt.get(id);
+      if (at === undefined) return false;
+      if (Date.now() - at > MISS_TTL_MS) {
+        seenAt.delete(id);
+        return false;
+      }
+      return true;
+    },
+    /** Record that the server answered and did not have these ids. */
+    add(ids: Iterable<string>, found: (id: string) => boolean): void {
+      const now = Date.now();
+      for (const id of ids) if (!found(id)) seenAt.set(id, now);
+    },
+  };
+}
+
+const cardByIdMisses = missCache();
+const cardDetailMisses = missCache();
+
+/**
  * Resolve specific card ids to tile-ready cards without the catalog (cold-mode similar
  * results, multi-select thumbs, …). Order follows the input ids. Fails soft (drops misses).
  * Cached per id for the session; concurrent callers coalesce onto one request, so the
@@ -331,7 +375,7 @@ const cardByIdInflight = new Map<string, Promise<void>>();
 export async function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]> {
   if (!serverSearchAvailable() || ids.length === 0) return [];
   const misses = [...new Set(ids)].filter(
-    (id) => !cardByIdCache.has(id) && !cardByIdInflight.has(id),
+    (id) => !cardByIdCache.has(id) && !cardByIdInflight.has(id) && !cardByIdMisses.has(id),
   );
   if (misses.length > 0) {
     const req = (async () => {
@@ -345,6 +389,8 @@ export async function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]> {
           const card = rowToCard(r);
           cardByIdCache.set(card.id, card);
         }
+        // The server answered: whatever it did not return, it does not have (for now).
+        cardByIdMisses.add(misses, (id) => cardByIdCache.has(id));
       } catch {
         // fail soft — unresolved ids simply retry on the next call
       } finally {
@@ -417,13 +463,15 @@ const cardDetailCache = new Map<string, CardDetail>();
  */
 export async function fetchCardDetail(ids: string[]): Promise<Record<string, CardDetail>> {
   const wanted = [...new Set(ids)];
-  const misses = wanted.filter((id) => !cardDetailCache.has(id));
+  const misses = wanted.filter((id) => !cardDetailCache.has(id) && !cardDetailMisses.has(id));
   if (misses.length > 0 && serverSearchAvailable()) {
+    // Only the ids actually sent can be judged; the rest stay unknown and are asked for next time.
+    const asked = misses.slice(0, 50);
     try {
       const res = await fetch(`${getApiUrl()}/rpc/card_detail`, {
         method: 'POST',
         headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ p_ids: misses.slice(0, 50) }),
+        body: JSON.stringify({ p_ids: asked }),
       });
       if (res.ok) {
         for (const r of (await res.json()) as {
@@ -436,6 +484,7 @@ export async function fetchCardDetail(ids: string[]): Promise<Record<string, Car
             evolutionLine: r.evolution_line ?? [],
           });
         }
+        cardDetailMisses.add(asked, (id) => cardDetailCache.has(id));
       }
     } catch {
       // offline / not configured — evolution facts just stay absent
