@@ -13,7 +13,7 @@ export { LanguageToggle } from './LanguageToggle';
 export { applyFeatureLocks, FEATURE_LABELS, isLocked, lockedQueryNotice, } from './features';
 export { hydrateImageManifest, imageManifestReady, imageManifestRevision, loadImageManifest, registerImageManifest, secondaryManifestReady, subscribeImageManifest, useImageManifest, } from './images';
 export { buildCatalog, evolutionNeighbors, formatSetDate, getCatalog, getCatalogStatus, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, subscribeCatalogStatus, useCatalogStatus, } from './catalog';
-export { formatUsd, getCardPrices, getPriceSummary, getValueSeries, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, TIME_RANGES, usePriceSummary, windowByRange, } from './prices';
+export { formatUsd, getCardPrices, getPriceSummary, getValueSeries, lastMarket, orderedVariants, pctChange, priceSnapshot, rangeCutoff, registerPriceSummary, TIME_RANGES, usePriceSummary, windowByRange, } from './prices';
 export { PriceChart, SeriesAnalytics, SetAnalytics, ValueOverTimeChart, } from './analytics';
 export { resolveActions, resolveLabel, } from './actions';
 export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE } from './theme';

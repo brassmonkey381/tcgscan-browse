@@ -1,7 +1,8 @@
 /**
  * Card price data-access — the latest-value summary from the tcgscan-data
  * server (same origin as the catalog: `${browseUrl}/prices-summary.json`,
- * ~2.7MB, keyed by catalog card id). Load-once and promise-cached like the
+ * ~2.7MB, keyed by catalog card id), plus any other game a host registers
+ * (registerPriceSummary). Load-once and promise-cached like the
  * catalog; loading failures degrade to an empty map so pricing is always
  * optional decoration, never a hard dependency.
  *
@@ -22,17 +23,64 @@ export type PriceSummary = Record<string, PriceSummaryEntry>;
 let loadPromise: Promise<PriceSummary> | null = null;
 let snapshot: PriceSummary | null = null;
 
-/** Load-once summary fetch (shared by every subscriber). */
+// ---- secondary summaries (a host showing more than one game) --------------------------------
+//
+// Same seam as registerImageManifest in images.ts, and for the same reason: the kit prices cards
+// INSIDE itself — `sort:value`, the price filters and the tile prices all read the map below — so a
+// host cannot merge a second game's prices in from outside. With none registered, every path here
+// is the code that shipped before.
+//
+// UNLIKE IMAGES, THESE LOAD EAGERLY. A picture is fetched when a card that needs it appears; an
+// ordering needs every price BEFORE it sorts. A summary that arrived late would silently sort the
+// other game's cards to the bottom at $0, which is exactly the bug this seam exists to end (michi
+// locked value sort for its secondary games over it).
+
+export interface SecondaryPriceSummary {
+  /** Stable id for this source, e.g. 'onepiece'. Registering the same key twice is a no-op. */
+  key: string;
+  /** Bucket root holding its `prices-summary.json` (the other game's browseUrl). */
+  browseUrl: string;
+}
+
+const registeredSummaries = new Map<string, SecondaryPriceSummary>();
+
+/**
+ * Declare another game whose prices belong in the summary. Idempotent, safe at import time, and
+ * cheap: it only drops any loaded copy so the next read re-merges.
+ *
+ * IDS ARE ONE NAMESPACE (TCGplayer productIds) across every game, so a merge cannot collide in
+ * practice; where it somehow does, the PRIMARY game wins, because that is the catalog this host is
+ * built around.
+ */
+export function registerPriceSummary(source: SecondaryPriceSummary): void {
+  if (registeredSummaries.get(source.key)?.browseUrl === source.browseUrl) return;
+  registeredSummaries.set(source.key, source);
+  loadPromise = null; // re-merge on the next read; a good snapshot stays readable until it lands
+}
+
+/** '' on any failure: a game whose summary is missing must not cost the others theirs. */
+function fetchSummaryAt(browseUrl: string): Promise<PriceSummary> {
+  return fetch(`${browseUrl}/prices-summary.json`)
+    .then((res) => (res.ok ? (res.json() as Promise<PriceSummary>) : {}))
+    .catch(() => ({}) as PriceSummary);
+}
+
+/** Load-once summary fetch (shared by every subscriber), primary plus any registered game. */
 export function getPriceSummary(): Promise<PriceSummary> {
   if (!loadPromise) {
-    loadPromise = fetch(`${getBrowseUrl()}/prices-summary.json`)
-      .then((res) => {
+    const others = [...registeredSummaries.values()];
+    loadPromise = Promise.all([
+      fetch(`${getBrowseUrl()}/prices-summary.json`).then((res) => {
         if (!res.ok) throw new Error(`prices-summary ${res.status}`);
         return res.json() as Promise<PriceSummary>;
-      })
-      .then((s: PriceSummary) => {
-        snapshot = s;
-        return s;
+      }),
+      ...others.map((o) => fetchSummaryAt(o.browseUrl)),
+    ])
+      .then(([primary, ...rest]: PriceSummary[]) => {
+        // Primary last: it wins a collision, and a secondary can only ever ADD ids.
+        const all: PriceSummary = rest.length ? Object.assign({}, ...rest, primary) : primary;
+        snapshot = all;
+        return all;
       })
       .catch(() => {
         // A failed summary must NOT stick — a cached {} renders every portfolio as $0.00 until the

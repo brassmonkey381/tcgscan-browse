@@ -1,7 +1,8 @@
 /**
  * Card price data-access — the latest-value summary from the tcgscan-data
  * server (same origin as the catalog: `${browseUrl}/prices-summary.json`,
- * ~2.7MB, keyed by catalog card id). Load-once and promise-cached like the
+ * ~2.7MB, keyed by catalog card id), plus any other game a host registers
+ * (registerPriceSummary). Load-once and promise-cached like the
  * catalog; loading failures degrade to an empty map so pricing is always
  * optional decoration, never a hard dependency.
  *
@@ -11,18 +12,44 @@ import { useEffect, useState } from 'react';
 import { getApiKey, getApiUrl, getBrowseUrl } from './config';
 let loadPromise = null;
 let snapshot = null;
-/** Load-once summary fetch (shared by every subscriber). */
+const registeredSummaries = new Map();
+/**
+ * Declare another game whose prices belong in the summary. Idempotent, safe at import time, and
+ * cheap: it only drops any loaded copy so the next read re-merges.
+ *
+ * IDS ARE ONE NAMESPACE (TCGplayer productIds) across every game, so a merge cannot collide in
+ * practice; where it somehow does, the PRIMARY game wins, because that is the catalog this host is
+ * built around.
+ */
+export function registerPriceSummary(source) {
+    if (registeredSummaries.get(source.key)?.browseUrl === source.browseUrl)
+        return;
+    registeredSummaries.set(source.key, source);
+    loadPromise = null; // re-merge on the next read; a good snapshot stays readable until it lands
+}
+/** '' on any failure: a game whose summary is missing must not cost the others theirs. */
+function fetchSummaryAt(browseUrl) {
+    return fetch(`${browseUrl}/prices-summary.json`)
+        .then((res) => (res.ok ? res.json() : {}))
+        .catch(() => ({}));
+}
+/** Load-once summary fetch (shared by every subscriber), primary plus any registered game. */
 export function getPriceSummary() {
     if (!loadPromise) {
-        loadPromise = fetch(`${getBrowseUrl()}/prices-summary.json`)
-            .then((res) => {
-            if (!res.ok)
-                throw new Error(`prices-summary ${res.status}`);
-            return res.json();
-        })
-            .then((s) => {
-            snapshot = s;
-            return s;
+        const others = [...registeredSummaries.values()];
+        loadPromise = Promise.all([
+            fetch(`${getBrowseUrl()}/prices-summary.json`).then((res) => {
+                if (!res.ok)
+                    throw new Error(`prices-summary ${res.status}`);
+                return res.json();
+            }),
+            ...others.map((o) => fetchSummaryAt(o.browseUrl)),
+        ])
+            .then(([primary, ...rest]) => {
+            // Primary last: it wins a collision, and a secondary can only ever ADD ids.
+            const all = rest.length ? Object.assign({}, ...rest, primary) : primary;
+            snapshot = all;
+            return all;
         })
             .catch(() => {
             // A failed summary must NOT stick — a cached {} renders every portfolio as $0.00 until the

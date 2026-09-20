@@ -5,7 +5,22 @@ export interface PriceSummaryEntry {
     variants: Record<string, number>;
 }
 export type PriceSummary = Record<string, PriceSummaryEntry>;
-/** Load-once summary fetch (shared by every subscriber). */
+export interface SecondaryPriceSummary {
+    /** Stable id for this source, e.g. 'onepiece'. Registering the same key twice is a no-op. */
+    key: string;
+    /** Bucket root holding its `prices-summary.json` (the other game's browseUrl). */
+    browseUrl: string;
+}
+/**
+ * Declare another game whose prices belong in the summary. Idempotent, safe at import time, and
+ * cheap: it only drops any loaded copy so the next read re-merges.
+ *
+ * IDS ARE ONE NAMESPACE (TCGplayer productIds) across every game, so a merge cannot collide in
+ * practice; where it somehow does, the PRIMARY game wins, because that is the catalog this host is
+ * built around.
+ */
+export declare function registerPriceSummary(source: SecondaryPriceSummary): void;
+/** Load-once summary fetch (shared by every subscriber), primary plus any registered game. */
 export declare function getPriceSummary(): Promise<PriceSummary>;
 /** Synchronous view of the summary once loaded (null before). Lets pure helpers
  *  read prices without threading state. */
