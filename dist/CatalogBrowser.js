@@ -1393,7 +1393,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
          * even where pricing is otherwise not shown, since it's the key being sorted on.
          */
         const showValue = value > 0 && (!!analytics || effParsed.sort === 'value');
-        return (_jsx(CardTile, { styles: styles, card: c, width: tileW, 
+        return (_jsx(CardTile, { styles: styles, comingSoon: theme.comingSoonImage, card: c, width: tileW, 
             // Big tiles pull the 640px thumb so they don't upscale a 245px webp.
             tier: cardTierFor(tileW), selected: c.id === selectedCardId, focused: index === focusIdx, 
             // In select mode (toggle, or web Ctrl/Shift) a tap toggles selection; else it opens
@@ -1554,7 +1554,7 @@ function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, completio
  * small. Cards with no local image show a neutral fallback, never a crash. Images use the
  * same memory-disk cache + recyclingKey pattern as BinderGrid.
  */
-function CardTile({ styles, card, width, tier = 245, selected, multiSelected, focused, onPress, label, value, priceTag, quickAction, owned, }) {
+function CardTile({ styles, comingSoon, card, width, tier = 245, selected, multiSelected, focused, onPress, label, value, priceTag, quickAction, owned, }) {
     // Grid tier: the 245px webp (~20KB) by default; large tiles request 640px so they stay sharp.
     const uri = cardThumbUrl(card.id, tier);
     return (_jsxs(Pressable, { style: [
@@ -1563,7 +1563,7 @@ function CardTile({ styles, card, width, tier = 245, selected, multiSelected, fo
             selected && styles.cardTileSelected,
             multiSelected && styles.cardTileMulti,
             focused && styles.cardTileFocused,
-        ], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : owned ? (_jsx(View, { style: styles.cardOwnedBadge, children: _jsx(Text, { style: styles.cardOwnedBadgeText, children: "\u2713" }) })) : null, card.language === 'ja' ? (_jsx(View, { style: styles.cardLangBadge, children: _jsx(Text, { style: styles.cardLangBadgeText, children: "JP" }) })) : null, priceTag != null && priceTag > 0 ? (_jsx(View, { style: styles.cardPriceTag, children: _jsx(Text, { style: styles.cardPriceTagText, children: formatUsd(priceTag) }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
+        ], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : comingSoon ? (_jsx(Image, { source: comingSoon, style: styles.cardImage, contentFit: "cover", transition: 100, accessibilityLabel: "Image coming soon" })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : owned ? (_jsx(View, { style: styles.cardOwnedBadge, children: _jsx(Text, { style: styles.cardOwnedBadgeText, children: "\u2713" }) })) : null, card.language === 'ja' ? (_jsx(View, { style: styles.cardLangBadge, children: _jsx(Text, { style: styles.cardLangBadgeText, children: "JP" }) })) : null, priceTag != null && priceTag > 0 ? (_jsx(View, { style: styles.cardPriceTag, children: _jsx(Text, { style: styles.cardPriceTagText, children: formatUsd(priceTag) }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
 }
 /**
  * A V-UNION group tile (Size=V-UNION): the assembled art (its top-left piece thumb) with a

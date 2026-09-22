@@ -37,6 +37,20 @@ export interface BrowseTheme {
     imagePlaceholder: string;
     /** Modal backdrop scrim. */
     overlay: string;
+    /**
+     * The tile drawn when a card has no picture. An `Image` source, supplied by the HOST app so one
+     * kit can serve two brands -- TCGScan passes its logomark tile, michi-maker passes its own.
+     * Omitted, the kit keeps its plain "no image" text, which is what it did before this existed.
+     *
+     * It exists because the alternative on a browse grid is a grey rectangle a person reads as a
+     * broken image rather than as a card the catalogue has no art for yet. Note what it is NOT:
+     * TCGPlayer serves its own logo-watermarked "Image Coming Soon" JPEG with an HTTP 200, and
+     * tcgscan-data's catalog/placeholders.py suppresses those from the image manifest so one can
+     * never arrive here as if it were real art.
+     */
+    comingSoonImage?: number | {
+        uri: string;
+    };
 }
 /** The kit's original light look — the default when an app passes no theme. */
 export declare const lightTheme: BrowseTheme;

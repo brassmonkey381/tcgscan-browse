@@ -91,6 +91,14 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
           <View style={[styles.imageWrap, { maxHeight: imageMaxHeight }]}>
             {uri ? (
               <Image source={{ uri }} style={styles.image} contentFit="contain" transition={120} />
+            ) : theme.comingSoonImage ? (
+              <Image
+                source={theme.comingSoonImage}
+                style={styles.image}
+                contentFit="contain"
+                transition={120}
+                accessibilityLabel="Image coming soon"
+              />
             ) : (
               <View style={styles.imageFallback}>
                 <Text style={styles.imageFallbackText}>no image</Text>

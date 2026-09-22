@@ -1823,6 +1823,7 @@ export function CatalogBrowser({
     return (
       <CardTile
         styles={styles}
+        comingSoon={theme.comingSoonImage}
         card={c}
         width={tileW}
         // Big tiles pull the 640px thumb so they don't upscale a 245px webp.
@@ -2460,6 +2461,7 @@ function TaxonomyTile({
  */
 function CardTile({
   styles,
+  comingSoon,
   card,
   width,
   tier = 245,
@@ -2474,6 +2476,9 @@ function CardTile({
   owned,
 }: {
   styles: Styles;
+  /** theme.comingSoonImage, passed down rather than the whole theme: this is the only token the
+   *  tile needs and CardTile has never taken a theme. Absent -> the old "no image" text. */
+  comingSoon?: number | { uri: string };
   card: CatalogCard;
   width: number;
   /** Image tier for the thumb — 640 for large tiles, else the dense 245px webp. */
@@ -2517,6 +2522,16 @@ function CardTile({
             cachePolicy="memory-disk"
             recyclingKey={card.id}
             transition={100}
+          />
+        ) : comingSoon ? (
+          // `cover`: the host's tile is already drawn at the card aspect, so it fills the slot
+          // exactly instead of letterboxing inside it.
+          <Image
+            source={comingSoon}
+            style={styles.cardImage}
+            contentFit="cover"
+            transition={100}
+            accessibilityLabel="Image coming soon"
           />
         ) : (
           <View style={styles.cardImageFallback}>
