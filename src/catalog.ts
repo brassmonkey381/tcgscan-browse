@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 
 import { getBrowseUrl, getCatalogSource } from './config';
+import { browseGeneration, isCurrent } from './generation';
 
 /** Cards processed per build batch before yielding to the event loop (keeps the UI responsive). */
 const BUILD_CHUNK = 4000;
@@ -761,21 +762,37 @@ export function subscribeCatalog(callback: () => void): () => void {
  */
 export function loadCatalog(): Promise<Catalog> {
   if (!cache) {
+    // The generation this load belongs to. If the host switches games while it is in flight
+    // (resetBrowseData), it lands into a world that has moved on and must not publish.
+    const gen = browseGeneration();
     setCatalogStatus('downloading', 0);
     cache = loadCatalogFrom(getBrowseUrl())
       .then((c) => {
+        if (!isCurrent(gen)) return c; // stale: resolve the old callers, publish nothing
         loaded = c; // publish a synchronous snapshot for non-async callers (see getLoadedCatalog)
         setCatalogStatus('ready', 1);
         subscribers.forEach((cb) => cb());
         return c;
       })
       .catch((e) => {
-        cache = null; // don't poison the cache, let a later mount retry the fetch
-        setCatalogStatus('error', 0);
+        if (isCurrent(gen)) {
+          cache = null; // don't poison the cache, let a later mount retry the fetch
+          setCatalogStatus('error', 0);
+        }
         throw e;
       });
   }
   return cache;
+}
+
+/**
+ * Internal: forget the shared catalog and its load status. Called by resetBrowseData when the
+ * host points the kit at another game. The next loadCatalog fetches from the new browseUrl.
+ */
+export function _resetCatalog(): void {
+  cache = null;
+  loaded = null;
+  setCatalogStatus('idle', 0);
 }
 
 /** Alias of {@link loadCatalog} — the shared, load-once catalog promise. */

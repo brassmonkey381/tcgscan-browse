@@ -67,6 +67,25 @@ Then anywhere:
 import { CatalogBrowser, loadCatalog, usePriceSummary, findSimilar } from 'tcgscan-browse';
 ```
 
+### Switching games without a reload (0.9.26)
+
+Every per-game cache in the kit (catalog, prices, sealed, taxonomy, the image manifest, the
+server-search caches) is load-once. Calling `configureBrowse` again with a different `browseUrl`
+or `catalogSource` resets all of them (`resetBrowseData()` does it on demand) and bumps a data
+generation. A load that was in flight when the switch happened never publishes. Key whatever
+holds a catalog in React state on the generation so it starts over:
+
+```tsx
+import { CatalogBrowser, useBrowseGeneration } from 'tcgscan-browse';
+
+const gen = useBrowseGeneration();
+<CatalogBrowser key={gen} ... />
+```
+
+User preferences (language, saved searches, browse state) and host registrations (secondary
+manifests and price summaries, the similarity model) are not reset. `npm run check:reset`
+exercises this against the built `dist/`.
+
 ## Warm and cold modes
 
 `CatalogBrowser` runs against two data paths and the consumer just passes

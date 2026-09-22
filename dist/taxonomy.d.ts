@@ -8,6 +8,8 @@ export interface TaxonomySource {
     /** Total browse card count (for the search placeholder), when known. */
     readonly cardCount?: number;
 }
+/** Internal: forget the loaded taxonomy (resetBrowseData). */
+export declare function _resetTaxonomy(): void;
 /** Load-once taxonomy (browse/taxonomy.json). Rejects propagate; a later call retries. */
 export declare function loadTaxonomy(): Promise<TaxonomySource>;
 /**

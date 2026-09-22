@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 
 import { resolveLanguage, type CatalogSeries, type CatalogSet } from './catalog';
 import { getBrowseUrl } from './config';
+import { browseGeneration, isCurrent } from './generation';
 
 /** The subset of the catalog surface the drill-down needs (Catalog satisfies this). */
 export interface TaxonomySource {
@@ -118,17 +119,25 @@ class LocalTaxonomy implements TaxonomySource {
 let taxPromise: Promise<LocalTaxonomy> | null = null;
 let taxLoaded: LocalTaxonomy | null = null;
 
+/** Internal: forget the loaded taxonomy (resetBrowseData). */
+export function _resetTaxonomy(): void {
+  taxPromise = null;
+  taxLoaded = null;
+}
+
 /** Load-once taxonomy (browse/taxonomy.json). Rejects propagate; a later call retries. */
 export function loadTaxonomy(): Promise<TaxonomySource> {
   if (!taxPromise) {
+    const gen = browseGeneration();
     taxPromise = fetch(`${getBrowseUrl()}/taxonomy.json`)
       .then(async (res) => {
         if (!res.ok) throw new Error(`taxonomy.json ${res.status}`);
-        taxLoaded = new LocalTaxonomy((await res.json()) as RawTaxonomy);
-        return taxLoaded;
+        const tax = new LocalTaxonomy((await res.json()) as RawTaxonomy);
+        if (isCurrent(gen)) taxLoaded = tax; // a load from before a game switch publishes nothing
+        return tax;
       })
       .catch((e) => {
-        taxPromise = null;
+        if (isCurrent(gen)) taxPromise = null;
         throw e;
       });
   }

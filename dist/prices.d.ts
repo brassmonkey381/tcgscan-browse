@@ -22,6 +22,12 @@ export interface SecondaryPriceSummary {
 export declare function registerPriceSummary(source: SecondaryPriceSummary): void;
 /** Load-once summary fetch (shared by every subscriber), primary plus any registered game. */
 export declare function getPriceSummary(): Promise<PriceSummary>;
+/**
+ * Internal: forget the summary and every per-card price and value series (resetBrowseData).
+ * Registered secondary summaries STAY registered: they are the host's declaration of which games
+ * it shows, not data.
+ */
+export declare function _resetPrices(): void;
 /** Synchronous view of the summary once loaded (null before). Lets pure helpers
  *  read prices without threading state. */
 export declare function priceSnapshot(): PriceSummary | null;

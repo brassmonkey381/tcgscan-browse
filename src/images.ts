@@ -18,6 +18,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 
 import { getBrowseUrl } from './config';
+import { browseGeneration, isCurrent } from './generation';
 
 /**
  * Persistent key→value the app injects (e.g. AsyncStorage / localStorage) so the
@@ -235,13 +236,19 @@ export function imageManifestSettled(): boolean {
  */
 export function hydrateImageManifest(): Promise<void> {
   if (!hydrating) {
+    const gen = browseGeneration();
+    // Everything this hydrate publishes goes through here, so a hydrate that started before a
+    // game switch cannot land the old game's pictures over the new one's.
+    const publishIfCurrent = (m: ImageManifest) => {
+      if (isCurrent(gen)) publish(m);
+    };
     hydrating = (async () => {
       try {
         // 1) instant paint from the persisted cache (if the app injected one)
         if (cacheAdapter) {
           try {
             const raw = await cacheAdapter.getItem(CACHE_KEY);
-            if (raw && !manifest) publish(JSON.parse(raw) as ImageManifest);
+            if (raw && !manifest) publishIfCurrent(JSON.parse(raw) as ImageManifest);
           } catch {
             /* corrupt/absent cache — fall through to the network */
           }
@@ -251,7 +258,7 @@ export function hydrateImageManifest(): Promise<void> {
           const res = await fetch(`${getBrowseUrl()}/images.json`);
           if (res.ok) {
             const fresh = (await res.json()) as ImageManifest;
-            publish(fresh);
+            publishIfCurrent(fresh);
             if (cacheAdapter) {
               try {
                 await cacheAdapter.setItem(CACHE_KEY, JSON.stringify(fresh));
@@ -266,12 +273,27 @@ export function hydrateImageManifest(): Promise<void> {
       } finally {
         // Mark the attempt done and wake consumers: in static/offline mode no manifest ever
         // publishes, so this settle is what lets cardThumbUrl fall through to the flat path.
-        settled = true;
-        notify();
+        // A hydrate from before a game switch settles nothing: the new one is in charge.
+        if (isCurrent(gen)) {
+          settled = true;
+          notify();
+        }
       }
     })();
   }
   return hydrating;
+}
+
+/**
+ * Internal: forget the PRIMARY manifest (resetBrowseData). The next hydrate reads the new
+ * browseUrl's images.json. Registered secondaries, loaded or not, stay: they are the host's other
+ * games, keyed by their own URLs, and the one the host just switched TO may be among them.
+ */
+export function _resetImageManifest(): void {
+  manifest = null;
+  hydrating = null;
+  settled = false;
+  notify();
 }
 
 /**

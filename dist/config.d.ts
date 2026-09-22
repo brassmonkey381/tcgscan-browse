@@ -7,7 +7,7 @@
  * apps' src/lib/catalogConfig.ts). Every fetch in this package reads the config
  * lazily, so configure-at-import is always early enough.
  */
-import type { CardLanguage, RawCatalog } from './catalog';
+import { type CardLanguage, type RawCatalog } from './catalog';
 import { type ManifestCache } from './images';
 /**
  * App-supplied catalog loader — the seam for a GATED/ENCRYPTED catalog (see
@@ -140,7 +140,21 @@ export interface ProductLine {
 }
 /** The host's paid themed-search endpoint, or null for the direct, metered path only. */
 export declare function getThemedSearchProxy(): ThemedSearchProxy | null;
-/** Set the data-server origins. Call once from the app before any browse use. */
+/**
+ * FORGET EVERY PER-GAME CACHE, so the next read of each loads from the configured browseUrl and
+ * catalogSource. For a host that switches games in place (no page reload): the catalog, its load
+ * status, the price summary and per-card prices, the sealed catalog, the taxonomy, the primary
+ * image manifest and the server-search caches. User preferences (language, saved searches, the
+ * browse state) and the host's registrations (secondary manifests and summaries, the similarity
+ * model) are not data and are left alone.
+ *
+ * Bumps the data generation (generation.ts): a load already in flight will not publish when it
+ * lands, and `useBrowseGeneration()` re-renders so the host can remount what holds a catalog in
+ * React state. `configureBrowse` calls this on its own when browseUrl or catalogSource changes.
+ */
+export declare function resetBrowseData(): void;
+/** Set the data-server origins. Call once from the app before any browse use, or again to point
+ *  the kit at another game, which resets every per-game cache (see resetBrowseData). */
 export declare function configureBrowse(next: BrowseConfig): void;
 /** The app-supplied persistence for starred searches, or null for the platform default. */
 export declare function getSavedSearchStore(): SavedSearchStore | null;

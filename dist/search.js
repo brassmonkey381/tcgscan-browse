@@ -19,6 +19,18 @@ import { getApiKey, getApiUrl, getThemedSearchProxy } from './config';
  * the meter is off and the row-count fallback in searchCards is the only signal.
  */
 let depthPromise = null;
+/**
+ * Internal: forget every server-search cache (resetBrowseData). They are keyed by card and set id,
+ * and ids are one namespace across games, but a set's card list and a card's detail come from the
+ * configured api, which the host has just changed.
+ */
+export function _resetSearchCaches() {
+    depthPromise = null;
+    setCardsCache.clear();
+    cardByIdCache.clear();
+    cardByIdInflight.clear();
+    cardDetailCache.clear();
+}
 export function freeThemeDepth() {
     if (!depthPromise) {
         depthPromise = fetch(`${getApiUrl()}/search_config?select=free_theme_depth&limit=1`, {

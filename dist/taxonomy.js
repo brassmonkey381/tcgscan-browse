@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { resolveLanguage } from './catalog';
 import { getBrowseUrl } from './config';
+import { browseGeneration, isCurrent } from './generation';
 /** Newest release first; empty dates sink; ties by name — matches the catalog ordering. */
 function byReleaseDesc(a, b) {
     return (b.releaseDate || '').localeCompare(a.releaseDate || '') || a.name.localeCompare(b.name);
@@ -73,18 +74,27 @@ class LocalTaxonomy {
 }
 let taxPromise = null;
 let taxLoaded = null;
+/** Internal: forget the loaded taxonomy (resetBrowseData). */
+export function _resetTaxonomy() {
+    taxPromise = null;
+    taxLoaded = null;
+}
 /** Load-once taxonomy (browse/taxonomy.json). Rejects propagate; a later call retries. */
 export function loadTaxonomy() {
     if (!taxPromise) {
+        const gen = browseGeneration();
         taxPromise = fetch(`${getBrowseUrl()}/taxonomy.json`)
             .then(async (res) => {
             if (!res.ok)
                 throw new Error(`taxonomy.json ${res.status}`);
-            taxLoaded = new LocalTaxonomy((await res.json()));
-            return taxLoaded;
+            const tax = new LocalTaxonomy((await res.json()));
+            if (isCurrent(gen))
+                taxLoaded = tax; // a load from before a game switch publishes nothing
+            return tax;
         })
             .catch((e) => {
-            taxPromise = null;
+            if (isCurrent(gen))
+                taxPromise = null;
             throw e;
         });
     }

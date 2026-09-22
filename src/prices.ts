@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 
 import { getApiKey, getApiUrl, getBrowseUrl } from './config';
+import { browseGeneration, isCurrent } from './generation';
 
 /** cardId -> latest headline value. cur = priciest variant's last market price. */
 export interface PriceSummaryEntry {
@@ -68,6 +69,7 @@ function fetchSummaryAt(browseUrl: string): Promise<PriceSummary> {
 /** Load-once summary fetch (shared by every subscriber), primary plus any registered game. */
 export function getPriceSummary(): Promise<PriceSummary> {
   if (!loadPromise) {
+    const gen = browseGeneration();
     const others = [...registeredSummaries.values()];
     loadPromise = Promise.all([
       fetch(`${getBrowseUrl()}/prices-summary.json`).then((res) => {
@@ -79,18 +81,30 @@ export function getPriceSummary(): Promise<PriceSummary> {
       .then(([primary, ...rest]: PriceSummary[]) => {
         // Primary last: it wins a collision, and a secondary can only ever ADD ids.
         const all: PriceSummary = rest.length ? Object.assign({}, ...rest, primary) : primary;
-        snapshot = all;
+        if (isCurrent(gen)) snapshot = all; // a load from before a game switch publishes nothing
         return all;
       })
       .catch(() => {
         // A failed summary must NOT stick — a cached {} renders every portfolio as $0.00 until the
         // process restarts. Drop the cache so the next call re-fetches, and leave any good snapshot
         // in place. Still resolve empty for THIS call (callers rely on it never throwing).
-        loadPromise = null;
+        if (isCurrent(gen)) loadPromise = null;
         return {} as PriceSummary;
       });
   }
   return loadPromise;
+}
+
+/**
+ * Internal: forget the summary and every per-card price and value series (resetBrowseData).
+ * Registered secondary summaries STAY registered: they are the host's declaration of which games
+ * it shows, not data.
+ */
+export function _resetPrices(): void {
+  loadPromise = null;
+  snapshot = null;
+  cardCache.clear();
+  valueSeriesCache.clear();
 }
 
 /** Synchronous view of the summary once loaded (null before). Lets pure helpers

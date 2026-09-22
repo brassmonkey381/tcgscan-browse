@@ -59,6 +59,12 @@ export declare function imageManifestSettled(): boolean;
  */
 export declare function hydrateImageManifest(): Promise<void>;
 /**
+ * Internal: forget the PRIMARY manifest (resetBrowseData). The next hydrate reads the new
+ * browseUrl's images.json. Registered secondaries, loaded or not, stay: they are the host's other
+ * games, keyed by their own URLs, and the one the host just switched TO may be among them.
+ */
+export declare function _resetImageManifest(): void;
+/**
  * React helper: hydrate the manifest and re-render when it lands/updates, so a
  * screen's `cardThumbUrl` covers repaint with their content-hashed URLs. Returns
  * whether a manifest is currently loaded.

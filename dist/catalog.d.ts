@@ -254,6 +254,11 @@ export declare function subscribeCatalog(callback: () => void): () => void;
  * (module-level promise cache), regardless of how many callers await it.
  */
 export declare function loadCatalog(): Promise<Catalog>;
+/**
+ * Internal: forget the shared catalog and its load status. Called by resetBrowseData when the
+ * host points the kit at another game. The next loadCatalog fetches from the new browseUrl.
+ */
+export declare function _resetCatalog(): void;
 /** Alias of {@link loadCatalog} — the shared, load-once catalog promise. */
 export declare function getCatalog(): Promise<Catalog>;
 /**

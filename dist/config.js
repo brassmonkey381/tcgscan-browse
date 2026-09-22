@@ -7,7 +7,13 @@
  * apps' src/lib/catalogConfig.ts). Every fetch in this package reads the config
  * lazily, so configure-at-import is always early enough.
  */
-import { imageManifestReady, imageManifestSettled, manifestUrl, setManifestCache, } from './images';
+import { _resetCatalog } from './catalog';
+import { _bumpGeneration } from './generation';
+import { _resetImageManifest, imageManifestReady, imageManifestSettled, manifestUrl, setManifestCache, } from './images';
+import { _resetPrices } from './prices';
+import { _resetSealed } from './sealed';
+import { _resetSearchCaches } from './search';
+import { _resetTaxonomy } from './taxonomy';
 const config = {
     browseUrl: '/browse',
     imgBase: '',
@@ -30,8 +36,34 @@ let themedSearch = null;
 export function getThemedSearchProxy() {
     return themedSearch;
 }
-/** Set the data-server origins. Call once from the app before any browse use. */
+/**
+ * FORGET EVERY PER-GAME CACHE, so the next read of each loads from the configured browseUrl and
+ * catalogSource. For a host that switches games in place (no page reload): the catalog, its load
+ * status, the price summary and per-card prices, the sealed catalog, the taxonomy, the primary
+ * image manifest and the server-search caches. User preferences (language, saved searches, the
+ * browse state) and the host's registrations (secondary manifests and summaries, the similarity
+ * model) are not data and are left alone.
+ *
+ * Bumps the data generation (generation.ts): a load already in flight will not publish when it
+ * lands, and `useBrowseGeneration()` re-renders so the host can remount what holds a catalog in
+ * React state. `configureBrowse` calls this on its own when browseUrl or catalogSource changes.
+ */
+export function resetBrowseData() {
+    _bumpGeneration();
+    _resetCatalog();
+    _resetPrices();
+    _resetSealed();
+    _resetTaxonomy();
+    _resetImageManifest();
+    _resetSearchCaches();
+}
+let configured = false;
+/** Set the data-server origins. Call once from the app before any browse use, or again to point
+ *  the kit at another game, which resets every per-game cache (see resetBrowseData). */
 export function configureBrowse(next) {
+    const moved = configured &&
+        (next.browseUrl !== config.browseUrl || (next.catalogSource ?? null) !== catalogSource);
+    configured = true;
     config.browseUrl = next.browseUrl;
     config.imgBase = next.imgBase;
     config.apiUrl = next.apiUrl ?? deriveApiUrl(next.browseUrl);
@@ -46,6 +78,8 @@ export function configureBrowse(next) {
     themedSearch = next.themedSearch ?? null;
     productLine = { ...POKEMON_LINE, ...(next.productLine ?? {}) };
     setManifestCache(next.cache ?? null);
+    if (moved)
+        resetBrowseData();
 }
 /** The app-supplied persistence for starred searches, or null for the platform default. */
 export function getSavedSearchStore() {

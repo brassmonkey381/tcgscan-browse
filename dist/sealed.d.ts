@@ -36,6 +36,8 @@ export interface SealedCatalog {
 export declare function loadSealed(): Promise<SealedCatalog>;
 /** Load-once sealed headline values: product id -> cur (prices-summary-sealed.json). */
 export declare function loadSealedPrices(): Promise<Record<string, number>>;
+/** Internal: forget the sealed catalog and its prices (resetBrowseData). */
+export declare function _resetSealed(): void;
 /**
  * React hook: the sealed catalog + prices, loading both once app-wide. `sealed` is null
  * until loaded (fail → stays null and a later mount retries); prices default to {}.

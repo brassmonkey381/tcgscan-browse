@@ -51,6 +51,12 @@ export interface SearchPage {
      */
     failed: boolean;
 }
+/**
+ * Internal: forget every server-search cache (resetBrowseData). They are keyed by card and set id,
+ * and ids are one namespace across games, but a set's card list and a card's detail come from the
+ * configured api, which the host has just changed.
+ */
+export declare function _resetSearchCaches(): void;
 export declare function freeThemeDepth(): Promise<number>;
 /** True when the app is configured to reach the data server's REST API. */
 export declare function serverSearchAvailable(): boolean;
