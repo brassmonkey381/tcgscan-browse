@@ -182,6 +182,7 @@ export {
   searchFacets,
   serverSearchAvailable,
   type CardDetail,
+  type SearchApi,
   type SearchPage,
   type ServerFacetSelection,
 } from './search';

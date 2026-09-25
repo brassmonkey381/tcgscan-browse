@@ -110,11 +110,17 @@ function foldLanguageTerms(parsed, bound) {
  * Run `parsed` against the server, one page at a time. `offset`/`limit` drive infinite scroll
  * (the caller accumulates pages); `facets` are exact-match chip selections (AND across facets,
  * OR within). Returns tile-ready cards + their prices + the real total.
+ *
+ * `api` searches that endpoint instead of the configured one. Nothing else about the configured
+ * game applies to it: the host's themed-search proxy and the free theme depth belong to the
+ * configured game, so neither is used, and a themed query is judged by its row count alone.
  */
-export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, languages: boundIn, } = {}) {
+export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, languages: boundIn, api, } = {}) {
     const empty = { cards: [], priceById: {}, total: 0, clamped: false, degraded: false, failed: false };
     const failed = { ...empty, failed: true };
-    if (!serverSearchAvailable())
+    const apiUrl = api ? api.url : getApiUrl();
+    const apiKey = api ? api.key : getApiKey();
+    if (!(apiUrl && apiKey))
         return empty;
     const { parsed, languages } = foldLanguageTerms(parsedIn, boundIn);
     if (languages?.length === 0)
@@ -152,7 +158,7 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
          * member that artwork search was "temporarily unavailable" when nothing was wrong with it.
          */
         let proxyBroke = false;
-        const proxy = themed ? getThemedSearchProxy() : null;
+        const proxy = themed && !api ? getThemedSearchProxy() : null;
         if (proxy) {
             // The host sees which themes are asked for, so it can vouch for a caller on one query and
             // not another (a theme it gives away to everyone) without a wasted round trip on the rest.
@@ -180,9 +186,9 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
             }
         }
         if (!rows) {
-            const res = await fetch(`${getApiUrl()}/rpc/search_cards`, {
+            const res = await fetch(`${apiUrl}/rpc/search_cards`, {
                 method: 'POST',
-                headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
+                headers: { apikey: apiKey, 'Content-Type': 'application/json' },
                 body,
             });
             if (!res.ok)
@@ -200,7 +206,7 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
         // count is the fallback for when that read failed — an unclamped first page of `limit` over
         // `total` matches is min(limit, total) rows long, so a shorter one was cut. Only a themed
         // query on the direct path can be clamped; only page 0 is judged (the server pins it anyway).
-        const depth = themed && !viaProxy ? await freeThemeDepth() : 0;
+        const depth = themed && !viaProxy && !api ? await freeThemeDepth() : 0;
         const clamped = themed && !viaProxy && offset === 0
             && ((depth > 0 && total > depth) || cards.length < Math.min(limit, total));
         return { cards, priceById, total, clamped, degraded: clamped && proxyBroke, failed: false };

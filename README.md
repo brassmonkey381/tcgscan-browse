@@ -99,6 +99,10 @@ exercises this against the built `dist/`.
   set's cards from PostgREST on drill, and ids resolve via `fetchCardsByIds`.
   Server search reproduces the client grammar semantics exactly, so warm and
   cold return the same results in the same order.
+- **Another game's server, per call.** `searchCards(q, { api: { url, key } })` searches
+  that PostgREST root instead of the configured game (0.9.27), for a host that must
+  look up a card of another game without switching the kit. The configured game's
+  themed-search proxy and free theme depth are not used for it.
 
 ## What lives here vs. in the apps
 

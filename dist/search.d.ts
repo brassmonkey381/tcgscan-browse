@@ -63,15 +63,30 @@ export declare function serverSearchAvailable(): boolean;
 /** Facet chip selection, facet key -> selected values (the kit's FacetSelection shape). */
 export type ServerFacetSelection = Record<string, string[]>;
 /**
+ * A search endpoint named per call, for a host that must search a game OTHER than the one the kit
+ * is configured for (a card of another game, edited while this one is active) without switching
+ * the whole kit, which would reset every per-game cache. `url` is the PostgREST root that serves
+ * `rpc/search_cards`; `key` its publishable key.
+ */
+export interface SearchApi {
+    url: string;
+    key: string;
+}
+/**
  * Run `parsed` against the server, one page at a time. `offset`/`limit` drive infinite scroll
  * (the caller accumulates pages); `facets` are exact-match chip selections (AND across facets,
  * OR within). Returns tile-ready cards + their prices + the real total.
+ *
+ * `api` searches that endpoint instead of the configured one. Nothing else about the configured
+ * game applies to it: the host's themed-search proxy and the free theme depth belong to the
+ * configured game, so neither is used, and a themed query is judged by its row count alone.
  */
-export declare function searchCards(parsedIn: ParsedQuery, { limit, offset, facets, languages: boundIn, }?: {
+export declare function searchCards(parsedIn: ParsedQuery, { limit, offset, facets, languages: boundIn, api, }?: {
     limit?: number;
     offset?: number;
     facets?: ServerFacetSelection;
     languages?: CardLanguage[];
+    api?: SearchApi;
 }): Promise<SearchPage>;
 /**
  * A set's browse-visible cards, straight from PostgREST (no catalog needed) — powers the
