@@ -9,6 +9,11 @@
  * params; no grammar is reimplemented here. Rows come back tile-ready (mapped to CatalogCard,
  * with the price carried separately), so a hit renders + opens its action sheet WITHOUT the
  * card being in the in-memory catalog. Fails soft (empty) — server search is an enhancement.
+ *
+ * A SECONDARY GAME (Lorcana, One Piece) has no `search_cards`; its themed queries go to
+ * `theme_search` / `theme_facets` (tcgscan-data migration 79) through `searchThemes` /
+ * `themeFacets` below, which answer ranked ids only. `mergeThemeHits` maps them onto the game's
+ * own public catalog rows, and the rest of the query runs on the device over those.
  */
 import { numberKey } from './catalog';
 import { getApiKey, getApiUrl, getThemedSearchProxy } from './config';
@@ -216,6 +221,201 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
         // (no catalog to run the query over), so the caller says the server did not answer.
         return failed;
     }
+}
+/** The RPC's own page cap: a larger `p_limit` is cut to this server-side, so it is sent cut. */
+const THEME_MAX_LIMIT = 1000;
+/** The parameters `theme_search` and `theme_facets` share, in that order on the wire. */
+function themeParams(game, q) {
+    return {
+        p_game: game,
+        p_fields: q.themes.map((v) => ({ key: 'theme', value: v })),
+        p_words: q.words,
+        p_frame: q.frame && q.frame !== 'all' ? q.frame : null,
+        p_types: q.types?.length ? q.types : null,
+    };
+}
+/**
+ * Rank a SECONDARY GAME'S theme query on the data project's `theme_search`, one page at a time.
+ * The answer is ids in rank order plus the true total; map them onto the game's catalog rows with
+ * `mergeThemeHits`. A game the data project has not enabled answers an empty page, like a query
+ * that matches nothing.
+ *
+ * The paid path is searchCards' to the letter: a host proxy and a token take the body tagged
+ * `rpc: 'theme_search'` (the host's endpoint forwards it unmetered); a 401/403 falls through to the
+ * direct, metered call, and anything else that goes wrong there sets `degraded` on a clamped page.
+ * A free (clamped) caller gets the top `free_theme_depth` hits by rank and the true total; the
+ * server ignores `group` for it, so `mergeThemeHits` groups those few rows on the device.
+ *
+ * Fails soft: an empty page when server search is not configured, there is no game or no theme
+ * term, or the language bound is contradictory (`languages: []`); `failed` when the server did not
+ * answer.
+ */
+export async function searchThemes(game, q, { limit = 60, offset = 0, languages } = {}) {
+    const empty = { hits: [], total: 0, clamped: false, degraded: false, failed: false };
+    const failed = { ...empty, failed: true };
+    const apiUrl = getApiUrl();
+    const apiKey = getApiKey();
+    if (!(apiUrl && apiKey) || !game || q.themes.length === 0)
+        return empty;
+    if (languages?.length === 0)
+        return empty; // contradictory bound (e.g. EN-only + lang:ja)
+    const pageLimit = Math.min(Math.max(limit, 0), THEME_MAX_LIMIT);
+    try {
+        const params = {
+            ...themeParams(game, q),
+            p_group: !!q.group,
+            p_limit: pageLimit,
+            p_offset: offset,
+            // Only sent when constrained, as in searchCards: absent means every language.
+            ...(languages?.length ? { p_lang: languages } : {}),
+        };
+        let rows = null;
+        let viaProxy = false;
+        /** The paid path was asked and BROKE (not refused). See `proxyBroke` in searchCards. */
+        let proxyBroke = false;
+        const proxy = getThemedSearchProxy();
+        if (proxy) {
+            // The host also learns the game, so it can give a theme away in one game and not another.
+            const token = await proxy.getToken({ themes: q.themes, game }).catch(() => null);
+            if (token) {
+                try {
+                    const res = await fetch(proxy.url, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rpc: 'theme_search', ...params }),
+                    });
+                    if (res.ok) {
+                        const answer = await res.json();
+                        if (Array.isArray(answer)) {
+                            rows = answer;
+                            viaProxy = true;
+                        }
+                        else {
+                            proxyBroke = true; // a 200 that is not rows: the endpoint is not answering this RPC
+                        }
+                    }
+                    else if (res.status !== 401 && res.status !== 403) {
+                        proxyBroke = true; // 5xx, a bad gateway, a function that predates theme_search (400)
+                    }
+                }
+                catch {
+                    rows = null; // the direct path answers
+                    proxyBroke = true; // offline, CORS, DNS: the endpoint did not get to have an opinion
+                }
+            }
+        }
+        if (!rows) {
+            const res = await fetch(`${apiUrl}/rpc/theme_search`, {
+                method: 'POST',
+                headers: { apikey: apiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify(params),
+            });
+            if (!res.ok)
+                return failed;
+            const answer = await res.json();
+            if (!Array.isArray(answer))
+                return failed;
+            rows = answer;
+        }
+        if (!rows.length)
+            return empty;
+        const hits = rows.map((r) => ({
+            id: String(r.id),
+            artBand: typeof r.art_band === 'number' ? r.art_band : 2,
+            fullArt: r.full_art === true,
+            typeGroup: r.type_group ?? '',
+        }));
+        const total = Number(rows[0].total_count) || hits.length;
+        // The meter, judged as searchCards judges it: the public free depth is the exact test, the
+        // row count the fallback when that read failed. Only the direct path's page 0 can be clamped.
+        const depth = viaProxy ? 0 : await freeThemeDepth();
+        const clamped = !viaProxy && offset === 0 && ((depth > 0 && total > depth) || hits.length < Math.min(pageLimit, total));
+        return { hits, total, clamped, degraded: clamped && proxyBroke, failed: false };
+    }
+    catch {
+        return failed;
+    }
+}
+/**
+ * Chip counts for a secondary game's theme query (`theme_facets`), exclude-self: the frame counts
+ * honour the type chips and ignore the frame; the type counts honour the frame and ignore the type
+ * chips. A dual-ink or multicolour card counts under its group AND under each member, which is why
+ * this cannot be counted from a page of ThemeHits on the device.
+ *
+ * Always the direct call: these are counts, not cards, so nothing here is metered by depth and the
+ * paid path has nothing to add. `null` when the server did not answer (or is not configured): the
+ * caller hides the counts and keeps the chips.
+ */
+export async function themeFacets(game, q, { languages } = {}) {
+    if (!serverSearchAvailable() || !game)
+        return null;
+    const counts = { frame: {}, type: {} };
+    if (q.themes.length === 0 || languages?.length === 0)
+        return counts; // an answer: nothing matches
+    try {
+        const res = await fetch(`${getApiUrl()}/rpc/theme_facets`, {
+            method: 'POST',
+            headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ...themeParams(game, q),
+                // See searchCards: only sent when constrained.
+                ...(languages?.length ? { p_lang: languages } : {}),
+            }),
+        });
+        if (!res.ok)
+            return null;
+        const rows = await res.json();
+        if (!Array.isArray(rows))
+            return null;
+        for (const r of rows) {
+            if ((r?.facet !== 'frame' && r?.facet !== 'type') || typeof r.value !== 'string' || !r.value)
+                continue;
+            counts[r.facet][r.value] = Number(r.n) || 0;
+        }
+        return counts;
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * THE MERGE: `theme_search`'s ranked ids onto the device's own catalog rows, in server order.
+ *
+ * The server answers ids and rank facts; the tile, the price and every other filter come from the
+ * game's public catalog.json, so a hit renders exactly like a browsed card. Each kept row is a copy
+ * carrying the hit's `themeFullArt` and `themeGroup`. An id the catalog does not have is DROPPED (a
+ * card published after this bundle, or another game's id, which the server never sends but the
+ * merge does not take on trust), so the list can only show cards this device can render. `keep` is
+ * the caller's pre-filter (the language bound). A repeated id (pages that overlapped while the data
+ * changed) keeps its first, best-ranked place.
+ *
+ * `groupOrder` (the registry's type group keys, in display order) groups the rows HERE, with a
+ * stable sort: rank order holds inside each group, and a group not in the list sorts last. Pass it
+ * for a CLAMPED page with grouping on. The server ignores `group` for a free caller and returns the
+ * best N by rank, never the best N of the first group; a paid page already arrives grouped.
+ *
+ * Pure (no fetch, no state), so a host or a check script can run it on fixtures.
+ */
+export function mergeThemeHits(hits, getCard, { keep, groupOrder } = {}) {
+    const seen = new Set();
+    const merged = [];
+    for (const h of hits) {
+        if (seen.has(h.id))
+            continue;
+        seen.add(h.id);
+        const card = getCard(h.id);
+        if (!card || (keep && !keep(card)))
+            continue;
+        merged.push({ ...card, themeFullArt: h.fullArt, themeGroup: h.typeGroup });
+    }
+    if (!groupOrder?.length)
+        return merged;
+    const order = new Map(groupOrder.map((key, i) => [key, i]));
+    const groupOf = (c) => order.get(c.themeGroup ?? '') ?? order.size;
+    return merged
+        .map((c, i) => [c, i])
+        .sort((a, b) => groupOf(a[0]) - groupOf(b[0]) || a[1] - b[1])
+        .map(([c]) => c);
 }
 /** The card columns the direct PostgREST fetchers select (matches SearchRow minus cur/score). */
 const CARD_COLS = 'id,name,number,rarity,card_type,set_id,set_name,series,release_date,' +

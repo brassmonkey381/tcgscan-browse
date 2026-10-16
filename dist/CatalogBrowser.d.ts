@@ -4,6 +4,7 @@ import { type CardAction, type CardActionsFactory } from './actions';
 import { type Catalog, type CardLanguage, type CatalogCard } from './catalog';
 import { type BrowseFeature } from './features';
 import { type BrowseTheme } from './theme';
+import { type ThemeTypeGroup } from './ThemeFilterBar';
 interface CatalogBrowserProps {
     /**
      * The in-memory catalog. Pass `undefined`/`null` while it's still loading to get the COLD
@@ -180,6 +181,34 @@ interface CatalogBrowserProps {
      */
     themeSearchLabel?: string;
     /**
+     * A SECONDARY GAME (Lorcana, One Piece): theme terms go to the data project's `theme_search`,
+     * rows stay local. The game's public catalog carries no captions or tags, so a themed query
+     * (`theme:`, `character:`, `scene:`, …) sends its theme terms, bare words, the toolbar's frame
+     * and type chips, and grouping to the server, and maps the ranked ids it answers onto this
+     * browser's own `catalog` rows, in server order. Everything else in the query (rarity:, set:,
+     * price, have:, comparisons, facet chips, an explicit sort) runs on the device over those rows.
+     * A browser with this prop NEVER calls `search_cards`, which only knows Pokémon.
+     *
+     * THE METER counts theme + words + frame + type matches, before rarity/set/price/have filters. A
+     * free (clamped) caller gets the top N by theme rank; the device then filters and sorts those N,
+     * so `sort:value` orders the best-ranked N, it does not find the N most valuable. A paid caller
+     * (the host's themed-search proxy) gets every hit: with a sort or a device-only filter in play,
+     * the browser fetches the whole result before it shows any of it, so the sort and the filters see
+     * all of it.
+     *
+     * `game` is the registry key ('lorcana'); `typeLabel` / `typeGroups` (the registry's type groups,
+     * in display order) name and colour the toolbar's type chips and group labels; `tools: false`
+     * hides the toolbar (frame, chips, grouping) and searches all art. Needs a loaded `catalog` (the
+     * ids are mapped onto it), so a host mounts the browser once it has one. Omit for Pokémon:
+     * nothing changes.
+     */
+    themeServer?: {
+        game: string;
+        typeLabel?: string;
+        typeGroups?: ThemeTypeGroup[];
+        tools?: boolean;
+    };
+    /**
      * The set of card ids the user OWNS (own ≥ 1 copy) — a collection-aware overlay layer the app
      * supplies (kit stays source-agnostic). When present: card tiles show an owned check, set tiles
      * show "X / Y · N%" completion, and the `have:` search token (have:yes / have:no, via the
@@ -193,5 +222,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, themeServer, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

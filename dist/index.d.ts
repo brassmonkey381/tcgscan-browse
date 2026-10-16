@@ -20,11 +20,11 @@ export { resolveActions, resolveLabel, type BrowserBuiltins, type CardAction, ty
 export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE, type BrowseTheme } from './theme';
 export { findSimilar, findSimilarToMany, findSimilarWeighted, getSimilarityModel, listSimilarityModels, refineWeights, setSimilarityModel, similarAvailable, type SimilarHit, type SimilarityModelInfo, type SimilarStep, } from './similar';
 export { ColorIndex, colorSearchAvailable, colorServerAvailable, findSimilarByColor, getColorIndex, labToSrgb, loadColorIndex, searchByColor, searchByColorServer, searchByColors, searchByColorsServer, srgbToLab, useColorIndex, type ColorHit, type ColorRegion, type Lab, } from './color';
-export { fetchCardDetail, fetchCardsByIds, fetchSetCards, freeThemeDepth, searchCards, searchFacets, serverSearchAvailable, type CardDetail, type SearchApi, type SearchPage, type ServerFacetSelection, } from './search';
+export { fetchCardDetail, fetchCardsByIds, fetchSetCards, freeThemeDepth, mergeThemeHits, searchCards, searchFacets, searchThemes, serverSearchAvailable, themeFacets, type CardDetail, type SearchApi, type SearchPage, type ServerFacetSelection, type ThemeFacetCounts, type ThemeFrame, type ThemeHit, type ThemePage, type ThemeQuery, } from './search';
 export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, type SealedCatalog, type SealedProduct, type SealedSet, } from './sealed';
 export { SEALED_GROUPS, sealedGroupOf, type SealedGroup } from './sealed-groups';
-export { describeQuery, matchCard, parseQuery, MANUAL_TABS, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, type CompareField, type CompareOp, type Comparison, type FieldKey, type ManualSection, type ManualTab, type ParsedQuery, type QueryableCard, type QuerySort, type SortDir, } from './query';
+export { describeQuery, filterCards, matchCard, parseQuery, MANUAL_TABS, QUERY_HINT, QUERY_MANUAL, runQuery, scoreCard, sortCards, withoutTheme, type CompareField, type CompareOp, type Comparison, type FieldKey, type ManualSection, type ManualTab, type ParsedQuery, type QueryableCard, type QuerySort, type SortDir, } from './query';
 export { daysUntilRelease, isUpcoming, releaseTag, todayISO, JUST_RELEASED_DAYS, RECENT_DAYS, RELEASE_SOON_DAYS, RELEASE_TAG_FONT_SIZE, RELEASE_TAG_LINE_HEIGHT, VERY_RECENT_DAYS, type ReleaseTag, type ReleaseTagKind, } from './releaseTag';
 export { hydrateSavedSearches, isSearchSaved, listSavedSearches, removeSavedSearch, subscribeSavedSearches, toggleSavedSearch, type SavedSearch, } from './savedSearches';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, type CardSize, } from './state';

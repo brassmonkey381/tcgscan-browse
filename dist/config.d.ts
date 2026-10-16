@@ -51,13 +51,20 @@ export interface SavedSearchStore {
  * costs no round trip. A proxy that answers 401/403 (or fails) degrades to the same direct path.
  * `getToken` is told which themes the query asks for, so a host that gives one theme away to
  * everyone can offer a guest's token for that query alone.
+ *
+ * A secondary game's theme search (search.ts `searchThemes`) takes the same path to a different
+ * RPC: the body is `{ rpc: 'theme_search', ...theme_search's parameters }`, and `getToken` is also
+ * told the `game`. A Pokémon query sends neither, exactly as before.
  */
 export interface ThemedSearchProxy {
-    /** The host's endpoint. Receives the `search_cards` RPC body verbatim; answers with its rows. */
+    /** The host's endpoint. Receives the `search_cards` RPC body verbatim, or the `theme_search`
+     *  body tagged `rpc: 'theme_search'`; answers with that RPC's rows. */
     url: string;
-    /** The caller's bearer token when they may search unmetered for these themes, else null. */
+    /** The caller's bearer token when they may search unmetered for these themes, else null.
+     *  `game` is set only on a secondary game's theme search (the registry key, e.g. 'lorcana'). */
     getToken: (query: {
         themes: string[];
+        game?: string;
     }) => Promise<string | null>;
 }
 export interface BrowseConfig {

@@ -50,6 +50,13 @@ export interface CatalogCard {
     /** Printing language: 'en' (English) | 'ja' (Japanese). Defaults 'en' when a
      *  legacy/EN-only source omits it. Drives the language badge + facet. */
     language: CardLanguage;
+    /** A secondary game's theme search only (search.ts `mergeThemeHits`): the server's verdict that
+     *  the artwork fills the card. Set on the merged rows of a `theme_search` result and absent
+     *  everywhere else, every Pokémon card included. Never in a catalog: the bundles do not ship it. */
+    themeFullArt?: boolean;
+    /** The same rows' type group (an ink, a colour, or a dual-ink / multicolour group), a registry
+     *  key the browser groups and labels by. Absent outside a `theme_search` result. */
+    themeGroup?: string;
 }
 /**
  * A V-UNION set: four 1×1 catalog pieces that tile a 2×2 block, in

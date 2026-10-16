@@ -1,4 +1,5 @@
 import type { QuerySort, SortDir } from './query';
+import type { ThemeFrame } from './search';
 export interface SavedSearch {
     /** Chip label — the raw query text (or where it was saved, when the query is empty). */
     label: string;
@@ -18,6 +19,14 @@ export interface SavedSearch {
      */
     seriesId?: string | null;
     setId?: string | null;
+    /**
+     * A secondary game's theme toolbar, saved only when that browser had one and it was off its
+     * defaults (see BrowseState): the frame, the type chips, and a hand-set "Group by". Absent on
+     * every Pokémon save and on entries saved before this shipped, which read as the defaults.
+     */
+    themeFrame?: ThemeFrame;
+    themeTypes?: string[];
+    themeGroup?: boolean;
 }
 /**
  * Load the persisted list through the app-supplied store, once per session.
@@ -33,7 +42,7 @@ export interface SavedSearch {
  */
 export declare function hydrateSavedSearches(): Promise<void>;
 export declare function listSavedSearches(): SavedSearch[];
-/** Two saves are "the same search" when query + facets + sort all match. */
+/** Two saves are "the same search" when query + facets + sort (+ the theme toolbar) all match. */
 export declare function sameSearch(a: SavedSearch, b: SavedSearch): boolean;
 export declare function isSearchSaved(s: SavedSearch): boolean;
 /**

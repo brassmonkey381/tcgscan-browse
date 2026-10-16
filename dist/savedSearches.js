@@ -162,13 +162,27 @@ function canonicalSelection(selection) {
         .filter((k) => (s[k]?.length ?? 0) > 0)
         .map((k) => [k, [...s[k]].sort()]));
 }
-/** Two saves are "the same search" when query + facets + sort all match. */
+/**
+ * The theme toolbar reduced to its meaning, like canonicalSelection: absent and default are the
+ * same thing ('all', no chips, grouping left to the frame), and chip order is how they were
+ * tapped, not what they mean. Every Pokémon save reads as the defaults, so this changes nothing
+ * for one.
+ */
+function canonicalTheme(s) {
+    return JSON.stringify([
+        s.themeFrame && s.themeFrame !== 'all' ? s.themeFrame : 'all',
+        [...(s.themeTypes ?? [])].sort(),
+        s.themeGroup ?? null,
+    ]);
+}
+/** Two saves are "the same search" when query + facets + sort (+ the theme toolbar) all match. */
 export function sameSearch(a, b) {
     return (a.query.trim() === b.query.trim() &&
         canonicalSelection(a.selection) === canonicalSelection(b.selection) &&
         JSON.stringify(a.sortSel) === JSON.stringify(b.sortSel) &&
         (a.setId ?? null) === (b.setId ?? null) &&
-        (a.seriesId ?? null) === (b.seriesId ?? null));
+        (a.seriesId ?? null) === (b.seriesId ?? null) &&
+        canonicalTheme(a) === canonicalTheme(b));
 }
 export function isSearchSaved(s) {
     return saved.some((x) => sameSearch(x, s));

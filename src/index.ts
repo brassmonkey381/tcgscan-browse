@@ -178,13 +178,21 @@ export {
   fetchCardsByIds,
   fetchSetCards,
   freeThemeDepth,
+  mergeThemeHits,
   searchCards,
   searchFacets,
+  searchThemes,
   serverSearchAvailable,
+  themeFacets,
   type CardDetail,
   type SearchApi,
   type SearchPage,
   type ServerFacetSelection,
+  type ThemeFacetCounts,
+  type ThemeFrame,
+  type ThemeHit,
+  type ThemePage,
+  type ThemeQuery,
 } from './search';
 
 export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
@@ -203,6 +211,7 @@ export { SEALED_GROUPS, sealedGroupOf, type SealedGroup } from './sealed-groups'
 
 export {
   describeQuery,
+  filterCards,
   matchCard,
   parseQuery,
   MANUAL_TABS,
@@ -211,6 +220,7 @@ export {
   runQuery,
   scoreCard,
   sortCards,
+  withoutTheme,
   type CompareField,
   type CompareOp,
   type Comparison,

@@ -8,6 +8,7 @@
  */
 import type { CatalogCard } from './catalog';
 import type { QuerySort, SortDir } from './query';
+import type { ThemeFrame } from './search';
 import type { SimilarStep } from './similar';
 
 /** Rendered card-tile size step, chosen via the browser's Size control. Scales the
@@ -35,6 +36,16 @@ export interface BrowseState {
    * reset whenever a fresh similarity search starts or similar mode is left.
    */
   similarSteps: SimilarStep[];
+  /**
+   * A secondary game's theme toolbar (ThemeFilterBar): which artwork to keep, the type chips
+   * (registry group keys, OR-ed), and the "Group by" switch. Only a browser with a `themeServer`
+   * reads or writes them. Absent means the defaults: all art, no chips, and grouping that follows
+   * the frame (Windowed groups, the others do not). `themeGroup` is set only once the switch has
+   * been flipped by hand; a frame change hands it back to the default.
+   */
+  themeFrame?: ThemeFrame;
+  themeTypes?: string[];
+  themeGroup?: boolean;
 }
 
 export const browseState: BrowseState = {

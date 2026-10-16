@@ -39,6 +39,7 @@ import {
 
 import {
   describeQuery,
+  filterCards,
   parseQuery,
   QUERY_HINT,
   MANUAL_TABS,
@@ -46,6 +47,7 @@ import {
   type ManualTab,
   runQuery,
   sortCards,
+  withoutTheme,
   type QuerySort,
   type SortDir,
 } from './query';
@@ -103,12 +105,20 @@ import { findSimilarWeighted, similarAvailable, type SimilarStep } from './simil
 import {
   fetchCardsByIds,
   fetchSetCards,
+  mergeThemeHits,
   searchCards,
   searchFacets,
+  searchThemes,
   serverSearchAvailable,
+  themeFacets,
+  type ThemeFacetCounts,
+  type ThemeFrame,
+  type ThemeHit,
+  type ThemeQuery,
 } from './search';
 import { useTaxonomy, type TaxonomySource } from './taxonomy';
 import { resolveTheme, tileShadow, type BrowseTheme } from './theme';
+import { ThemeFilterBar, type ThemeTypeGroup } from './ThemeFilterBar';
 
 /** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
  *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
@@ -126,6 +136,14 @@ const TARGET_TAX_TILE_W = 250;
 const TAX_TILE_H = 176;
 /** How many of the first cards to warm through the image cache when a view changes. */
 const PREFETCH_COUNT = 12;
+/**
+ * A secondary game's theme search (`themeServer`): ids per lazy page, ids per DRAIN call, and the
+ * deepest offset `theme_search` serves. A page is ids and rank facts only (~70 B a row), so a
+ * page is several grid windows; draining a whole One Piece result is a handful of calls.
+ */
+const THEME_PAGE = 300;
+const THEME_DRAIN_PAGE = 1000;
+const THEME_MAX_OFFSET = 20000;
 
 // ---------------------------------------------------------------------------
 // FACET FRAMEWORK
@@ -374,12 +392,19 @@ function hydrateFromUrl(): void {
       st: string;
       f: Record<string, string[]>;
       o: { field: QuerySort; dir: SortDir };
+      tf: string;
+      tt: unknown;
+      tg: unknown;
     }>;
     browseState.cardQuery = typeof s.q === 'string' ? s.q : '';
     browseState.seriesId = typeof s.sr === 'string' ? s.sr : null;
     browseState.setId = typeof s.st === 'string' ? s.st : null;
     browseState.selection = s.f && typeof s.f === 'object' ? s.f : {};
     browseState.sortSel = s.o && typeof s.o === 'object' ? s.o : null;
+    // A secondary game's theme toolbar (see writeUrlState); absent means its defaults.
+    browseState.themeFrame = s.tf === 'full' || s.tf === 'window' ? s.tf : 'all';
+    browseState.themeTypes = Array.isArray(s.tt) ? s.tt.filter((v): v is string => typeof v === 'string') : [];
+    browseState.themeGroup = typeof s.tg === 'boolean' ? s.tg : undefined;
   } catch {
     // malformed link — start clean
   }
@@ -387,8 +412,10 @@ function hydrateFromUrl(): void {
 hydrateFromUrl();
 
 /** Web only: mirror the current view into the address bar (replaceState — no history spam), so
- *  copying the URL shares this exact search/drill-down/filters/sort. Cleared at the default root. */
-function writeUrlState(): void {
+ *  copying the URL shares this exact search/drill-down/filters/sort. Cleared at the default root.
+ *  `withTheme` (a browser with a `themeServer`) also writes the theme toolbar as tf/tt/tg, each
+ *  omitted at its default; a Pokémon browser never writes them, so its links are unchanged. */
+function writeUrlState(withTheme = false): void {
   if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.history?.replaceState) return;
   try {
     const url = new URL(window.location.href);
@@ -405,6 +432,9 @@ function writeUrlState(): void {
           st: s.setId ?? undefined,
           f: Object.keys(s.selection).length ? s.selection : undefined,
           o: s.sortSel ?? undefined,
+          tf: withTheme && s.themeFrame && s.themeFrame !== 'all' ? s.themeFrame : undefined,
+          tt: withTheme && s.themeTypes?.length ? s.themeTypes : undefined,
+          tg: withTheme && s.themeGroup != null ? s.themeGroup : undefined,
         }),
       );
     window.history.replaceState(window.history.state, '', url.toString());
@@ -433,7 +463,8 @@ function applyFacets(cards: CatalogCard[], selection: FacetSelection): CatalogCa
 type BrowseItem =
   | { kind: 'series'; series: CatalogSeries }
   | { kind: 'set'; set: CatalogSet }
-  | { kind: 'card'; card: CatalogCard }
+  /** `groupStart`: the first tile of a type group in a grouped theme result carries its label. */
+  | { kind: 'card'; card: CatalogCard; groupStart?: ThemeTypeGroup }
   | { kind: 'vunion'; group: VUnionGroup };
 
 /** Modifier flags read off a web keyboard event (DOM lib isn't in the RN typings). */
@@ -620,6 +651,34 @@ interface CatalogBrowserProps {
    */
   themeSearchLabel?: string;
   /**
+   * A SECONDARY GAME (Lorcana, One Piece): theme terms go to the data project's `theme_search`,
+   * rows stay local. The game's public catalog carries no captions or tags, so a themed query
+   * (`theme:`, `character:`, `scene:`, …) sends its theme terms, bare words, the toolbar's frame
+   * and type chips, and grouping to the server, and maps the ranked ids it answers onto this
+   * browser's own `catalog` rows, in server order. Everything else in the query (rarity:, set:,
+   * price, have:, comparisons, facet chips, an explicit sort) runs on the device over those rows.
+   * A browser with this prop NEVER calls `search_cards`, which only knows Pokémon.
+   *
+   * THE METER counts theme + words + frame + type matches, before rarity/set/price/have filters. A
+   * free (clamped) caller gets the top N by theme rank; the device then filters and sorts those N,
+   * so `sort:value` orders the best-ranked N, it does not find the N most valuable. A paid caller
+   * (the host's themed-search proxy) gets every hit: with a sort or a device-only filter in play,
+   * the browser fetches the whole result before it shows any of it, so the sort and the filters see
+   * all of it.
+   *
+   * `game` is the registry key ('lorcana'); `typeLabel` / `typeGroups` (the registry's type groups,
+   * in display order) name and colour the toolbar's type chips and group labels; `tools: false`
+   * hides the toolbar (frame, chips, grouping) and searches all art. Needs a loaded `catalog` (the
+   * ids are mapped onto it), so a host mounts the browser once it has one. Omit for Pokémon:
+   * nothing changes.
+   */
+  themeServer?: {
+    game: string;
+    typeLabel?: string;
+    typeGroups?: ThemeTypeGroup[];
+    tools?: boolean;
+  };
+  /**
    * The set of card ids the user OWNS (own ≥ 1 copy) — a collection-aware overlay layer the app
    * supplies (kit stays source-agnostic). When present: card tiles show an owned check, set tiles
    * show "X / Y · N%" completion, and the `have:` search token (have:yes / have:no, via the
@@ -662,6 +721,7 @@ export function CatalogBrowser({
   onThemeSearch,
   colorSearchLabel = 'Tri-Color Search',
   themeSearchLabel = 'Theme Search',
+  themeServer,
   ownedIds,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
@@ -757,6 +817,13 @@ export function CatalogBrowser({
   const [sortSel, setSortSel] = useState<{ field: QuerySort; dir: SortDir } | null>(
     browseState.sortSel,
   );
+  // A secondary game's theme toolbar (ThemeFilterBar), session-sticky like the rest: a remount on
+  // a game switch, a shared link and a starred search all keep it. `themeGroupSel` is null until
+  // the Group switch is flipped by hand; until then grouping follows the frame (owner decision 7:
+  // Windowed groups by type), and a frame change hands it back to that default.
+  const [themeFrame, setThemeFrame] = useState<ThemeFrame>(browseState.themeFrame ?? 'all');
+  const [themeTypes, setThemeTypes] = useState<string[]>(browseState.themeTypes ?? []);
+  const [themeGroupSel, setThemeGroupSel] = useState<boolean | null>(browseState.themeGroup ?? null);
   // Local toggle: apply + lift to the app's global store (if wired).
   const pickCardSize = (s: CardSize) => {
     setCardSize(s);
@@ -799,7 +866,10 @@ export function CatalogBrowser({
   // by applyFeatureLocks and runs as an ordinary query, so it stays warm.
   const themedQuery =
     /(^|\s)(theme|art|scene):/i.test(cardQueryDebounced) && !isLocked(lockedFeatures, 'themeSearch');
-  const coldSearch = (!warm || themedQuery) && serverSearchAvailable();
+  // A SECONDARY GAME (`themeServer`) never takes this path: `search_cards` only knows Pokémon, so
+  // its themed queries go to `theme_search` instead (see `themeServerActive`) and everything else
+  // runs on its own catalog.
+  const coldSearch = !themeServer && (!warm || themedQuery) && serverSearchAvailable();
   const [serverCards, setServerCards] = useState<CatalogCard[]>([]);
   const [serverPrice, setServerPrice] = useState<Record<string, number>>({});
   const [serverTotal, setServerTotal] = useState(0);
@@ -887,9 +957,13 @@ export function CatalogBrowser({
       similarTo,
       similarCards,
       similarSteps,
+      themeFrame,
+      themeTypes,
+      themeGroup: themeGroupSel ?? undefined,
     });
-    writeUrlState();
-  }, [cardQuery, seriesId, setId, selection, sortSel, cardSize, similarTo, similarCards, similarSteps]);
+    writeUrlState(!!themeServer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardQuery, seriesId, setId, selection, sortSel, cardSize, similarTo, similarCards, similarSteps, themeFrame, themeTypes, themeGroupSel, !!themeServer]);
   // Tapping a card opens the action sheet (app-supplied actions + built-ins)
   // instead of silently replacing the pocket's occupant.
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
@@ -1118,10 +1192,98 @@ export function CatalogBrowser({
     [parsed, effSort, lockedFeatures?.join(',')],
   );
 
+  // ---- A SECONDARY GAME'S THEME SEARCH (`themeServer`) ----------------------------------------
+  // The themed half of the query (theme terms, bare words, the toolbar) goes to `theme_search`,
+  // which answers ranked ids; `viewCards` maps them onto this browser's catalog and runs the rest
+  // of the query there. A theme the host has locked was stripped by applyFeatureLocks, so the
+  // query runs as an ordinary local one and this stays off.
+  const themeServerActive =
+    Boolean(themeServer && catalog) && searching && effParsed.fields.some((f) => f.key === 'theme');
+  /** The registry offers the toolbar. Without it the search is all art, no chips, ungrouped. */
+  const themeTools = !!themeServer && themeServer.tools !== false;
+  const themeGroups = themeServer?.typeGroups ?? [];
+  const themeGroupKeys = themeGroups.map((g) => g.key).join('|');
+  // Only THIS game's group keys reach the server: a remount on a game switch reseeds the chips from
+  // the shared browseState, which can still hold the previous game's inks.
+  const themeTypesEff = useMemo(
+    () => (themeTools ? themeTypes.filter((k) => themeGroups.some((g) => g.key === k)) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [themeTools, themeTypes, themeGroupKeys],
+  );
+  const themeFrameEff: ThemeFrame = themeTools ? themeFrame : 'all';
+  const themeGroupOn = themeTools && themeGroups.length > 0 && (themeGroupSel ?? themeFrameEff === 'window');
+  const themeQuery = useMemo<ThemeQuery>(
+    () => ({
+      themes: effParsed.fields.filter((f) => f.key === 'theme').map((f) => f.value),
+      words: effParsed.words,
+      frame: themeFrameEff,
+      types: themeTypesEff,
+      group: themeGroupOn,
+    }),
+    [effParsed, themeFrameEff, themeTypesEff, themeGroupOn],
+  );
+  /** What one result set answers: a change refetches from page 0. '' while inactive. */
+  const themeReqKey = themeServerActive ? JSON.stringify([themeServer!.game, themeQuery, langArg ?? null]) : '';
+  /** The chip counts' key: the same query minus grouping, which counts nothing. */
+  const themeCountKey =
+    themeServerActive && themeTools
+      ? JSON.stringify([themeServer!.game, { ...themeQuery, group: false }, langArg ?? null])
+      : '';
+  // WHEN EVERY HIT MUST BE HERE BEFORE ANY IS SHOWN (CP-3): an explicit sort, or a filter only the
+  // device can apply (rarity:, set:, lang:, price, comparisons, have:, a facet chip). Either one
+  // over a partial result would be wrong rather than merely short: a value sort that only saw the
+  // first page, or a rarity filter that found 4 of 40. The Language chip is not one of them: it is
+  // folded into `langArg`, which the server already applies.
+  const themeLocal = useMemo(() => withoutTheme(effParsed), [effParsed]);
+  const themeNeedsAll =
+    effSort.field !== 'relevance' ||
+    themeLocal.fields.length > 0 ||
+    themeLocal.comparisons.length > 0 ||
+    themeLocal.minPrice != null ||
+    themeLocal.maxPrice != null ||
+    (themeLocal.owned != null && !!ownedIds) ||
+    Object.entries(selection).some(([key, values]) => key !== 'language' && values.length > 0);
+  const [themeHits, setThemeHits] = useState<ThemeHit[]>([]);
+  const [themeTotal, setThemeTotal] = useState(0);
+  /** The meter, as on the cold path: a free caller got the top `free_theme_depth` hits only. */
+  const [themeClamped, setThemeClamped] = useState(false);
+  /** ...and should not have: the host's paid path broke (ThemePage.degraded). */
+  const [themeDegraded, setThemeDegraded] = useState(false);
+  /** The server did not answer (ThemePage.failed): "not responding, retry", never "No cards match". */
+  const [themeFailed, setThemeFailed] = useState(false);
+  const [themeLoading, setThemeLoading] = useState(false);
+  /** No further page can be had: every hit is here, the server stopped short, or the offset cap. */
+  const [themeEnd, setThemeEnd] = useState(true);
+  const [themeCounts, setThemeCounts] = useState<ThemeFacetCounts | null>(null);
+  /** Bumped by the theme Retry: refetches the same query (never `search_cards`). */
+  const [themeAttempt, setThemeAttempt] = useState(0);
+  const themeToken = useRef(0);
+  /** The request the theme state above answers. Until it equals `themeReqKey`, the render between
+   *  a query change and its fetch reads as loading rather than as "No cards match". */
+  const themeStateKey = useRef('');
+  const themePending = themeServerActive && (themeLoading || themeStateKey.current !== themeReqKey);
+  /** More pages exist and may be fetched (never on a clamped page: the meter says what is withheld). */
+  const themeMore = !themeClamped && !themeEnd;
+
   // Cards currently in view, before facet filtering: ranked full-corpus search results
   // (bare words match name/artist/set/series/rarity/type/stage — name hits rank first),
   // similar-mode results, or the set's cards.
   const viewCards = useMemo<CatalogCard[]>(() => {
+    // A secondary game's themed query: the server's ranked ids, onto this catalog's rows, then the
+    // rest of the query on the device. Ids the bundle lacks are dropped (mergeThemeHits).
+    if (themeServerActive) {
+      // Nothing renders from a partial result that must be whole (see themeNeedsAll).
+      if (themeNeedsAll && (themePending || themeMore)) return [];
+      // CP-2: the server ignores grouping for a clamped (free) call and returns the best N by rank,
+      // so the N rows are grouped here, a stable sort by the registry's order. A paid page already
+      // arrives grouped.
+      const merged = mergeThemeHits(themeHits, (id) => catalog!.getCard(id), {
+        keep: langOk,
+        groupOrder: themeClamped && themeGroupOn ? themeGroups.map((g) => g.key) : undefined,
+      });
+      const kept = filterCards(merged, themeLocal, priceOf, ownedIds);
+      return effSort.field === 'relevance' ? kept : sortCards(kept, effParsed, priceOf);
+    }
     // Cold search: the accumulated server-search pages (already language-constrained server-side).
     // A themed query is served this way even when warm — see `themedQuery`.
     if ((!catalog || (themedQuery && coldSearch)) && searching) {
@@ -1147,7 +1309,8 @@ export function CatalogBrowser({
     if (effSort.field === 'relevance' || base.length === 0) return base;
     return sortCards(base, effParsed, priceOf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, searching, serverCards, coldSetCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary, langSet, ownedIds]);
+  }, [catalog, searching, serverCards, coldSetCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary, langSet, ownedIds,
+    themeServerActive, themeNeedsAll, themePending, themeMore, themeHits, themeClamped, themeGroupOn, themeGroupKeys, themeLocal]);
   viewCardsRef.current = viewCards;
 
   // Cold search: (re)fetch page 0 when the query/sort/facet selection changes; the token guard
@@ -1277,7 +1440,21 @@ export function CatalogBrowser({
   const data = useMemo<BrowseItem[]>(() => {
     if (level === 'series') return series.map((s) => ({ kind: 'series' as const, series: s }));
     if (level === 'sets') return sets.map((s) => ({ kind: 'set' as const, set: s }));
-    const cards = filteredCards.map((c) => ({ kind: 'card' as const, card: c }));
+    // A grouped theme result (in group order unless an explicit sort reordered it): the first tile
+    // of each group carries its label. Full-width section headers would need the grid's
+    // getItemLayout to know about them, so that is a later change.
+    const grouped = themeServerActive && themeGroupOn && effSort.field === 'relevance';
+    let prevGroup: string | undefined;
+    const cards: BrowseItem[] = filteredCards.map((c) => {
+      if (!grouped || c.themeGroup === prevGroup) return { kind: 'card' as const, card: c };
+      prevGroup = c.themeGroup;
+      const g = themeGroups.find((x) => x.key === c.themeGroup);
+      return {
+        kind: 'card' as const,
+        card: c,
+        groupStart: g ?? { key: c.themeGroup ?? '', label: c.themeGroup || 'Other', color: '' },
+      };
+    });
     if (!showVUnionGroups || !catalog) return cards;
     // Only groups relevant to the CURRENT view: a group qualifies when one of its piece cards is
     // in the searched/set cards. So "charizard" + V-UNION returns nothing (no Charizard V-UNION),
@@ -1287,12 +1464,16 @@ export function CatalogBrowser({
       .filter((g) => g.pieces.some((pid) => inView.has(pid)))
       .map((g) => ({ kind: 'vunion' as const, group: g }));
     return [...groups, ...cards];
-  }, [level, series, sets, filteredCards, inView, showVUnionGroups, catalog]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [level, series, sets, filteredCards, inView, showVUnionGroups, catalog, themeServerActive, themeGroupOn, effSort.field, themeGroupKeys]);
 
   // Warm the first row of card images through the cache once per distinct view (set/filter/
   // search change), off the render path. Guarded so it fires at most once per view key.
   const prefetchedKey = useRef<string | null>(null);
-  const viewKey = `${level}:${setId ?? ''}:${q}:${JSON.stringify(selection)}`;
+  // A theme toolbar change is a view change too: back to the top, like a new filter.
+  const viewKey =
+    `${level}:${setId ?? ''}:${q}:${JSON.stringify(selection)}` +
+    (themeServer ? `:${themeFrameEff}:${themeTypesEff.join(',')}:${themeGroupOn}` : '');
   // Infinite scroll: reveal a page of rows, grow on end-reached. Reset to the top when the
   // view (level/search/filters) or the sort changes.
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -1305,6 +1486,119 @@ export function CatalogBrowser({
     () => (localView ? data.slice(0, visibleCount) : data),
     [localView, data, visibleCount],
   );
+  /**
+   * Fetch `theme_search` pages for the current request, after the hits in `base` ([] = a fresh
+   * query from page 0). `drain` keeps going until every hit is here or the offset cap, and nothing
+   * is published until it stops (see themeNeedsAll). A newer call (a new query, a Retry, an
+   * unmount's reset) supersedes this one through the token, which also ends a drain loop.
+   */
+  const fetchThemes = async (base: ThemeHit[], drain: boolean) => {
+    if (!themeServer) return;
+    const token = ++themeToken.current;
+    const key = themeReqKey;
+    const fresh = base.length === 0;
+    setThemeLoading(true);
+    let hits = base;
+    let total = fresh ? 0 : themeTotal;
+    let clamped = fresh ? false : themeClamped;
+    let degraded = fresh ? false : themeDegraded;
+    let end = false;
+    for (;;) {
+      const first = hits.length === 0;
+      const limit = drain ? THEME_DRAIN_PAGE : THEME_PAGE;
+      const page = await searchThemes(themeServer.game, themeQuery, {
+        limit,
+        offset: hits.length,
+        languages: langArg,
+      });
+      if (themeToken.current !== token) return; // a newer request superseded this one
+      // A SHORT later page that leaves the result short of its total is not the end of the rows:
+      // the server pinned it to the free top N, because the host's paid path broke mid-result and
+      // the direct call that answered instead is metered (a metered call ignores the offset).
+      // Asking again would fetch those same N rows until the offset reached the total, so it is a
+      // failed page.
+      const cut = !first && page.hits.length < limit && hits.length + page.hits.length < page.total;
+      if (page.failed || cut) {
+        if (!fresh && !drain) {
+          // A lazy page: keep what is on screen. The list simply ends here.
+          setThemeLoading(false);
+          return;
+        }
+        // Page 0, or a drain that can no longer be whole: say the server did not answer.
+        themeStateKey.current = key;
+        setThemeHits([]);
+        setThemeTotal(0);
+        setThemeClamped(false);
+        setThemeDegraded(false);
+        setThemeFailed(true);
+        setThemeEnd(true);
+        setThemeLoading(false);
+        return;
+      }
+      hits = first ? page.hits : [...hits, ...page.hits];
+      if (first) {
+        clamped = page.clamped;
+        degraded = page.degraded;
+      }
+      if (first || page.hits.length > 0) total = page.total;
+      end = page.hits.length < limit || hits.length >= total || hits.length >= THEME_MAX_OFFSET;
+      if (!drain || clamped || end) break;
+    }
+    themeStateKey.current = key;
+    setThemeHits(hits);
+    setThemeTotal(total);
+    setThemeClamped(clamped);
+    setThemeDegraded(degraded);
+    setThemeFailed(false);
+    setThemeEnd(end);
+    setThemeLoading(false);
+    // A lazy page grows the window with it, so the list's content length grows and the next
+    // end-reached fires (VirtualizedList fires once per content length).
+    if (!fresh && !drain) setVisibleCount((n) => n + PAGE_SIZE);
+  };
+  // A new themed request (or a Retry): page 0, draining when the query needs every hit. Leaving
+  // the themed path clears it and cancels anything in flight.
+  useEffect(() => {
+    if (!themeServerActive) {
+      ++themeToken.current;
+      themeStateKey.current = '';
+      setThemeHits([]);
+      setThemeTotal(0);
+      setThemeClamped(false);
+      setThemeDegraded(false);
+      setThemeFailed(false);
+      setThemeLoading(false);
+      setThemeEnd(true);
+      return;
+    }
+    void fetchThemes([], themeNeedsAll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeReqKey, themeAttempt]);
+  // The same request turned into one that needs every hit (a sort, a rarity: or a facet chip added
+  // over a lazily paged result): drain the rest. Not while page 0 of a NEW request is on its way
+  // (the state still answers the old one), which the effect above has already asked for.
+  useEffect(() => {
+    if (!themeServerActive || !themeNeedsAll || !themeMore || themeLoading || themeFailed) return;
+    if (themeStateKey.current !== themeReqKey) return;
+    void fetchThemes(themeHits, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeServerActive, themeNeedsAll, themeMore, themeLoading, themeFailed, themeReqKey]);
+  // The toolbar's chip counts (CP-5): always `theme_facets`, once per query, never counted here.
+  useEffect(() => {
+    if (!themeCountKey || !themeServer) {
+      setThemeCounts(null);
+      return;
+    }
+    let stale = false;
+    themeFacets(themeServer.game, themeQuery, { languages: langArg }).then((counts) => {
+      if (!stale) setThemeCounts(counts);
+    });
+    return () => {
+      stale = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeCountKey, themeAttempt]);
+
   // End-reached: grow the client window (local views) or fetch the next server page.
   const onEndReached = () => {
     if (!localView) {
@@ -1313,6 +1607,19 @@ export function CatalogBrowser({
         fetchServerPage(serverOffset.current, false);
       }
       return;
+    }
+    // A themed result on the relevance path with no device-only term pages LAZILY: every fetched
+    // row is shown, so the next theme page is asked for while the window still has a page of
+    // headroom. (A result that must be whole was drained before it rendered; a clamped one has
+    // nothing behind it.)
+    if (
+      themeServerActive &&
+      !themeNeedsAll &&
+      themeMore &&
+      !themeLoading &&
+      visibleCount + PAGE_SIZE > data.length - PAGE_SIZE
+    ) {
+      void fetchThemes(themeHits, false);
     }
     setVisibleCount((n) => (n < data.length ? Math.min(n + PAGE_SIZE, data.length) : n));
   };
@@ -1359,6 +1666,11 @@ export function CatalogBrowser({
     sortSel,
     seriesId,
     setId,
+    // A secondary game's toolbar, only where it exists and only off its defaults, so a Pokémon
+    // save (and an untouched toolbar) is exactly the entry it always was.
+    ...(themeTools && themeFrameEff !== 'all' ? { themeFrame: themeFrameEff } : {}),
+    ...(themeTools && themeTypesEff.length > 0 ? { themeTypes: themeTypesEff } : {}),
+    ...(themeTools && themeGroupSel != null ? { themeGroup: themeGroupSel } : {}),
   });
   // Something worth saving: a query, filters, a sort — or simply a set/series you want to keep to
   // hand, which is the thing a collector most wants to favourite and previously had no star for.
@@ -1381,7 +1693,26 @@ export function CatalogBrowser({
     setSetId(s.setId ?? null);
     setSelection(s.selection);
     setSortSel(s.sortSel);
+    // The toolbar it was saved with (absent = the defaults). A Pokémon browser has none to restore.
+    if (themeServer) {
+      setThemeFrame(s.themeFrame ?? 'all');
+      setThemeTypes(s.themeTypes ?? []);
+      setThemeGroupSel(s.themeGroup ?? null);
+    }
   };
+  // The theme toolbar. A frame change hands grouping back to its default (Windowed groups).
+  const pickThemeFrame = (f: ThemeFrame) => {
+    if (f === themeFrameEff) return;
+    setThemeFrame(f);
+    setThemeGroupSel(null);
+  };
+  const toggleThemeType = (key: string) =>
+    setThemeTypes(themeTypesEff.includes(key) ? themeTypesEff.filter((k) => k !== key) : [...themeTypesEff, key]);
+  // The footer meter reads whichever search is on screen: a secondary game's theme search, or the
+  // cold `search_cards` path (Pokémon), whose numbers are exactly what they always were.
+  const meter = themeServerActive
+    ? { clamped: themeClamped, total: themeTotal, shown: themeHits.length, degraded: themeDegraded }
+    : { clamped: serverClamped, total: serverTotal, shown: serverCards.length, degraded: serverDegraded };
   // "· refined +2 −1" summary for the similar-mode header (counts of more/less steps).
   const moreCount = similarSteps.filter((st) => st.kind === 'more').length;
   const lessCount = similarSteps.filter((st) => st.kind === 'less').length;
@@ -1854,6 +2185,8 @@ export function CatalogBrowser({
         quickAction={quickAction?.(c)}
         // collection-aware: a green check when the user owns this card
         owned={ownedIds?.has(c.id)}
+        // a grouped theme result: the first tile of each type group names it
+        groupStart={item.groupStart}
       />
     );
   };
@@ -1982,6 +2315,23 @@ export function CatalogBrowser({
             </Pressable>
           </View>
         </View>
+        {/* A secondary game's theme toolbar: shown while a themed query is answered by
+            `theme_search` and the registry offers it. Its controls are server parameters. */}
+        {themeServerActive && themeTools ? (
+          <ThemeFilterBar
+            theme={theme}
+            frame={themeFrameEff}
+            onPickFrame={pickThemeFrame}
+            typeGroups={themeGroups}
+            typeLabel={themeServer?.typeLabel}
+            types={themeTypesEff}
+            onToggleType={toggleThemeType}
+            onClearTypes={() => setThemeTypes([])}
+            group={themeGroupOn}
+            onToggleGroup={() => setThemeGroupSel(!themeGroupOn)}
+            counts={themeCounts}
+          />
+        ) : null}
         {/* Saved-search chips: one tap re-runs the starred search; long-press removes it. */}
         {savedList.length > 0 ? (
           <ScrollView
@@ -2039,7 +2389,15 @@ export function CatalogBrowser({
             {/* Echo the PARSED query, not the raw text, the user sees exactly how
                 their input was interpreted and can tweak it precisely. */}
             <Text style={styles.meta} numberOfLines={1}>
-              {warm && !coldSearch
+              {themeServerActive
+                ? // The theme meter: the server's count (theme + words + frame + type), with the
+                  // device-only filters' cut shown as "N of M" once every hit is here.
+                  themeClamped
+                  ? `Top ${themeHits.length} of ${themeTotal} matches`
+                  : !themePending && !themeMore && filteredCards.length !== themeTotal
+                    ? `${filteredCards.length} of ${themeTotal}`
+                    : `${themeTotal} result${themeTotal === 1 ? '' : 's'}${themePending ? '…' : ''}`
+                : warm && !coldSearch
                 ? filteredCards.length === viewCards.length
                   ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
                   : `${filteredCards.length} of ${viewCards.length}`
@@ -2271,13 +2629,16 @@ export function CatalogBrowser({
         windowSize={9}
         removeClippedSubviews
         ListEmptyComponent={
-          searching && coldSearch && serverFailed && !serverLoading ? (
+          (searching && coldSearch && serverFailed && !serverLoading) ||
+          (themeServerActive && themeFailed && !themePending) ? (
             // THE SERVER DID NOT ANSWER. Not "No cards match": that sentence is a claim about the
             // catalog, and making it on a 500 is how a search outage passes for an empty result.
+            // A theme search retries ITS request: `search_cards` knows nothing of a secondary game,
+            // so there is no falling back to it.
             <View>
               <Text style={styles.empty}>Search is not responding right now.</Text>
               <Pressable
-                onPress={() => fetchServerPage(0, true)}
+                onPress={themeServerActive ? () => setThemeAttempt((n) => n + 1) : () => fetchServerPage(0, true)}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Retry the search">
@@ -2287,7 +2648,9 @@ export function CatalogBrowser({
           ) : (
           <Text style={styles.empty}>
             {searching
-              ? !warm && serverLoading
+              ? // A theme search is warm and server-backed at once, so `!warm` alone would say
+                // "No cards match" for as long as its fetch (or drain) is in flight.
+                (!warm && serverLoading) || themePending
                 ? 'Searching…'
                 : `No cards match “${q}”.`
               : level === 'coldidle'
@@ -2314,25 +2677,25 @@ export function CatalogBrowser({
                 the row under them says exactly what was withheld — a real number, not a wall.
                 Tapping it hands the host the same `themeSearch` signal its lock uses, so the
                 host's own offer answers it. */}
-            {searching && serverClamped && serverTotal > serverCards.length ? (
-              serverDegraded ? (
+            {searching && meter.clamped && meter.total > meter.shown ? (
+              meter.degraded ? (
                 // A paying caller whose paid path failed: say so, sell nothing.
                 <View style={styles.meterRow} accessibilityRole="text">
-                  <Text style={styles.meterCount}>+{serverTotal - serverCards.length} more matches</Text>
+                  <Text style={styles.meterCount}>+{meter.total - meter.shown} more matches</Text>
                   <Text style={styles.meterHint}>
-                    Full artwork search is temporarily unavailable, so this shows the top {serverCards.length}. Try again in a moment.
+                    Full artwork search is temporarily unavailable, so this shows the top {meter.shown}. Try again in a moment.
                   </Text>
                 </View>
               ) : (
                 <Pressable
                   style={styles.meterRow}
                   accessibilityRole="button"
-                  accessibilityLabel={`${serverTotal - serverCards.length} more matches, unlock every match`}
+                  accessibilityLabel={`${meter.total - meter.shown} more matches, unlock every match`}
                   onPress={() => onLockedFeature?.('themeSearch')}>
-                  <Text style={styles.meterCount}>+{serverTotal - serverCards.length} more matches</Text>
+                  <Text style={styles.meterCount}>+{meter.total - meter.shown} more matches</Text>
                   {/* THE OFFER, NOT THE PRICE. The dialog this opens names the plan and sells it;
                       naming it here too made the row an argument rather than a door. */}
-                  <Text style={styles.meterHint}>Showing the top {serverCards.length}. Unlock every match →</Text>
+                  <Text style={styles.meterHint}>Showing the top {meter.shown}. Unlock every match →</Text>
                 </Pressable>
               )
             ) : null}
@@ -2474,6 +2837,7 @@ function CardTile({
   priceTag,
   quickAction,
   owned,
+  groupStart,
 }: {
   styles: Styles;
   /** theme.comingSoonImage, passed down rather than the whole theme: this is the only token the
@@ -2500,6 +2864,9 @@ function CardTile({
   quickAction?: CardAction;
   /** In the user's collection (own ≥ 1) — shows a corner check (an overlay; row geometry fixed). */
   owned?: boolean;
+  /** The first tile of a type group in a grouped theme result: a band across the top of the thumb
+   *  names the group (an overlay, drawn under the corner badges; row geometry fixed). */
+  groupStart?: ThemeTypeGroup;
 }) {
   // Grid tier: the 245px webp (~20KB) by default; large tiles request 640px so they stay sharp.
   const uri = cardThumbUrl(card.id, tier);
@@ -2538,6 +2905,15 @@ function CardTile({
             <Text style={styles.cardImageFallbackText}>no image</Text>
           </View>
         )}
+        {groupStart ? (
+          // A dark band with the group's colour as a dot: a pale ink never has to carry text.
+          <View style={styles.cardGroupBand} pointerEvents="none">
+            {groupStart.color ? <View style={[styles.cardGroupDot, { backgroundColor: groupStart.color }]} /> : null}
+            <Text style={styles.cardGroupText} numberOfLines={1}>
+              {groupStart.label}
+            </Text>
+          </View>
+        ) : null}
         {multiSelected ? (
           <View style={styles.cardCheck}>
             <Text style={styles.cardCheckText}>✓</Text>
@@ -3547,6 +3923,22 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       backgroundColor: 'rgba(0,0,0,0.6)',
     },
     vunionTagText: { color: '#fff', fontSize: 8, fontWeight: '800', letterSpacing: 0.4 },
+    // Theme-group label on a grouped result's first tile (a band across the top of the thumb)
+    cardGroupBand: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 3,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      backgroundColor: 'rgba(0,0,0,0.62)',
+    },
+    cardGroupDot: { width: 6, height: 6, borderRadius: 3 },
+    cardGroupText: { color: '#fff', fontSize: 8, fontWeight: '800', lineHeight: 11, flexShrink: 1 },
     // multi-select control row (mode toggle + Continue)
     selectRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
     selectMeta: { fontSize: 12, color: t.subtext, flexShrink: 1 },

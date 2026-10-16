@@ -10,6 +10,7 @@
  */
 import { getSavedSearchStore } from './config';
 import type { QuerySort, SortDir } from './query';
+import type { ThemeFrame } from './search';
 
 export interface SavedSearch {
   /** Chip label — the raw query text (or where it was saved, when the query is empty). */
@@ -27,6 +28,14 @@ export interface SavedSearch {
    */
   seriesId?: string | null;
   setId?: string | null;
+  /**
+   * A secondary game's theme toolbar, saved only when that browser had one and it was off its
+   * defaults (see BrowseState): the frame, the type chips, and a hand-set "Group by". Absent on
+   * every Pokémon save and on entries saved before this shipped, which read as the defaults.
+   */
+  themeFrame?: ThemeFrame;
+  themeTypes?: string[];
+  themeGroup?: boolean;
 }
 
 const STORAGE_KEY = 'tcgscan-browse.savedSearches';
@@ -184,14 +193,29 @@ function canonicalSelection(selection: Record<string, string[]> | undefined): st
   );
 }
 
-/** Two saves are "the same search" when query + facets + sort all match. */
+/**
+ * The theme toolbar reduced to its meaning, like canonicalSelection: absent and default are the
+ * same thing ('all', no chips, grouping left to the frame), and chip order is how they were
+ * tapped, not what they mean. Every Pokémon save reads as the defaults, so this changes nothing
+ * for one.
+ */
+function canonicalTheme(s: SavedSearch): string {
+  return JSON.stringify([
+    s.themeFrame && s.themeFrame !== 'all' ? s.themeFrame : 'all',
+    [...(s.themeTypes ?? [])].sort(),
+    s.themeGroup ?? null,
+  ]);
+}
+
+/** Two saves are "the same search" when query + facets + sort (+ the theme toolbar) all match. */
 export function sameSearch(a: SavedSearch, b: SavedSearch): boolean {
   return (
     a.query.trim() === b.query.trim() &&
     canonicalSelection(a.selection) === canonicalSelection(b.selection) &&
     JSON.stringify(a.sortSel) === JSON.stringify(b.sortSel) &&
     (a.setId ?? null) === (b.setId ?? null) &&
-    (a.seriesId ?? null) === (b.seriesId ?? null)
+    (a.seriesId ?? null) === (b.seriesId ?? null) &&
+    canonicalTheme(a) === canonicalTheme(b)
   );
 }
 

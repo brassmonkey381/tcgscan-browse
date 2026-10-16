@@ -130,6 +130,12 @@ const ART_NAMESPACES = new Set([
   // had server-side keys of their own that this parser never sent (only the negated form
   // reached it); now the positive form works and there is one path instead of four.
   'cameo', 'scale', 'subjects',
+  // A secondary game's identity tags (Lorcana, One Piece): the data project writes them as
+  // character:<name> where Pokémon's say pokemon:<name> (theme_games.game_tags), so
+  // character:elsa is that game's pokemon:pikachu. The server rule is the same one, an exact
+  // qualified token (theme_word_regex, migration 49), in search_cards and theme_search alike.
+  // No Pokémon card carries the tag, so on Pokémon it still matches nothing, as the bare word did.
+  'character',
 ]);
 
 /** Kept as a name for the negation branch below; it is the same set now (migration 49). */
@@ -578,6 +584,33 @@ export function matchCard(
   return scoreCard(card, q, priceOf) > 0;
 }
 
+/**
+ * The query minus its theme fields: the LOCAL half of a server-themed search. A secondary game's
+ * theme terms are answered by the data project's `theme_search` (search.ts `searchThemes`); the
+ * rest of the query (rarity:, set:, price, have:, comparisons) is answered here over its public
+ * catalog. Its bundle carries no captions, so a theme field left in would reject every card
+ * (`fieldValues(card, 'theme')` is empty, and scoreCard returns 0 on it).
+ */
+export function withoutTheme(q: ParsedQuery): ParsedQuery {
+  return { ...q, fields: q.fields.filter((f) => f.key !== 'theme') };
+}
+
+/**
+ * FILTER ONLY, ORDER KEPT. The cards of `cards` that satisfy `q`, in the order given. runQuery
+ * re-sorts by score, which would throw away the server's theme ranking; this does not, so a
+ * relevance-sorted themed result stays in server order. scoreCard starts at 1 and returns 0 only
+ * on a failed constraint, so `> 0` is a pure filter. Without `nameWords` a bare word counts on
+ * any field, set and series included, which is what the server's `search_text` match does too.
+ */
+export function filterCards<T extends QueryableCard>(
+  cards: T[],
+  q: ParsedQuery,
+  priceOf: (id: string) => number,
+  ownedIds?: ReadonlySet<string>,
+): T[] {
+  return cards.filter((c) => scoreCard(c, q, priceOf, { ownedIds }) > 0);
+}
+
 /** The themed-search band per `full_art_kind`: the server's comparator, verbatim. Unlisted → 2. */
 const ART_BAND: Record<string, number> = {
   special_illustration_rare: 0,
@@ -795,6 +828,7 @@ export const QUERY_MANUAL: ManualSection[] = [
     rows: [
       ['theme:forest', 'cards whose ARTWORK shows a forest (alias: art:)'],
       ['pokemon:pikachu', 'cards that show a Pikachu, whatever the name says; scene:, object:, mood: and action: narrow the same way'],
+      ['character:elsa', 'Lorcana / One Piece: cards that show Elsa (multi-word names: theme:luffy)'],
       ['theme:night theme:city', 'two ideas, both must show; each theme you add narrows it'],
       ['theme:water -theme:beach', 'a leading minus takes an idea away'],
       ['theme:snow type:water', 'stacks with every other field, sort and filter'],

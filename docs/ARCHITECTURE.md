@@ -42,8 +42,11 @@ Lives here:
   `find_similar_weighted` embedding RPCs, the color-similarity RPCs,
   precomputed set/series value-over-time series (the v0.3.4 fan-out fix), the
   server search RPCs `search_cards` / `search_facets` (see
-  `SERVER-SEARCH-PLAN.md`), and the per-card `card_detail` RPC (lazy evolution
-  fields).
+  `SERVER-SEARCH-PLAN.md`), the per-card `card_detail` RPC (lazy evolution
+  fields), and a secondary game's theme search: `theme_search` /
+  `theme_facets` over the private `card_themes` table, switched per game by
+  the public `theme_search_games` registry (migrations 78/79; see "The
+  secondary-game theme path" below).
 - The **enrichment pipeline** that produces fields like `illustrator`, `types`,
   `stage`.
 
@@ -62,7 +65,8 @@ Lives here:
 - **Data-access clients** that hide the wire format: `loadCatalog`,
   `getPriceSummary`, `findSimilar` — and the COLD-mode clients (`searchCards`,
   `searchFacets`, `fetchSetCards`, `fetchCardsByIds`, `fetchCardDetail`,
-  `loadTaxonomy`) that browse without the catalog in memory. Load-once,
+  `loadTaxonomy`) that browse without the catalog in memory, plus a secondary
+  game's `searchThemes` / `themeFacets` / `mergeThemeHits`. Load-once,
   promise-cached, subscribe, degrade-to-empty. The app never calls `fetch` for
   card data.
 - **The normalization boundary** — `RawCard` (snake_case wire) → `CatalogCard`
@@ -144,7 +148,17 @@ pipeline↔kit mismatch. Treat it with a checklist rather than trusting memory.
 6. `QUERY_MANUAL` documents it (the search box "?" content).
 7. The `search_cards` RPC (tcgscan-data) mirrors the new semantics, so the
    cold/server path stays at exact parity with the warm/on-device path.
-8. Rebuild (`npm run build`) so `dist/` reflects the change before commit.
+8. If the change touches a bare word's haystack (`lowered()` in `query.ts`),
+   tcgscan-data's `theme_publish.search_text()` changes with it (see the theme
+   path's rules below).
+9. Rebuild (`npm run build`) so `dist/` reflects the change before commit.
+
+**Theme grammar (artwork namespaces) is a second list to keep in sync.** A new
+artwork namespace (`ART_NAMESPACES` in `query.ts`, e.g. `character:` in v0.9.28
+for the Lorcana / One Piece identity tags) needs its `QUERY_MANUAL` row, and the
+server must match it as a qualified token in BOTH places that read theme fields:
+`search_cards` (Pokémon) and `_theme_where` (every secondary game,
+tcgscan-data migration 79).
 
 **Exception — `lang:` does NOT have a `search_cards` case, deliberately.** A
 language term is a hard filter over the whole corpus, which is exactly what the
@@ -166,6 +180,55 @@ the similarity and colour RPCs (tcgscan-data migration 33). Anything that ranks
 a top-N over the corpus must take the bound as an ARGUMENT, not filter the
 result — a post-filtered top-24 rendered ~13 cards, because 46.7% of an EN
 card's nearest neighbours are JP printings.
+
+---
+
+## The secondary-game theme path (v0.9.28)
+
+Lorcana and One Piece browse their own public `catalog.json` warm, on the
+device, like Pokémon. What they cannot do on the device is a themed query: their
+bundles carry no captions or tags, and never will — tags, captions, scene scores
+and full-art probabilities stay in tcgscan-data's private `card_themes` table.
+So a host passes `themeServer={{ game, typeLabel, typeGroups, tools }}` to
+`CatalogBrowser`, and a query with a theme field splits in two:
+
+1. **Server half — ranking.** `searchThemes(game, { themes, words, frame,
+   types, group })` posts to `rpc/theme_search` (or, for a caller the host
+   vouches for, to the host's proxy with the body tagged
+   `rpc: 'theme_search'`). It answers ids in rank order with public rank facts
+   only (`art_band`, `full_art`, `type_group`, `total_count`) — never a tag.
+   `themeFacets` gives the toolbar's chip counts (always direct, never clamped).
+2. **Device half — everything else.** `mergeThemeHits` maps the ids onto the
+   game's own catalog rows in server order (an id the bundle lacks is dropped);
+   then `filterCards(rows, withoutTheme(parsed))` and `sortCards` apply
+   rarity/set/price/have/comparisons/facets/sort exactly as on a warm Pokémon
+   search.
+
+The browser never calls `search_cards` / `search_facets` for a `themeServer`
+game, and the failure Retry re-asks `theme_search`; there is no fallback to the
+Pokémon RPCs. Relevance with nothing device-only pages lazily (300 ids a call);
+a sort or any device-only filter drains every hit first (1000 a call), and
+nothing renders from a partial drain. A free (clamped) caller gets the top N by
+rank and the meter, and the browser groups those N by the registry's order
+itself (the server ignores `p_group` for a clamped call). Without `themeServer`
+nothing here runs: Pokémon's requests are byte-identical to v0.9.27's
+(`scripts/theme-server-check.mjs` pins them).
+
+Which games are served, their chip label and colours, and the kill switch live
+in the public `theme_search_games` registry, so going live or off is a row
+update in tcgscan-data, not a kit release.
+
+**Two rules that span the repos — both are silent-drift bugs if missed:**
+
+- **Any theme grammar change updates `_theme_where` AND `search_cards`.** They
+  are the two SQL readers of a theme field (secondary games and Pokémon); a
+  namespace, negation or matching rule added to one and not the other makes the
+  same query mean different things per game.
+- **Any change to `lowered()` updates `theme_publish.search_text()`.** A bare
+  word in a theme query is matched on the server against `card_themes.search_text`,
+  which tcgscan-data's publisher builds as an exact copy of the kit's bare-word
+  haystack (`lowered()` in `query.ts`). If they drift, the meter and the server's
+  word filter disagree with what the same word finds warm.
 
 ---
 

@@ -98,6 +98,22 @@ export declare function scoreCard(card: QueryableCard, q: ParsedQuery, priceOf: 
 /** Does `card` satisfy the query? (scoreCard > 0.) */
 export declare function matchCard(card: QueryableCard, q: ParsedQuery, priceOf: (id: string) => number): boolean;
 /**
+ * The query minus its theme fields: the LOCAL half of a server-themed search. A secondary game's
+ * theme terms are answered by the data project's `theme_search` (search.ts `searchThemes`); the
+ * rest of the query (rarity:, set:, price, have:, comparisons) is answered here over its public
+ * catalog. Its bundle carries no captions, so a theme field left in would reject every card
+ * (`fieldValues(card, 'theme')` is empty, and scoreCard returns 0 on it).
+ */
+export declare function withoutTheme(q: ParsedQuery): ParsedQuery;
+/**
+ * FILTER ONLY, ORDER KEPT. The cards of `cards` that satisfy `q`, in the order given. runQuery
+ * re-sorts by score, which would throw away the server's theme ranking; this does not, so a
+ * relevance-sorted themed result stays in server order. scoreCard starts at 1 and returns 0 only
+ * on a failed constraint, so `> 0` is a pure filter. Without `nameWords` a bare word counts on
+ * any field, set and series included, which is what the server's `search_text` match does too.
+ */
+export declare function filterCards<T extends QueryableCard>(cards: T[], q: ParsedQuery, priceOf: (id: string) => number, ownedIds?: ReadonlySet<string>): T[];
+/**
  * The one-call search: filter + rank + cap. Relevance = score desc (stable
  * within ties); explicit sort:value/newest/name overrides. A theme:/art: query
  * bands by artwork kind first (see inside).
