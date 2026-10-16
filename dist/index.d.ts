@@ -20,7 +20,7 @@ export { resolveActions, resolveLabel, type BrowserBuiltins, type CardAction, ty
 export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE, type BrowseTheme } from './theme';
 export { findSimilar, findSimilarToMany, findSimilarWeighted, getSimilarityModel, listSimilarityModels, refineWeights, setSimilarityModel, similarAvailable, type SimilarHit, type SimilarityModelInfo, type SimilarStep, } from './similar';
 export { ColorIndex, colorSearchAvailable, colorServerAvailable, findSimilarByColor, getColorIndex, labToSrgb, loadColorIndex, searchByColor, searchByColorServer, searchByColors, searchByColorsServer, srgbToLab, useColorIndex, type ColorHit, type ColorRegion, type Lab, } from './color';
-export { fetchCardDetail, fetchCardsByIds, fetchSetCards, freeThemeDepth, mergeThemeHits, searchCards, searchFacets, searchThemes, serverSearchAvailable, themeFacets, type CardDetail, type SearchApi, type SearchPage, type ServerFacetSelection, type ThemeFacetCounts, type ThemeFrame, type ThemeHit, type ThemePage, type ThemeQuery, } from './search';
+export { fetchCardDetail, fetchCardsByIds, fetchSetCards, freeThemeDepth, groupByOrder, localTypeGroup, mergeThemeHits, searchCards, searchFacets, searchFacetsWithCounts, searchThemes, serverSearchAvailable, themeFacets, themeToolbarFields, type CardDetail, type SearchApi, type SearchPage, type ServerFacetSelection, type ThemeFacetCounts, type ThemeFrame, type ThemeHit, type ThemePage, type ThemeQuery, type ThemeToolbar, } from './search';
 export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, type SealedCatalog, type SealedProduct, type SealedSet, } from './sealed';
 export { SEALED_GROUPS, sealedGroupOf, type SealedGroup } from './sealed-groups';
@@ -30,6 +30,7 @@ export { hydrateSavedSearches, isSearchSaved, listSavedSearches, removeSavedSear
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, type CardSize, } from './state';
 export { CARD_SIZES, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, CARD_GRID_GAP, CARD_HIRES_TILE_W, cardGridColumns, cardTileWidthFor, cardTierFor, } from './cardSize';
 export { CatalogBrowser } from './CatalogBrowser';
+export type { ThemeTypeGroup } from './ThemeFilterBar';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts, type FeedSet } from './RecentProducts';
 export { SealedBrowser } from './SealedBrowser';

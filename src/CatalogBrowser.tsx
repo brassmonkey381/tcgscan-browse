@@ -105,9 +105,11 @@ import { findSimilarWeighted, similarAvailable, type SimilarStep } from './simil
 import {
   fetchCardsByIds,
   fetchSetCards,
+  groupByOrder,
+  localTypeGroup,
   mergeThemeHits,
   searchCards,
-  searchFacets,
+  searchFacetsWithCounts,
   searchThemes,
   serverSearchAvailable,
   themeFacets,
@@ -115,6 +117,7 @@ import {
   type ThemeFrame,
   type ThemeHit,
   type ThemeQuery,
+  type ThemeToolbar,
 } from './search';
 import { useTaxonomy, type TaxonomySource } from './taxonomy';
 import { resolveTheme, tileShadow, type BrowseTheme } from './theme';
@@ -679,6 +682,26 @@ interface CatalogBrowserProps {
     tools?: boolean;
   };
   /**
+   * POKEMON'S THEME TOOLBAR, for a browser WITHOUT `themeServer` (Pokemon themed search runs on
+   * `search_cards`). The same ThemeFilterBar a secondary game gets: All art / Full art / Windowed,
+   * type chips (the energy types, Trainer, Energy) and "Group by {typeLabel}". A host passes it only
+   * while the data project's registry row says so (`theme_search_games.pokemon.tools`), which it
+   * flips on once `search_cards` understands the toolbar (tcgscan-data migration 81).
+   *
+   * Shown only while a themed query is on screen. Its controls become extra `p_fields` entries of
+   * that query (search.ts `themeToolbarFields`): `frame`, `tgroup` per chip, `group`=`type`. At its
+   * defaults it adds none, and without this prop every request is byte-identical to before.
+   * Grouping: a paid (unclamped) page arrives in type order; a free (clamped) caller gets the best N
+   * by rank, which are grouped here by `typeGroups` order, as for a secondary game. Group labels are
+   * the server's `type_group` when a row carries it, else the card's own (`localTypeGroup`). Chip
+   * counts show when `search_facets` answers them (facets `frame` / `tgroup`); until then the chips
+   * show without numbers. Ignored when `themeServer` is set.
+   */
+  themeTools?: {
+    typeLabel?: string;
+    typeGroups?: ThemeTypeGroup[];
+  };
+  /**
    * The set of card ids the user OWNS (own ≥ 1 copy) — a collection-aware overlay layer the app
    * supplies (kit stays source-agnostic). When present: card tiles show an owned check, set tiles
    * show "X / Y · N%" completion, and the `have:` search token (have:yes / have:no, via the
@@ -722,6 +745,7 @@ export function CatalogBrowser({
   colorSearchLabel = 'Tri-Color Search',
   themeSearchLabel = 'Theme Search',
   themeServer,
+  themeTools: themeToolsProp,
   ownedIds,
 }: CatalogBrowserProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
@@ -861,11 +885,16 @@ export function CatalogBrowser({
   // anonymous callers (top N rows, true total) and answers a host's paid path unmetered; a warm
   // client that answered from its own bundle would make that meter decorative — a free account
   // is one sign-up from the whole tag set — and it is also what lets the captions leave the
-  // bundle. Read off the raw query here because `parsed` is built further down; the parser's
-  // own verdict (`themeTyped`) governs everything after. A theme the host has LOCKED is stripped
-  // by applyFeatureLocks and runs as an ordinary query, so it stays warm.
-  const themedQuery =
-    /(^|\s)(theme|art|scene):/i.test(cardQueryDebounced) && !isLocked(lockedFeatures, 'themeSearch');
+  // bundle. It is the PARSER'S verdict (`parsed` is built further down, so the query is parsed
+  // here too): a regex over theme:/art:/scene: missed every other artwork namespace (pokemon:,
+  // object:, mood:, ...), which then ran warm over a bundle with no captions and found nothing.
+  // A theme the host has LOCKED is stripped by applyFeatureLocks and runs as an ordinary query,
+  // so it stays warm.
+  const themeParsedRaw = useMemo(
+    () => parseQuery(cardQueryDebounced.trim()).fields.some((f) => f.key === 'theme'),
+    [cardQueryDebounced],
+  );
+  const themedQuery = themeParsedRaw && !isLocked(lockedFeatures, 'themeSearch');
   // A SECONDARY GAME (`themeServer`) never takes this path: `search_cards` only knows Pokémon, so
   // its themed queries go to `theme_search` instead (see `themeServerActive`) and everything else
   // runs on its own catalog.
@@ -961,9 +990,9 @@ export function CatalogBrowser({
       themeTypes,
       themeGroup: themeGroupSel ?? undefined,
     });
-    writeUrlState(!!themeServer);
+    writeUrlState(!!themeServer || !!themeToolsProp);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardQuery, seriesId, setId, selection, sortSel, cardSize, similarTo, similarCards, similarSteps, themeFrame, themeTypes, themeGroupSel, !!themeServer]);
+  }, [cardQuery, seriesId, setId, selection, sortSel, cardSize, similarTo, similarCards, similarSteps, themeFrame, themeTypes, themeGroupSel, !!themeServer, !!themeToolsProp]);
   // Tapping a card opens the action sheet (app-supplied actions + built-ins)
   // instead of silently replacing the pocket's occupant.
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
@@ -1199,9 +1228,12 @@ export function CatalogBrowser({
   // query runs as an ordinary local one and this stays off.
   const themeServerActive =
     Boolean(themeServer && catalog) && searching && effParsed.fields.some((f) => f.key === 'theme');
+  /** Pokemon's toolbar (`themeTools`): a browser without `themeServer` whose host offers it. */
+  const pokeTools = !themeServer && !!themeToolsProp;
   /** The registry offers the toolbar. Without it the search is all art, no chips, ungrouped. */
-  const themeTools = !!themeServer && themeServer.tools !== false;
-  const themeGroups = themeServer?.typeGroups ?? [];
+  const themeTools = themeServer ? themeServer.tools !== false : pokeTools;
+  const themeGroups = (themeServer ? themeServer.typeGroups : themeToolsProp?.typeGroups) ?? [];
+  const themeTypeLabel = themeServer ? themeServer.typeLabel : themeToolsProp?.typeLabel;
   const themeGroupKeys = themeGroups.map((g) => g.key).join('|');
   // Only THIS game's group keys reach the server: a remount on a game switch reseeds the chips from
   // the shared browseState, which can still hold the previous game's inks.
@@ -1222,6 +1254,22 @@ export function CatalogBrowser({
     }),
     [effParsed, themeFrameEff, themeTypesEff, themeGroupOn],
   );
+  // ---- POKEMON'S THEME TOOLBAR (`themeTools`) ----------------------------------------------------
+  // A themed Pokemon query is a `search_cards` query (cold, or warm through `themedQuery`); the
+  // toolbar rides on it as extra p_fields (search.ts ThemeToolbar). Off, or at its defaults, every
+  // request body is exactly what it was.
+  const pokeToolbarActive =
+    pokeTools && coldSearch && searching && effParsed.fields.some((f) => f.key === 'theme');
+  const pokeToolbarKey = pokeToolbarActive ? JSON.stringify([themeFrameEff, themeTypesEff, themeGroupOn]) : '';
+  const pokeToolbar = useMemo<ThemeToolbar | undefined>(
+    () => (pokeToolbarActive ? { frame: themeFrameEff, types: themeTypesEff, group: themeGroupOn } : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pokeToolbarKey],
+  );
+  /** Pokemon chip counts from `search_facets` (facets frame / tgroup); null until it answers them. */
+  const [pokeCounts, setPokeCounts] = useState<ThemeFacetCounts | null>(null);
+  /** Either game's toolbar is on screen (a themed result whose toolbar the host offers). */
+  const toolbarActive = themeTools && (themeServerActive || pokeToolbarActive);
   /** What one result set answers: a change refetches from page 0. '' while inactive. */
   const themeReqKey = themeServerActive ? JSON.stringify([themeServer!.game, themeQuery, langArg ?? null]) : '';
   /** The chip counts' key: the same query minus grouping, which counts nothing. */
@@ -1292,11 +1340,19 @@ export function CatalogBrowser({
       // filters the returned page, which thins a page instead of searching the whole corpus - the
       // honest trade against what this did before, which was to accept `have:` and ignore it, so
       // the Collection chip lit up and changed nothing.
-      if (ownedIds && effParsed.owned != null) {
-        const want = effParsed.owned;
-        return serverCards.filter((c) => ownedIds.has(c.id) === want);
+      const rows =
+        ownedIds && effParsed.owned != null
+          ? serverCards.filter((c) => ownedIds.has(c.id) === effParsed.owned)
+          : serverCards;
+      // Pokemon's "Group by type" on a relevance result: a stable sort by the registry's order, so
+      // rank holds inside each group. A paid page already arrives in that order (a no-op here); a
+      // free (clamped) page is the best N by rank, which the server does not group (CP-2).
+      if (pokeToolbarActive && themeGroupOn && effSort.field === 'relevance') {
+        const keys = themeGroups.map((g) => g.key);
+        const labelled = rows.map((c) => (c.themeGroup ? c : { ...c, themeGroup: localTypeGroup(c, keys) }));
+        return groupByOrder(labelled, keys, (c) => c.themeGroup ?? '');
       }
-      return serverCards;
+      return rows;
     }
     if (catalog && searching)
       return runQuery(catalog.listAll().filter(langOk), effParsed, priceOf, Infinity, ownedIds);
@@ -1310,7 +1366,8 @@ export function CatalogBrowser({
     return sortCards(base, effParsed, priceOf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog, searching, serverCards, coldSetCards, effParsed, effSort.field, setId, similarTo, similarCards, priceSummary, langSet, ownedIds,
-    themeServerActive, themeNeedsAll, themePending, themeMore, themeHits, themeClamped, themeGroupOn, themeGroupKeys, themeLocal]);
+    themeServerActive, themeNeedsAll, themePending, themeMore, themeHits, themeClamped, themeGroupOn, themeGroupKeys, themeLocal,
+    pokeToolbarActive]);
   viewCardsRef.current = viewCards;
 
   // Cold search: (re)fetch page 0 when the query/sort/facet selection changes; the token guard
@@ -1324,6 +1381,7 @@ export function CatalogBrowser({
         offset,
         facets: selection,
         languages: langArg,
+        toolbar: pokeToolbar,
       });
       if (serverToken.current !== token) return; // a newer request superseded this one
       serverOffset.current = offset + page.cards.length;
@@ -1337,7 +1395,7 @@ export function CatalogBrowser({
       setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
       setServerLoading(false);
     },
-    [effParsed, selection, langArg],
+    [effParsed, selection, langArg, pokeToolbar],
   );
   useEffect(() => {
     if (!coldSearch || !searching) {
@@ -1347,14 +1405,18 @@ export function CatalogBrowser({
       setServerDegraded(false);
       setServerFailed(false);
       setServerFacets({});
+      setPokeCounts(null);
       serverOffset.current = 0;
       return;
     }
     fetchServerPage(0, true);
-    // Facet options for the same query (exclude-self server-side) — drives the cold facet bar.
+    // Facet options for the same query (exclude-self server-side) — drives the cold facet bar —
+    // and, with Pokemon's toolbar on screen, its chip counts from the same call.
     let stale = false;
-    searchFacets(effParsed, selection, langArg).then((f) => {
-      if (!stale) setServerFacets(f);
+    searchFacetsWithCounts(effParsed, selection, langArg, pokeToolbar).then(({ facets, counts }) => {
+      if (stale) return;
+      setServerFacets(facets);
+      setPokeCounts(counts);
     });
     return () => {
       stale = true;
@@ -1443,7 +1505,7 @@ export function CatalogBrowser({
     // A grouped theme result (in group order unless an explicit sort reordered it): the first tile
     // of each group carries its label. Full-width section headers would need the grid's
     // getItemLayout to know about them, so that is a later change.
-    const grouped = themeServerActive && themeGroupOn && effSort.field === 'relevance';
+    const grouped = (themeServerActive || pokeToolbarActive) && themeGroupOn && effSort.field === 'relevance';
     let prevGroup: string | undefined;
     const cards: BrowseItem[] = filteredCards.map((c) => {
       if (!grouped || c.themeGroup === prevGroup) return { kind: 'card' as const, card: c };
@@ -1465,7 +1527,7 @@ export function CatalogBrowser({
       .map((g) => ({ kind: 'vunion' as const, group: g }));
     return [...groups, ...cards];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [level, series, sets, filteredCards, inView, showVUnionGroups, catalog, themeServerActive, themeGroupOn, effSort.field, themeGroupKeys]);
+  }, [level, series, sets, filteredCards, inView, showVUnionGroups, catalog, themeServerActive, pokeToolbarActive, themeGroupOn, effSort.field, themeGroupKeys]);
 
   // Warm the first row of card images through the cache once per distinct view (set/filter/
   // search change), off the render path. Guarded so it fires at most once per view key.
@@ -1473,18 +1535,22 @@ export function CatalogBrowser({
   // A theme toolbar change is a view change too: back to the top, like a new filter.
   const viewKey =
     `${level}:${setId ?? ''}:${q}:${JSON.stringify(selection)}` +
-    (themeServer ? `:${themeFrameEff}:${themeTypesEff.join(',')}:${themeGroupOn}` : '');
+    (themeServer || pokeTools ? `:${themeFrameEff}:${themeTypesEff.join(',')}:${themeGroupOn}` : '');
   // Infinite scroll: reveal a page of rows, grow on end-reached. Reset to the top when the
   // view (level/search/filters) or the sort changes.
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [viewKey, effSort.field, effSort.dir]);
-  // Local views paginate client-side (slice a growing window). Cold SEARCH paginates on the
-  // server, so show every page fetched so far.
+  // Local views paginate client-side (slice a growing window). A SERVER-PAGED search (cold, or a
+  // warm themed Pokemon query, which `search_cards` answers a page at a time) shows every page
+  // fetched so far and asks for the next one at the end. Paging and facets are separate decisions:
+  // a warm themed result keeps its facets local over the loaded rows (`localView`), but it is paged
+  // on the server; slicing it locally stopped it at the first page.
+  const serverPaged = searching && (!catalog || (themedQuery && coldSearch));
   const visibleData = useMemo(
-    () => (localView ? data.slice(0, visibleCount) : data),
-    [localView, data, visibleCount],
+    () => (localView && !serverPaged ? data.slice(0, visibleCount) : data),
+    [localView, serverPaged, data, visibleCount],
   );
   /**
    * Fetch `theme_search` pages for the current request, after the hits in `base` ([] = a fresh
@@ -1601,7 +1667,7 @@ export function CatalogBrowser({
 
   // End-reached: grow the client window (local views) or fetch the next server page.
   const onEndReached = () => {
-    if (!localView) {
+    if (serverPaged || !localView) {
       // A clamped page has nothing behind it to fetch: the meter row says what was withheld.
       if (coldSearch && !serverLoading && !serverClamped && serverCards.length < serverTotal) {
         fetchServerPage(serverOffset.current, false);
@@ -1693,8 +1759,8 @@ export function CatalogBrowser({
     setSetId(s.setId ?? null);
     setSelection(s.selection);
     setSortSel(s.sortSel);
-    // The toolbar it was saved with (absent = the defaults). A Pokémon browser has none to restore.
-    if (themeServer) {
+    // The toolbar it was saved with (absent = the defaults). A browser with no toolbar has none.
+    if (themeServer || pokeTools) {
       setThemeFrame(s.themeFrame ?? 'all');
       setThemeTypes(s.themeTypes ?? []);
       setThemeGroupSel(s.themeGroup ?? null);
@@ -2315,21 +2381,22 @@ export function CatalogBrowser({
             </Pressable>
           </View>
         </View>
-        {/* A secondary game's theme toolbar: shown while a themed query is answered by
-            `theme_search` and the registry offers it. Its controls are server parameters. */}
-        {themeServerActive && themeTools ? (
+        {/* The theme toolbar: shown while a themed query is on screen and the registry offers it
+            (a secondary game's `theme_search`, or Pokemon's `search_cards` with `themeTools`).
+            Its controls are server parameters. */}
+        {toolbarActive ? (
           <ThemeFilterBar
             theme={theme}
             frame={themeFrameEff}
             onPickFrame={pickThemeFrame}
             typeGroups={themeGroups}
-            typeLabel={themeServer?.typeLabel}
+            typeLabel={themeTypeLabel}
             types={themeTypesEff}
             onToggleType={toggleThemeType}
             onClearTypes={() => setThemeTypes([])}
             group={themeGroupOn}
             onToggleGroup={() => setThemeGroupSel(!themeGroupOn)}
-            counts={themeCounts}
+            counts={themeServerActive ? themeCounts : pokeCounts}
           />
         ) : null}
         {/* Saved-search chips: one tap re-runs the starred search; long-press removes it. */}

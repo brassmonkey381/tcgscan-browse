@@ -178,12 +178,16 @@ export {
   fetchCardsByIds,
   fetchSetCards,
   freeThemeDepth,
+  groupByOrder,
+  localTypeGroup,
   mergeThemeHits,
   searchCards,
   searchFacets,
+  searchFacetsWithCounts,
   searchThemes,
   serverSearchAvailable,
   themeFacets,
+  themeToolbarFields,
   type CardDetail,
   type SearchApi,
   type SearchPage,
@@ -193,6 +197,7 @@ export {
   type ThemeHit,
   type ThemePage,
   type ThemeQuery,
+  type ThemeToolbar,
 } from './search';
 
 export { loadTaxonomy, useTaxonomy, type TaxonomySource } from './taxonomy';
@@ -279,6 +284,7 @@ export {
 } from './cardSize';
 
 export { CatalogBrowser } from './CatalogBrowser';
+export type { ThemeTypeGroup } from './ThemeFilterBar';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts, type FeedSet } from './RecentProducts';
 // Mounted by tcgscan-app only. michi-maker deliberately does not import it — it curates sealed

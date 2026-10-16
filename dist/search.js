@@ -10,6 +10,10 @@
  * with the price carried separately), so a hit renders + opens its action sheet WITHOUT the
  * card being in the in-memory catalog. Fails soft (empty) — server search is an enhancement.
  *
+ * POKEMON'S THEME TOOLBAR (frame, type chips, grouping) rides on `search_cards` itself: see
+ * `ThemeToolbar` below. It adds `p_fields` entries to a themed query only, and nothing at its
+ * defaults, so every other body is exactly what it was.
+ *
  * A SECONDARY GAME (Lorcana, One Piece) has no `search_cards`; its themed queries go to
  * `theme_search` / `theme_facets` (tcgscan-data migration 79) through `searchThemes` /
  * `themeFacets` below, which answer ranked ids only. `mergeThemeHits` maps them onto the game's
@@ -75,6 +79,10 @@ function rowToCard(r) {
         evolutionLine: r.evolution_line ?? [],
         language: r.language === 'ja' ? 'ja' : 'en',
         fullArtKind: r.full_art_kind ?? '',
+        // Only when the server sent them (no search_cards does today, 81 included; see SearchRow), so
+        // every other row keeps exactly the shape it always had.
+        ...(typeof r.full_art === 'boolean' ? { themeFullArt: r.full_art } : {}),
+        ...(typeof r.type_group === 'string' && r.type_group ? { themeGroup: r.type_group } : {}),
     };
 }
 /** Drop empty entries so `{}` (no selection) skips the facet filter entirely server-side. */
@@ -111,6 +119,64 @@ function foldLanguageTerms(parsed, bound) {
         languages: merged,
     };
 }
+/** The `p_fields` entries a toolbar adds, in a fixed order (frame, chips, grouping). */
+export function themeToolbarFields(t) {
+    if (!t)
+        return [];
+    const out = [];
+    if (t.frame === 'full' || t.frame === 'window')
+        out.push({ key: 'frame', value: t.frame });
+    for (const k of t.types ?? [])
+        if (k)
+            out.push({ key: 'tgroup', value: k });
+    if (t.group)
+        out.push({ key: 'group', value: 'type' });
+    return out;
+}
+/** `p_fields` for a search_cards / search_facets body: the query's fields, then the toolbar's,
+ *  which only a themed query carries. */
+function fieldsWithToolbar(parsed, toolbar) {
+    const fields = parsed.fields.map((f) => ({ key: f.key, value: f.value }));
+    if (!toolbar || !parsed.fields.some((f) => f.key === 'theme'))
+        return fields;
+    return [...fields, ...themeToolbarFields(toolbar)];
+}
+const POKEMON_TRAINER_TYPES = new Set([
+    'Supporter', 'Item', 'Stadium', 'Tool', 'Pokemon Tool', 'Technical Machine', 'Trainer',
+]);
+/**
+ * A Pokemon card's type group as the device can tell it: its first energy type, else Trainer or
+ * Energy from its card type, else Other. This mirrors tcgscan-data's `_pokemon_type_of`, except
+ * that the server reads `card_type_b`, which the slim catalog does not ship, so a few edge cards
+ * may land in a different group than the server's own order puts them. A row that carries the
+ * server's `type_group` (a later migration; 81 does not return it) uses that instead. `known` (the registry's group keys) maps
+ * an energy type the registry does not list to Other, as the server does.
+ */
+export function localTypeGroup(card, known) {
+    const t = card.types?.find((x) => !!x);
+    if (t)
+        return !known?.length || known.includes(t) ? t : 'Other';
+    const ct = card.cardType ?? [];
+    if (ct.some((x) => POKEMON_TRAINER_TYPES.has(x) || x.startsWith('Trainer')))
+        return 'Trainer';
+    if (ct.some((x) => x.includes('Energy')))
+        return 'Energy';
+    return 'Other';
+}
+/**
+ * Stable-sort rows by a registry's group order: rank order holds inside each group, and a group not
+ * in the list sorts last. Shared by both theme paths (mergeThemeHits for a secondary game, and a
+ * Pokemon themed result in CatalogBrowser).
+ */
+export function groupByOrder(rows, order, groupOf) {
+    if (!order.length)
+        return [...rows];
+    const at = new Map(order.map((key, i) => [key, i]));
+    return rows
+        .map((row, i) => [row, i, at.get(groupOf(row)) ?? at.size])
+        .sort((a, b) => a[2] - b[2] || a[1] - b[1])
+        .map(([row]) => row);
+}
 /**
  * Run `parsed` against the server, one page at a time. `offset`/`limit` drive infinite scroll
  * (the caller accumulates pages); `facets` are exact-match chip selections (AND across facets,
@@ -120,7 +186,7 @@ function foldLanguageTerms(parsed, bound) {
  * game applies to it: the host's themed-search proxy and the free theme depth belong to the
  * configured game, so neither is used, and a themed query is judged by its row count alone.
  */
-export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, languages: boundIn, api, } = {}) {
+export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, languages: boundIn, api, toolbar, } = {}) {
     const empty = { cards: [], priceById: {}, total: 0, clamped: false, degraded: false, failed: false };
     const failed = { ...empty, failed: true };
     const apiUrl = api ? api.url : getApiUrl();
@@ -133,7 +199,7 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
     try {
         const body = JSON.stringify({
             p_words: parsed.words,
-            p_fields: parsed.fields.map((f) => ({ key: f.key, value: f.value })),
+            p_fields: fieldsWithToolbar(parsed, toolbar),
             p_compares: parsed.comparisons.map((c) => ({ field: c.field, op: c.op, value: c.value })),
             p_facets: packFacets(facets),
             p_min_price: parsed.minPrice,
@@ -410,12 +476,7 @@ export function mergeThemeHits(hits, getCard, { keep, groupOrder } = {}) {
     }
     if (!groupOrder?.length)
         return merged;
-    const order = new Map(groupOrder.map((key, i) => [key, i]));
-    const groupOf = (c) => order.get(c.themeGroup ?? '') ?? order.size;
-    return merged
-        .map((c, i) => [c, i])
-        .sort((a, b) => groupOf(a[0]) - groupOf(b[0]) || a[1] - b[1])
-        .map(([c]) => c);
+    return groupByOrder(merged, groupOrder, (c) => c.themeGroup ?? '');
 }
 /** The card columns the direct PostgREST fetchers select (matches SearchRow minus cur/score). */
 const CARD_COLS = 'id,name,number,rarity,card_type,set_id,set_name,series,release_date,' +
@@ -547,19 +608,33 @@ export async function fetchCardsByIds(ids) {
  * values in server order (the kit re-orders for display). Fails soft (empty map).
  */
 export async function searchFacets(parsedIn, facets, boundIn) {
+    return (await searchFacetsWithCounts(parsedIn, facets, boundIn)).facets;
+}
+/**
+ * `searchFacets` plus the POKEMON THEME TOOLBAR'S CHIP COUNTS, from the same single call.
+ *
+ * With a `toolbar`, a themed query's body carries its fields (themeToolbarFields), and any rows the
+ * server answers under facet `frame` ('full' / 'window') or `tgroup` (a type group key) become
+ * `counts`, meant exclude-self as theme_facets' are (frame counts ignore the frame, type counts
+ * ignore the chips). Those rows are not facet chips, so they never reach `facets`. Today's
+ * `search_facets` ignores the toolbar keys and answers no such rows: `counts` is then null and the
+ * toolbar shows its chips without numbers. Without a toolbar the body is exactly searchFacets'.
+ */
+export async function searchFacetsWithCounts(parsedIn, facets, boundIn, toolbar) {
     var _a;
+    const none = { facets: {}, counts: null };
     if (!serverSearchAvailable())
-        return {};
+        return none;
     const { parsed, languages } = foldLanguageTerms(parsedIn, boundIn);
     if (languages?.length === 0)
-        return {};
+        return none;
     try {
         const res = await fetch(`${getApiUrl()}/rpc/search_facets`, {
             method: 'POST',
             headers: { apikey: getApiKey(), 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 p_words: parsed.words,
-                p_fields: parsed.fields.map((f) => ({ key: f.key, value: f.value })),
+                p_fields: fieldsWithToolbar(parsed, toolbar),
                 p_compares: parsed.comparisons.map((c) => ({ field: c.field, op: c.op, value: c.value })),
                 p_facets: packFacets(facets),
                 p_min_price: parsed.minPrice,
@@ -569,18 +644,25 @@ export async function searchFacets(parsedIn, facets, boundIn) {
             }),
         });
         if (!res.ok)
-            return {};
+            return none;
         const rows = (await res.json());
         const out = {};
+        const counts = { frame: {}, type: {} };
+        let counted = false;
         for (const r of rows) {
             if (!r.value)
                 continue;
+            if (r.facet === 'frame' || r.facet === 'tgroup') {
+                counts[r.facet === 'frame' ? 'frame' : 'type'][r.value] = Number(r.n) || 0;
+                counted = true;
+                continue;
+            }
             (out[_a = r.facet] ?? (out[_a] = [])).push(r.value);
         }
-        return out;
+        return { facets: out, counts: toolbar && counted ? counts : null };
     }
     catch {
-        return {};
+        return none;
     }
 }
 const cardDetailCache = new Map();

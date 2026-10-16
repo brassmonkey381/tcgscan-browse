@@ -1,16 +1,19 @@
 /**
- * The theme toolbar for a SECONDARY GAME'S artwork search (CatalogBrowser's `themeServer`).
+ * The theme toolbar for artwork search: a SECONDARY GAME'S (CatalogBrowser's `themeServer`, whose
+ * controls are `theme_search` parameters) and, since 0.9.29, Pokemon's (`themeTools`, whose controls
+ * ride on `search_cards` as extra p_fields; see search.ts ThemeToolbar).
  *
- * Three controls, all of them parameters of the data project's `theme_search` rather than filters
- * over the rows on screen, so changing one re-asks the server:
+ * Three controls, all of them server parameters rather than filters over the rows on screen, so
+ * changing one re-asks the server:
  *   · a segmented control: All art / Full art / Windowed (`p_frame`);
  *   · type chips from the game's registry row (`p_types`, OR-ed: a Lorcana ink, a One Piece
  *     colour, and the dual-ink / multicolour groups), each with its count;
  *   · a "Group by {typeLabel}" switch (`p_group`), which puts the result in registry order.
  *
- * The counts come from `theme_facets` and are exclude-self (the frame counts ignore the frame, the
- * type counts ignore the chips), so every option says what picking it would return. When that call
- * failed (`counts` null) the chips stay and the numbers go; nothing here is counted on the device,
+ * The counts come from `theme_facets` (Pokemon: `search_facets`, once it answers them) and are
+ * exclude-self (the frame counts ignore the frame, the type counts ignore the chips), so every
+ * option says what picking it would return. When that call failed or has no counts (`counts` null)
+ * the chips stay and the numbers go; nothing here is counted on the device,
  * because a dual-ink hit counts under its group AND each ink, which a page of hits cannot say.
  *
  * Presentational only: the browser owns the state, persists it (browseState, the share link, a

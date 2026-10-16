@@ -209,6 +209,26 @@ interface CatalogBrowserProps {
         tools?: boolean;
     };
     /**
+     * POKEMON'S THEME TOOLBAR, for a browser WITHOUT `themeServer` (Pokemon themed search runs on
+     * `search_cards`). The same ThemeFilterBar a secondary game gets: All art / Full art / Windowed,
+     * type chips (the energy types, Trainer, Energy) and "Group by {typeLabel}". A host passes it only
+     * while the data project's registry row says so (`theme_search_games.pokemon.tools`), which it
+     * flips on once `search_cards` understands the toolbar (tcgscan-data migration 81).
+     *
+     * Shown only while a themed query is on screen. Its controls become extra `p_fields` entries of
+     * that query (search.ts `themeToolbarFields`): `frame`, `tgroup` per chip, `group`=`type`. At its
+     * defaults it adds none, and without this prop every request is byte-identical to before.
+     * Grouping: a paid (unclamped) page arrives in type order; a free (clamped) caller gets the best N
+     * by rank, which are grouped here by `typeGroups` order, as for a secondary game. Group labels are
+     * the server's `type_group` when a row carries it, else the card's own (`localTypeGroup`). Chip
+     * counts show when `search_facets` answers them (facets `frame` / `tgroup`); until then the chips
+     * show without numbers. Ignored when `themeServer` is set.
+     */
+    themeTools?: {
+        typeLabel?: string;
+        typeGroups?: ThemeTypeGroup[];
+    };
+    /**
      * The set of card ids the user OWNS (own ≥ 1 copy) — a collection-aware overlay layer the app
      * supplies (kit stays source-agnostic). When present: card tiles show an owned check, set tiles
      * show "X / Y · N%" completion, and the `have:` search token (have:yes / have:no, via the
@@ -222,5 +242,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, themeServer, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

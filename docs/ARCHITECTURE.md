@@ -46,7 +46,8 @@ Lives here:
   fields), and a secondary game's theme search: `theme_search` /
   `theme_facets` over the private `card_themes` table, switched per game by
   the public `theme_search_games` registry (migrations 78/79; see "The
-  secondary-game theme path" below).
+  secondary-game theme path" below). Pokémon's theme toolbar rides on
+  `search_cards` itself (migration 81; see "Pokémon's theme toolbar").
 - The **enrichment pipeline** that produces fields like `illustrator`, `types`,
   `stage`.
 
@@ -217,6 +218,37 @@ nothing here runs: Pokémon's requests are byte-identical to v0.9.27's
 Which games are served, their chip label and colours, and the kill switch live
 in the public `theme_search_games` registry, so going live or off is a row
 update in tcgscan-data, not a kit release.
+
+## Pokémon's theme toolbar (v0.9.29)
+
+Pokémon themed search stays on `search_cards`; v0.9.29 gives it the same
+`ThemeFilterBar` (All art / Full art / Windowed, energy-type chips, "Group by
+type"). A host passes `themeTools={{ typeLabel, typeGroups }}` to a browser
+WITHOUT `themeServer`, and only while the registry row `pokemon.tools` is true
+(michi M3; the owner flips it after tcgscan-data migration 81 is live).
+
+- **Request.** The toolbar becomes extra `p_fields` entries of a THEMED query
+  only (`themeToolbarFields`): `{key:'frame', value:'full'|'window'}`,
+  `{key:'tgroup', value:<group>}` per chip, `{key:'group', value:'type'}`. At
+  its defaults it adds nothing, and without `themeTools` (or on a non-themed
+  query) every `search_cards` / `search_facets` body is byte-identical to
+  v0.9.28's. A server before 81 answers the keys with `else true`.
+- **Grouping.** The server groups only an unclamped (paid) caller. A free
+  caller gets the best N by rank; the browser stable-sorts those rows by the
+  registry's order (`groupByOrder`, shared with `mergeThemeHits`). A row's group
+  is the server's `type_group` when `search_cards` returns it, else
+  `localTypeGroup` (types[0], else Trainer / Energy, else Other — the device
+  cannot see `card_type_b`, so a few edge cards may group differently).
+- **Counts.** `searchFacetsWithCounts` reads `search_facets` rows under facets
+  `frame` and `tgroup` from the same call. Until the server answers them the
+  chips show without numbers (`counts` null), never as zeros.
+- **Two Pokémon fixes ride along.** A themed query is now the PARSER'S verdict
+  (`pokemon:`, `object:`, `mood:` … route to the server, not only
+  `theme:`/`art:`/`scene:`), and a warm themed result pages on the server
+  (`serverPaged`) instead of stopping at the first 90 rows; its facets stay
+  local over the loaded rows.
+
+`scripts/theme-server-check.mjs` section (i) pins all of it.
 
 **Two rules that span the repos — both are silent-drift bugs if missed:**
 

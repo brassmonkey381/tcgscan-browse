@@ -54,7 +54,8 @@ npm publish. To cut a version:
 1. `npm run check` (typecheck), then `npm run build` — never hand-edit `dist/`.
 2. `npm run check:reset` and `npm run check:theme` (stubbed-fetch checks over
    `dist/`; the theme one renders `CatalogBrowser` with react-test-renderer and
-   pins Pokémon's `search_cards` bodies to golden strings).
+   pins Pokémon's `search_cards` bodies to golden strings, with and without the
+   `themeTools` toolbar).
 3. Bump `version` in `package.json` (and the two `version` lines of
    `package-lock.json`).
 4. One commit with src + dist + package.json + package-lock.json (and any
@@ -70,7 +71,9 @@ Do not commit or push unless the user asks.
 - `src/index.ts` — the single export surface (everything public re-exports here).
 - `src/CatalogBrowser.tsx` — the main component (warm catalog + cold
   server-search paths, plus the `themeServer` path for a secondary game's theme
-  search, whose toolbar is `ThemeFilterBar.tsx`); `CardActionModal.tsx`,
+  search, whose toolbar is `ThemeFilterBar.tsx`; the same toolbar serves
+  Pokémon through the `themeTools` prop, riding on `search_cards` as extra
+  `p_fields` — keep its bodies byte-identical when the prop is absent); `CardActionModal.tsx`,
   `RecentProducts.tsx`, `SealedBrowser.tsx`, `analytics.tsx` are the other UI
   surfaces.
   `SealedBrowser` is mounted by tcgscan-app ONLY — michi-maker curates sealed

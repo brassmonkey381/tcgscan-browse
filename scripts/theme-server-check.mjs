@@ -1,4 +1,5 @@
-// Verifies a secondary game's theme search (themeServer, v0.9.28) against dist/ with a stubbed fetch.
+// Verifies theme search against dist/ with a stubbed fetch: a secondary game's (themeServer, v0.9.28)
+// and Pokemon's toolbar (themeTools, v0.9.29).
 // Run: npm run build && node scripts/theme-server-check.mjs. Nothing here reaches a network.
 //
 // (a) searchThemes' body, direct and on the paid proxy path (`rpc: 'theme_search'`)
@@ -10,6 +11,10 @@
 //     drain whose proxy breaks mid-result stops at once instead of re-asking the free top N
 // (g) a clamped page with grouping on is stable-sorted by typeGroups order (CP-2)
 // (h) the failure view's Retry calls rpc/theme_search, never rpc/search_cards (CP-6)
+// (i) Pokemon's toolbar (themeTools, K5): p_fields order; bodies byte-identical when it is off or at
+//     its defaults; search_facets counts; a clamped page grouped by registry order on the device;
+//     the server's type_group wins over the local label; warm themed results page past 90; a
+//     pokemon: namespace query routes to search_cards (the parser's verdict, not a regex)
 //
 // (f)-(h) render the real CatalogBrowser with React 19 + react-test-renderer (a devDependency);
 // react-native, expo-image and react-native-svg are stubbed as plain host components. The loader is
@@ -90,7 +95,7 @@ const { CatalogBrowser } = await load('CatalogBrowser.js');
 const API = 'https://x/rest/v1';
 const PROXY = 'https://host/functions/v1/theme-search';
 const G = ['Ruby', 'Amber', 'Steel'];
-const env = { total: 650, depth: 0, fail: false, proxyStatus: 200, breakAfter: 0, defer: false, queue: [], log: [] };
+const env = { total: 650, depth: 0, fail: false, proxyStatus: 200, breakAfter: 0, defer: false, queue: [], log: [], poke: null };
 const reply = (j, status = 200) => ({
   ok: status < 300,
   status,
@@ -109,7 +114,30 @@ const themeRows = (body, paid = false) => {
     rows.push({ id: 'c' + i, art_band: i % 3, full_art: i % 2 === 0, type_group: G[i % 3], total_count: env.total });
   return rows;
 };
+// Pokemon search_cards rows (env.poke = { total, types, groups? }): ids c<i>, types[0] cycling through
+// `types`; with `groups`, each row also carries a server type_group (a possible later migration;
+// 81 does not return it). Metered the
+// same way as theme_search above.
+const PT = ['Water', 'Fire', 'Grass'];
+const pokeRows = (body) => {
+  const P = env.poke;
+  const metered = env.depth > 0;
+  const off = metered ? 0 : body.p_offset;
+  const n = Math.min(P.total, off + (metered ? Math.min(body.p_limit, env.depth) : body.p_limit));
+  const rows = [];
+  for (let i = off; i < n; i++)
+    rows.push({
+      id: 'c' + i, name: 'Card ' + i, number: String(i), rarity: 'Common', card_type: ['Pokemon'], set_id: 1,
+      set_name: 'Set One', series: 'Ser', release_date: '2024-01-01', illustrator: '', types: [PT[i % 3]],
+      stage: 'Basic', hp: 60, evolution_stage_index: 0, evolves_from: null, evolution_line: [], jumbo: false,
+      language: 'en', cur: 1, score: 1, total_count: P.total,
+      ...(P.groups ? { type_group: P.groups[i % P.groups.length], full_art: i % 2 === 0, art_band: 2 } : {}),
+    });
+  return rows;
+};
 const answer = (url, body) => {
+  if (env.poke && url.includes('/rpc/search_cards')) return reply(pokeRows(body));
+  if (env.poke?.facets && url.includes('/rpc/search_facets')) return reply(env.poke.facets);
   if (url === PROXY) {
     if (env.proxyStatus !== 200) return reply({ error: 'x' }, env.proxyStatus);
     if (env.breakAfter && --env.breakAfter === 0) env.proxyStatus = 500; // answers this one, then breaks
@@ -136,7 +164,7 @@ globalThis.fetch = async (u, init) => {
 };
 const calls = (rpc) => env.log.filter((l) => l.url.includes('/rpc/' + rpc));
 const fresh = (over = {}) => {
-  Object.assign(env, { total: 650, depth: 0, fail: false, proxyStatus: 200, breakAfter: 0, defer: false, queue: [], log: [] }, over);
+  Object.assign(env, { total: 650, depth: 0, fail: false, proxyStatus: 200, breakAfter: 0, defer: false, queue: [], log: [], poke: null }, over);
   search._resetSearchCaches(); // the free depth is read once per process
   delete state.browseState.themeFrame;
   delete state.browseState.themeTypes;
@@ -427,6 +455,150 @@ const emptyTexts = () =>
   assert.ok(ids().length > 0, '(h) the retried search renders');
   await unmount();
   console.log('(h) Retry calls theme_search, never search_cards: ok');
+}
+
+// ---------------------------------------------------------------- (i) Pokemon toolbar (themeTools)
+{
+  // search.ts: the fields a toolbar adds, and only to a themed query.
+  assert.deepEqual(search.themeToolbarFields({ frame: 'all', types: [], group: false }), [], '(i) defaults add nothing');
+  assert.deepEqual(
+    search.themeToolbarFields({ frame: 'window', types: ['Fire', 'Trainer'], group: true }),
+    [{ key: 'frame', value: 'window' }, { key: 'tgroup', value: 'Fire' }, { key: 'tgroup', value: 'Trainer' }, { key: 'group', value: 'type' }],
+    '(i) frame, chips, grouping, in that order',
+  );
+  const NOTOOL_THEMED =
+    '{"p_words":[],"p_fields":[{"key":"theme","value":"forest"}],"p_compares":[],"p_facets":{},"p_min_price":null,"p_max_price":null,"p_sort":"relevance","p_dir":"desc","p_limit":60,"p_offset":0}';
+  const NOTOOL_PLAIN =
+    '{"p_words":["charizard"],"p_fields":[],"p_compares":[],"p_facets":{},"p_min_price":null,"p_max_price":null,"p_sort":"relevance","p_dir":"desc","p_limit":60,"p_offset":0}';
+  fresh();
+  await search.searchCards(query.parseQuery('theme:forest'), { toolbar: { frame: 'all', types: [], group: false } });
+  assert.equal(calls('search_cards')[0].raw, NOTOOL_THEMED, '(i) a toolbar at its defaults: body identical');
+  fresh();
+  await search.searchCards(query.parseQuery('charizard'), { toolbar: { frame: 'full', types: ['Fire'], group: true } });
+  assert.equal(calls('search_cards')[0].raw, NOTOOL_PLAIN, '(i) a non-themed query never carries the toolbar');
+  fresh();
+  await search.searchCards(query.parseQuery('theme:forest'), { toolbar: { frame: 'full', types: ['Fire'], group: true } });
+  assert.equal(
+    calls('search_cards')[0].raw,
+    '{"p_words":[],"p_fields":[{"key":"theme","value":"forest"},{"key":"frame","value":"full"},{"key":"tgroup","value":"Fire"},' +
+      '{"key":"group","value":"type"}],"p_compares":[],"p_facets":{},"p_min_price":null,"p_max_price":null,"p_sort":"relevance",' +
+      '"p_dir":"desc","p_limit":60,"p_offset":0}',
+    '(i) toolbar body',
+  );
+
+  // search_facets: no toolbar is searchFacets' body exactly; counts only from frame/tgroup rows.
+  fresh();
+  await search.searchFacets(query.parseQuery('theme:forest'));
+  const plainFacets = calls('search_facets')[0].raw;
+  fresh();
+  let fc = await search.searchFacetsWithCounts(query.parseQuery('theme:forest'));
+  assert.equal(calls('search_facets')[0].raw, plainFacets, '(i) facets body without a toolbar unchanged');
+  assert.equal(fc.counts, null, '(i) no toolbar, no counts');
+  fresh({ poke: { total: 5, facets: [{ facet: 'rarity', value: 'Common', n: 4 }] } });
+  fc = await search.searchFacetsWithCounts(query.parseQuery('theme:forest'), {}, undefined, { frame: 'window' });
+  assert.equal(fc.counts, null, '(i) a server without toolbar counts: null, chips without numbers');
+  assert.deepEqual(fc.facets, { rarity: ['Common'] });
+  assert.deepEqual(calls('search_facets')[0].body.p_fields.map((f) => f.key), ['theme', 'frame'], '(i) facets carry the toolbar');
+  fresh({ poke: { total: 5, facets: [
+    { facet: 'rarity', value: 'Common', n: 4 }, { facet: 'frame', value: 'full', n: 7 }, { facet: 'frame', value: 'window', n: 9 },
+    { facet: 'tgroup', value: 'Fire', n: 3 },
+  ] } });
+  fc = await search.searchFacetsWithCounts(query.parseQuery('theme:forest'), {}, undefined, { frame: 'all' });
+  assert.deepEqual(fc.counts, { frame: { full: 7, window: 9 }, type: { Fire: 3 } }, '(i) counts parsed');
+  assert.deepEqual(fc.facets, { rarity: ['Common'] }, '(i) toolbar rows never become facet chips');
+
+  // localTypeGroup mirrors _pokemon_type_of (types[0], else Trainer / Energy, else Other).
+  const keys = ['Grass', 'Fire', 'Water', 'Colorless', 'Trainer', 'Energy', 'Other'];
+  assert.equal(search.localTypeGroup({ types: ['Fire', 'Water'], cardType: ['Pokemon'] }, keys), 'Fire');
+  assert.equal(search.localTypeGroup({ types: ['Lightning'], cardType: ['Pokemon'] }, keys), 'Other', '(i) unlisted type: Other');
+  assert.equal(search.localTypeGroup({ types: [], cardType: ['Supporter'] }, keys), 'Trainer');
+  assert.equal(search.localTypeGroup({ types: [], cardType: ['Energy'] }, keys), 'Energy');
+  assert.equal(search.localTypeGroup({ types: [], cardType: ['Pokemon'] }, keys), 'Other');
+
+  // The browser. Registry order Grass, Fire, Water; the stub ranks c0 Water, c1 Fire, c2 Grass, ...
+  const pokeGroups = [
+    { key: 'Grass', label: 'Grass', color: '#4caf50' },
+    { key: 'Fire', label: 'Fire', color: '#e5533d' },
+    { key: 'Water', label: 'Water', color: '#3b8de0' },
+    { key: 'Trainer', label: 'Trainer', color: '#9aa0a6' },
+  ];
+  const tools = { typeLabel: 'Energy', typeGroups: pokeGroups };
+  const toolbar = () => r.root.findAll((n) => n.type === 'Pressable' && n.props.accessibilityLabel === 'Group by Energy');
+
+  // Off: no prop, even with a persisted Windowed frame, sends exactly the v0.9.28 body; no toolbar.
+  fresh({ poke: { total: 5 } });
+  state.browseState.themeFrame = 'window';
+  await mount('theme:forest', {});
+  const offBody = calls('search_cards')[0].raw;
+  assert.deepEqual(JSON.parse(offBody).p_fields, [{ key: 'theme', value: 'forest' }], '(i) off: no toolbar fields');
+  assert.equal(toolbar().length, 0, '(i) off: no toolbar');
+  await unmount();
+  // On at its defaults: the same body, and the toolbar shows.
+  fresh({ poke: { total: 5 } });
+  await mount('theme:forest', { themeTools: tools });
+  assert.equal(calls('search_cards')[0].raw, offBody, '(i) on at defaults: body identical to off');
+  assert.equal(toolbar().length, 1, '(i) on: toolbar shown for a themed query');
+  assert.equal(calls('theme_search').length + calls('theme_facets').length, 0, '(i) Pokemon never calls theme_*');
+  await unmount();
+  // Not themed: no toolbar.
+  fresh({ poke: { total: 5 } });
+  await mount('charizard', { themeTools: tools });
+  assert.equal(toolbar().length, 0, '(i) no toolbar on an ordinary query');
+  await unmount();
+
+  // Clamped + Windowed (groups by default): the request asks for the frame and grouping; the free
+  // top 3 come back by rank and are grouped HERE by registry order, labels from the local types.
+  fresh({ poke: { total: 50 }, depth: 3 });
+  state.browseState.themeFrame = 'window';
+  await mount('theme:forest', { themeTools: tools });
+  const sc = calls('search_cards');
+  assert.deepEqual(sc[0].body.p_fields, [{ key: 'theme', value: 'forest' }, { key: 'frame', value: 'window' }, { key: 'group', value: 'type' }],
+    '(i) frame + group sent');
+  assert.deepEqual(ids(), ['c2', 'c1', 'c0'], '(i) clamped rows grouped by registry order: ' + ids());
+  assert.deepEqual(flat().props.data.map((it) => it.groupStart?.key), ['Grass', 'Fire', 'Water'], '(i) group labels');
+  // Picking a chip re-asks the server with it.
+  const fire = r.root.findAll((n) => n.type === 'Pressable' && n.props.accessibilityRole === 'checkbox' && n.props.accessibilityLabel === 'Fire');
+  assert.equal(fire.length, 1, '(i) a Fire chip (no counts: plain label)');
+  await TR.act(async () => { fire[0].props.onPress(); });
+  await settle();
+  const last = calls('search_cards').at(-1);
+  assert.deepEqual(last.body.p_fields.map((f) => `${f.key}:${f.value}`), ['theme:forest', 'frame:window', 'tgroup:Fire', 'group:type'],
+    '(i) chip sent: ' + JSON.stringify(last.body.p_fields));
+  await unmount();
+
+  // A server type_group (not returned by 81; a possible later migration) wins over the card's own types.
+  fresh({ poke: { total: 50, groups: ['Trainer', 'Grass', 'Fire'] }, depth: 3 });
+  state.browseState.themeFrame = 'window';
+  await mount('theme:forest', { themeTools: tools });
+  assert.deepEqual(ids(), ['c1', 'c2', 'c0'], '(i) grouped by the server type_group: ' + ids());
+  assert.deepEqual(flat().props.data.map((it) => it.groupStart?.key), ['Grass', 'Fire', 'Trainer']);
+  await unmount();
+
+  // Counts from search_facets reach the toolbar.
+  fresh({ poke: { total: 5, facets: [{ facet: 'frame', value: 'full', n: 2 }, { facet: 'frame', value: 'window', n: 3 }, { facet: 'tgroup', value: 'Fire', n: 4 }] } });
+  await mount('theme:forest', { themeTools: tools });
+  const labels = r.root.findAll((n) => n.type === 'Pressable' && typeof n.props.accessibilityLabel === 'string').map((n) => n.props.accessibilityLabel);
+  assert.ok(labels.includes('Full art, 2 matches') && labels.includes('All art, 5 matches'), '(i) frame counts: ' + labels.join(' | '));
+  assert.ok(labels.includes('Fire, 4 matches') && !labels.includes('Grass'), '(i) chips with counts, zero chips hidden');
+  await unmount();
+
+  // Warm themed results page on the server past the first 90 (they used to stop there).
+  fresh({ poke: { total: 200 } });
+  await mount('theme:forest', { themeTools: tools });
+  assert.equal(ids().length, 90, '(i) page 0: 90 rows');
+  await TR.act(async () => { flat().props.onEndReached?.(); });
+  await settle();
+  assert.deepEqual(calls('search_cards').map((c) => c.body.p_offset), [0, 90], '(i) next page asked at offset 90');
+  assert.equal(ids().length, 180, '(i) 180 rows after the second page');
+  await unmount();
+
+  // A namespace the old regex missed (pokemon:) is a server query, warm or not.
+  fresh({ poke: { total: 5 } });
+  await mount('pokemon:pikachu', {});
+  assert.equal(calls('search_cards').length >= 1, true, '(i) pokemon:pikachu reaches search_cards');
+  assert.equal(calls('search_cards')[0].body.p_fields[0].key, 'theme');
+  await unmount();
+  console.log('(i) Pokemon toolbar: bodies, counts, local grouping, paging past 90: ok');
 }
 
 // Pokemon (no themeServer) still routes a themed query to search_cards and never to theme_search.

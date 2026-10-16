@@ -20,7 +20,7 @@ export { resolveActions, resolveLabel, } from './actions';
 export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE } from './theme';
 export { findSimilar, findSimilarToMany, findSimilarWeighted, getSimilarityModel, listSimilarityModels, refineWeights, setSimilarityModel, similarAvailable, } from './similar';
 export { ColorIndex, colorSearchAvailable, colorServerAvailable, findSimilarByColor, getColorIndex, labToSrgb, loadColorIndex, searchByColor, searchByColorServer, searchByColors, searchByColorsServer, srgbToLab, useColorIndex, } from './color';
-export { fetchCardDetail, fetchCardsByIds, fetchSetCards, freeThemeDepth, mergeThemeHits, searchCards, searchFacets, searchThemes, serverSearchAvailable, themeFacets, } from './search';
+export { fetchCardDetail, fetchCardsByIds, fetchSetCards, freeThemeDepth, groupByOrder, localTypeGroup, mergeThemeHits, searchCards, searchFacets, searchFacetsWithCounts, searchThemes, serverSearchAvailable, themeFacets, themeToolbarFields, } from './search';
 export { loadTaxonomy, useTaxonomy } from './taxonomy';
 export { loadSealed, loadSealedPrices, sealedLanguageOf, useSealed, } from './sealed';
 export { SEALED_GROUPS, sealedGroupOf } from './sealed-groups';

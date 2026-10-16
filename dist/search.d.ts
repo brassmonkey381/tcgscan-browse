@@ -10,6 +10,10 @@
  * with the price carried separately), so a hit renders + opens its action sheet WITHOUT the
  * card being in the in-memory catalog. Fails soft (empty) — server search is an enhancement.
  *
+ * POKEMON'S THEME TOOLBAR (frame, type chips, grouping) rides on `search_cards` itself: see
+ * `ThemeToolbar` below. It adds `p_fields` entries to a themed query only, and nothing at its
+ * defaults, so every other body is exactly what it was.
+ *
  * A SECONDARY GAME (Lorcana, One Piece) has no `search_cards`; its themed queries go to
  * `theme_search` / `theme_facets` (tcgscan-data migration 79) through `searchThemes` /
  * `themeFacets` below, which answer ranked ids only. `mergeThemeHits` maps them onto the game's
@@ -68,6 +72,43 @@ export declare function serverSearchAvailable(): boolean;
 /** Facet chip selection, facet key -> selected values (the kit's FacetSelection shape). */
 export type ServerFacetSelection = Record<string, string[]>;
 /**
+ * THE POKEMON THEME TOOLBAR (CatalogBrowser's `themeTools`), as `search_cards` takes it: extra
+ * `p_fields` entries that only a THEMED query carries (tcgscan-data migration 81 reads them; a
+ * server before it, and `search_facets`, answer them with `else true`, i.e. ignore them).
+ *   · `{key:'frame', value:'full'|'window'}` keeps full art or windowed art only;
+ *   · `{key:'tgroup', value:<group key>}` once per type chip, OR-ed (an energy type, Trainer, Energy);
+ *   · `{key:'group', value:'type'}` puts a relevance result in registry type order. The server
+ *     honours it for an UNCLAMPED (paid) caller only; a free caller gets the best N by rank, which
+ *     the browser groups on the device.
+ * The defaults (all art, no chips, ungrouped) add nothing, so such a body is byte-identical to one
+ * sent without a toolbar.
+ */
+export interface ThemeToolbar {
+    frame?: ThemeFrame;
+    types?: readonly string[];
+    group?: boolean;
+}
+/** The `p_fields` entries a toolbar adds, in a fixed order (frame, chips, grouping). */
+export declare function themeToolbarFields(t?: ThemeToolbar): {
+    key: string;
+    value: string;
+}[];
+/**
+ * A Pokemon card's type group as the device can tell it: its first energy type, else Trainer or
+ * Energy from its card type, else Other. This mirrors tcgscan-data's `_pokemon_type_of`, except
+ * that the server reads `card_type_b`, which the slim catalog does not ship, so a few edge cards
+ * may land in a different group than the server's own order puts them. A row that carries the
+ * server's `type_group` (a later migration; 81 does not return it) uses that instead. `known` (the registry's group keys) maps
+ * an energy type the registry does not list to Other, as the server does.
+ */
+export declare function localTypeGroup(card: Pick<CatalogCard, 'types' | 'cardType'>, known?: readonly string[]): string;
+/**
+ * Stable-sort rows by a registry's group order: rank order holds inside each group, and a group not
+ * in the list sorts last. Shared by both theme paths (mergeThemeHits for a secondary game, and a
+ * Pokemon themed result in CatalogBrowser).
+ */
+export declare function groupByOrder<T>(rows: readonly T[], order: readonly string[], groupOf: (row: T) => string): T[];
+/**
  * A search endpoint named per call, for a host that must search a game OTHER than the one the kit
  * is configured for (a card of another game, edited while this one is active) without switching
  * the whole kit, which would reset every per-game cache. `url` is the PostgREST root that serves
@@ -86,12 +127,14 @@ export interface SearchApi {
  * game applies to it: the host's themed-search proxy and the free theme depth belong to the
  * configured game, so neither is used, and a themed query is judged by its row count alone.
  */
-export declare function searchCards(parsedIn: ParsedQuery, { limit, offset, facets, languages: boundIn, api, }?: {
+export declare function searchCards(parsedIn: ParsedQuery, { limit, offset, facets, languages: boundIn, api, toolbar, }?: {
     limit?: number;
     offset?: number;
     facets?: ServerFacetSelection;
     languages?: CardLanguage[];
     api?: SearchApi;
+    /** The Pokemon theme toolbar; appended to a THEMED query's p_fields only (themeToolbarFields). */
+    toolbar?: ThemeToolbar;
 }): Promise<SearchPage>;
 /** Which artwork a theme search keeps: all of it, full art only, or windowed only (`p_frame`). */
 export type ThemeFrame = 'all' | 'full' | 'window';
@@ -222,6 +265,20 @@ export declare function fetchCardsByIds(ids: string[]): Promise<CatalogCard[]>;
  * values in server order (the kit re-orders for display). Fails soft (empty map).
  */
 export declare function searchFacets(parsedIn: ParsedQuery, facets?: ServerFacetSelection, boundIn?: CardLanguage[]): Promise<Record<string, string[]>>;
+/**
+ * `searchFacets` plus the POKEMON THEME TOOLBAR'S CHIP COUNTS, from the same single call.
+ *
+ * With a `toolbar`, a themed query's body carries its fields (themeToolbarFields), and any rows the
+ * server answers under facet `frame` ('full' / 'window') or `tgroup` (a type group key) become
+ * `counts`, meant exclude-self as theme_facets' are (frame counts ignore the frame, type counts
+ * ignore the chips). Those rows are not facet chips, so they never reach `facets`. Today's
+ * `search_facets` ignores the toolbar keys and answers no such rows: `counts` is then null and the
+ * toolbar shows its chips without numbers. Without a toolbar the body is exactly searchFacets'.
+ */
+export declare function searchFacetsWithCounts(parsedIn: ParsedQuery, facets?: ServerFacetSelection, boundIn?: CardLanguage[], toolbar?: ThemeToolbar): Promise<{
+    facets: Record<string, string[]>;
+    counts: ThemeFacetCounts | null;
+}>;
 /**
  * Every card in the recent release window (release_date >= cutoff, upcoming included),
  * newest first — powers the catalog-FREE Recent & Upcoming feed. Fails soft ([]).
