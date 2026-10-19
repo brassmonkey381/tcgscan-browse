@@ -2397,6 +2397,7 @@ export function CatalogBrowser({
             group={themeGroupOn}
             onToggleGroup={() => setThemeGroupSel(!themeGroupOn)}
             counts={themeServerActive ? themeCounts : pokeCounts}
+            compact={compactBar}
           />
         ) : null}
         {/* Saved-search chips: one tap re-runs the starred search; long-press removes it. */}

@@ -22,5 +22,7 @@ export interface ThemeFilterBarProps {
     onToggleGroup: () => void;
     /** `theme_facets` for the current query; null when it failed (counts hidden, chips kept). */
     counts: ThemeFacetCounts | null;
+    /** Phone width: the type chips fold into one dropdown and the segment drops its counts. */
+    compact?: boolean;
 }
-export declare function ThemeFilterBar({ theme, frame, onPickFrame, typeGroups, typeLabel, types, onToggleType, onClearTypes, group, onToggleGroup, counts, }: ThemeFilterBarProps): import("react").JSX.Element;
+export declare function ThemeFilterBar({ theme, frame, onPickFrame, typeGroups, typeLabel, types, onToggleType, onClearTypes, group, onToggleGroup, counts, compact, }: ThemeFilterBarProps): import("react").JSX.Element;
