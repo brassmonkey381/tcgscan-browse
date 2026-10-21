@@ -70,12 +70,19 @@ export interface CatalogCard {
   /** The pipeline's `full_art_kind`: special_illustration_rare | illustration_rare |
    *  named_full_art | double_rare | measured | ''. The themed ranking bands on it. */
   fullArtKind: string;
+  /** The data server's broad full-art flag (`cards_en.full_art`): the illustration runs to the card
+   *  edge. Sparse: the catalog ships only `full_art: true`, so this is `true` or absent, and absent
+   *  means windowed OR not assessed (every JP card, landscape scans). It agrees with the theme
+   *  toolbar's Full art filter on every card whose layout was measured (tcgscan-data
+   *  full_art_detect.settle); a rule-decided card (Double Rare, "(Full Art)" in the name, IR/SIR,
+   *  Common/Uncommon) keeps its rule. Read `card.fullArt === true`. */
+  fullArt?: boolean;
   /** Printing language: 'en' (English) | 'ja' (Japanese). Defaults 'en' when a
    *  legacy/EN-only source omits it. Drives the language badge + facet. */
   language: CardLanguage;
   /** A secondary game's theme search only (search.ts `mergeThemeHits`): the server's verdict that
    *  the artwork fills the card. Set on the merged rows of a `theme_search` result and absent
-   *  everywhere else, every Pokémon card included. Never in a catalog: the bundles do not ship it. */
+   *  everywhere else, every Pokémon card included. A Pokémon catalog card carries `fullArt` instead. */
   themeFullArt?: boolean;
   /** The same rows' type group (an ink, a colour, or a dual-ink / multicolour group), a registry
    *  key the browser groups and labels by. Absent outside a `theme_search` result. */
@@ -195,6 +202,7 @@ export interface RawCard {
   scene_caption?: string; // artwork scene caption (sparse — captioned printings only)
   scene_tags?: string[]; // scene tags from the same pass (sparse, same cards)
   full_art_kind?: string; // how much of the card is the picture (see CatalogCard.fullArtKind)
+  full_art?: boolean; // cards_en.full_art; the bundle ships only `true` (see CatalogCard.fullArt)
 }
 export interface RawSet {
   id: number | string;
@@ -370,6 +378,8 @@ class LocalCatalog implements Catalog {
         sceneCaption: raw_c.scene_caption,
         sceneTags: raw_c.scene_tags,
         fullArtKind: raw_c.full_art_kind ?? '',
+        // Sparse like the captions: set only when true, so absence stays visible.
+        ...(raw_c.full_art === true ? { fullArt: true } : {}),
       };
       this.cards.set(card.id, card);
       this.all.push(card);

@@ -159,6 +159,8 @@ class LocalCatalog {
                 sceneCaption: raw_c.scene_caption,
                 sceneTags: raw_c.scene_tags,
                 fullArtKind: raw_c.full_art_kind ?? '',
+                // Sparse like the captions: set only when true, so absence stays visible.
+                ...(raw_c.full_art === true ? { fullArt: true } : {}),
             };
             this.cards.set(card.id, card);
             this.all.push(card);

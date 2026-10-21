@@ -47,12 +47,19 @@ export interface CatalogCard {
     /** The pipeline's `full_art_kind`: special_illustration_rare | illustration_rare |
      *  named_full_art | double_rare | measured | ''. The themed ranking bands on it. */
     fullArtKind: string;
+    /** The data server's broad full-art flag (`cards_en.full_art`): the illustration runs to the card
+     *  edge. Sparse: the catalog ships only `full_art: true`, so this is `true` or absent, and absent
+     *  means windowed OR not assessed (every JP card, landscape scans). It agrees with the theme
+     *  toolbar's Full art filter on every card whose layout was measured (tcgscan-data
+     *  full_art_detect.settle); a rule-decided card (Double Rare, "(Full Art)" in the name, IR/SIR,
+     *  Common/Uncommon) keeps its rule. Read `card.fullArt === true`. */
+    fullArt?: boolean;
     /** Printing language: 'en' (English) | 'ja' (Japanese). Defaults 'en' when a
      *  legacy/EN-only source omits it. Drives the language badge + facet. */
     language: CardLanguage;
     /** A secondary game's theme search only (search.ts `mergeThemeHits`): the server's verdict that
      *  the artwork fills the card. Set on the merged rows of a `theme_search` result and absent
-     *  everywhere else, every Pokémon card included. Never in a catalog: the bundles do not ship it. */
+     *  everywhere else, every Pokémon card included. A Pokémon catalog card carries `fullArt` instead. */
     themeFullArt?: boolean;
     /** The same rows' type group (an ink, a colour, or a dual-ink / multicolour group), a registry
      *  key the browser groups and labels by. Absent outside a `theme_search` result. */
@@ -159,6 +166,7 @@ export interface RawCard {
     scene_caption?: string;
     scene_tags?: string[];
     full_art_kind?: string;
+    full_art?: boolean;
 }
 export interface RawSet {
     id: number | string;
