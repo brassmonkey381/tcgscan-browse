@@ -146,9 +146,11 @@ export function ThemeFilterBar({
               );
             })}
           </View>
-        </View>
-        {groups.length > 0 ? (
-          <View style={styles.row}>
+          {/* ONE ROW WHEN IT FITS (owner, 2026-10-25): the dropdown and Group follow the segment
+              in the same wrapping row, so a docked panel around 580px gets one line, not two,
+              and a phone still wraps them under. */}
+          {groups.length > 0 ? (
+            <>
             <Pressable
               onPress={() => setSheetOpen(true)}
               style={[styles.toggle, types.length > 0 && styles.toggleOn]}
@@ -170,8 +172,9 @@ export function ThemeFilterBar({
                 {group ? '☑' : '☐'} Group
               </Text>
             </Pressable>
-          </View>
-        ) : null}
+            </>
+          ) : null}
+        </View>
         {sheetOpen ? (
           <Modal visible transparent animationType="fade" onRequestClose={() => setSheetOpen(false)}>
             <Pressable style={styles.menuBackdrop} onPress={() => setSheetOpen(false)}>
