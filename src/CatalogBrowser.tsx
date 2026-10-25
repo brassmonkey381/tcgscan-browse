@@ -630,6 +630,13 @@ interface CatalogBrowserProps {
    */
   onCardSizeChange?: (size: CardSize) => void;
   /**
+   * A control the host puts at the START of the Color / Theme row, inline with those buttons: the
+   * binder picker's game dropdown (owner, 2026-10-25: the chip rows above the browser cost three
+   * lines on a phone). Rendered on its own row when neither Color nor Theme is offered, so the
+   * control is never lost with them.
+   */
+  featureRowLead?: ReactNode;
+  /**
    * Open a color search (app-supplied UI). When set, a "Color" button appears in the search row;
    * the app opens its color picker and returns results via `sendBrowseCommand({type:'showCards'})`.
    * Omitted → no color button. Lives in the browser so every surface (browse + binder picker) has it.
@@ -740,6 +747,7 @@ export function CatalogBrowser({
   onLockedFeature,
   cardSize: cardSizeProp,
   onCardSizeChange,
+  featureRowLead,
   onColorSearch,
   onThemeSearch,
   colorSearchLabel = 'Tri-Color Search',
@@ -2264,6 +2272,8 @@ export function CatalogBrowser({
     !analytics ? null : level === 'cards' && setId ? 'set' : level === 'sets' && seriesId ? 'series' : null;
   // Analytics replaces the card/set grid when the toggle is on.
   const analyticsView = analyticsScope != null && analyticsTab === 'analytics';
+  // Series/set levels get Collection + Size without waiting for a drill-down or a search.
+  const taxBarOn = !isCardLevel && !analyticsView && level !== 'coldidle';
 
   // getItemLayout: for the grid, every `cols` items share a row of `rowHeight`; for the
   // single-column text levels each item is one row. Lets the list skip hundreds/thousands
@@ -2304,6 +2314,7 @@ export function CatalogBrowser({
       <View style={styles.controls}>
         {featureRow ? (
           <View style={styles.triColorRow}>
+            {featureRowLead}
             {onColorSearch ? (
               <Glow styles={styles}>
                 <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel={colorSearchLabel}>
@@ -2325,18 +2336,21 @@ export function CatalogBrowser({
               <Text style={styles.newText}>NEW!</Text>
             </Animated.View>
           </View>
+        ) : featureRowLead ? (
+          <View style={styles.triColorRow}>{featureRowLead}</View>
         ) : (
           <Text style={styles.sectionLabel}>Cards · 1×1</Text>
         )}
         {/*
-          Search row. On a phone the input + EN/JP + ★ + ? together leave the placeholder truncated
-          mid-word ("…try: charizard hp>2"), which hides the one hint that teaches the grammar. So
-          below `COMPACT_SEARCH_W` the controls drop to their own line and the input takes the full
-          width; above it everything stays on one line as before. `compactSearch` is derived from
-          the MEASURED container, not the window, so a narrow embed (the binder card picker) gets
-          the same treatment as a narrow phone.
+          Search row: the input with EN/JP + ★ + ? beside it, at every width. Below
+          `COMPACT_SEARCH_W` the placeholder drops the grammar hint, which would otherwise be cut
+          mid-word ("…try: charizard hp>2"); the ? button opens the manual that teaches it. The
+          hint used to take a line of its own there, under a full-width input: on a phone that was
+          one of five lines stacked over the first card (owner, 2026-10-25), and the manual is one
+          tap away. `compactSearch` is derived from the MEASURED container, not the window, so a
+          narrow embed (the binder card picker) gets the same treatment as a narrow phone.
         */}
-        <View style={compactSearch ? styles.searchCol : styles.searchRow}>
+        <View style={styles.searchRow}>
           <TextInput
             value={cardQuery}
             onChangeText={onChangeQuery}
@@ -2348,16 +2362,9 @@ export function CatalogBrowser({
             placeholderTextColor={theme.faint}
             autoCorrect={false}
             clearButtonMode="while-editing"
-            style={[styles.search, compactSearch ? styles.searchFull : styles.searchFlex]}
+            style={[styles.search, styles.searchFlex]}
           />
-          <View style={compactSearch ? styles.searchTools : styles.searchToolsInline}>
-            {/* The grammar hint the placeholder gives up when compact — kept visible, since it is
-                how anyone discovers `hp>200` / `sort:value` exists at all. */}
-            {compactSearch ? (
-              <Text style={styles.searchHint} numberOfLines={1}>
-                {QUERY_HINT}
-              </Text>
-            ) : null}
+          <View style={styles.searchToolsInline}>
             {/* EN/JP bound. Rides with the search controls because it applies to the SEARCH, not
                 the results — flipping it re-runs every query/similarity call against the server. */}
             {languageToggleVisible ? <LanguageToggle theme={themeProp} /> : null}
@@ -2547,7 +2554,7 @@ export function CatalogBrowser({
           </View>
         ) : seriesId ? (
           <Breadcrumb styles={styles} crumbs={crumbs} />
-        ) : (
+        ) : taxBarOn ? null : (
           <Text style={styles.meta}>{series.length} series</Text>
         )}
         {/* A locked token was stripped from the query — say so, or the results read as if the
@@ -2647,9 +2654,11 @@ export function CatalogBrowser({
           </FacetBar>
         ) : null}
         {/* Series/set levels get Collection + Size without waiting for a drill-down or a search. */}
-        {!isCardLevel && !analyticsView && level !== 'coldidle' ? (
+        {taxBarOn ? (
           <TaxonomyBar
             styles={styles}
+            // The series count rides this bar at the top level (one row, not two: owner, 2026-10-25).
+            lead={!seriesId && !searching && !similarTo ? `${series.length} series` : undefined}
             onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
             ownedState={parsed.owned}
             size={cardSize}
@@ -3388,12 +3397,15 @@ function CollectionChip({
  */
 function TaxonomyBar({
   styles,
+  lead,
   onCycleOwned,
   ownedState,
   size,
   onPickSize,
 }: {
   styles: Styles;
+  /** A line of context at the start of the bar ("17 series"), so it does not take a row of its own. */
+  lead?: string;
   onCycleOwned?: () => void;
   ownedState?: boolean | null;
   size: CardSize;
@@ -3402,6 +3414,11 @@ function TaxonomyBar({
   return (
     <View style={styles.facetBar}>
       <View style={styles.facetHeader}>
+        {lead ? (
+          <Text style={styles.meta} numberOfLines={1}>
+            {lead}
+          </Text>
+        ) : null}
         {onCycleOwned ? (
           <CollectionChip styles={styles} onCycle={onCycleOwned} state={ownedState ?? null} />
         ) : null}
@@ -3732,7 +3749,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     similarThumb: { width: 34, aspectRatio: 63 / 88, borderRadius: 4, overflow: 'hidden', backgroundColor: t.imagePlaceholder },
     // facet bar
     facetBar: { gap: 6 },
-    facetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    facetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
     // Keeps Size pinned right on the taxonomy bar even when the Collection chip is absent
     // (a guest, or a host that supplied no owned ids), where space-between alone would left-align it.
     taxBarSpacer: { flex: 1 },
