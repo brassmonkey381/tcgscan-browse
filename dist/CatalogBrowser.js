@@ -1198,6 +1198,14 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [themeCountKey, themeAttempt]);
     // End-reached: grow the client window (local views) or fetch the next server page.
+    //
+    // CALLED FROM THREE PLACES (2026-10-26). The FlatList's own onEndReached fires on a scroll event
+    // when the end comes within reach, once per content length. That is not enough in a host where
+    // the viewport is already AT the end when the content grows (a wheel at the bottom of a sheet or
+    // a dock, a short list): the content length changes, no scroll event follows, and the list stalls
+    // with "217 results" over 90 tiles. So the same handler also runs from onContentSizeChange when
+    // the viewport is within a page of the new end, and from a "Load more" row at the foot, for a
+    // host where neither event reaches the list.
     const onEndReached = () => {
         if (serverPaged || !localView) {
             // A clamped page has nothing behind it to fetch: the meter row says what was withheld.
@@ -1218,6 +1226,29 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             void fetchThemes(themeHits, false);
         }
         setVisibleCount((n) => (n < data.length ? Math.min(n + PAGE_SIZE, data.length) : n));
+    };
+    const onEndReachedRef = useRef(onEndReached);
+    onEndReachedRef.current = onEndReached;
+    /** Is there anything past what the list shows: a client window still short of the data, a
+     *  lazy themed page, or a server page not yet asked for. Drives the Load more row. */
+    const moreToLoad = serverPaged || !localView
+        ? coldSearch && !serverClamped && serverCards.length < serverTotal
+        : visibleCount < data.length || (themeServerActive && !themeNeedsAll && themeMore);
+    const loadingMore = serverLoading || themeLoading;
+    // The viewport, from the list's own events, so a content-size change can tell whether the end
+    // is already in view. Offsets are in the list's coordinates whatever the host does around it.
+    const listOffset = useRef(0);
+    const listHeight = useRef(0);
+    const onListScroll = (e) => {
+        listOffset.current = e.nativeEvent.contentOffset.y;
+        listHeight.current = e.nativeEvent.layoutMeasurement.height;
+    };
+    const onListContentSizeChange = (_w, h) => {
+        const vh = listHeight.current;
+        if (vh <= 0)
+            return;
+        if (h - vh - listOffset.current < 0.8 * vh)
+            onEndReachedRef.current();
     };
     useEffect(() => {
         if (!isCardLevel)
@@ -1849,7 +1880,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 // Render a growing window of the (uncapped) results — reveal more as you scroll.
                 data: visibleData, keyExtractor: keyFor, renderItem: renderItem, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, getItemLayout: getItemLayout, 
                 // Hide the scrollbar indicator (scroll still works) — the grid reads cleaner without it.
-                showsVerticalScrollIndicator: false, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", onEndReachedThreshold: 0.8, onEndReached: onEndReached, initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: (searching && coldSearch && serverFailed && !serverLoading) ||
+                showsVerticalScrollIndicator: false, keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag", onEndReachedThreshold: 0.8, onEndReached: onEndReached, onScroll: onListScroll, scrollEventThrottle: 64, onLayout: (e) => {
+                    listHeight.current = e.nativeEvent.layout.height;
+                }, onContentSizeChange: onListContentSizeChange, initialNumToRender: cols * 6, maxToRenderPerBatch: cols * 4, windowSize: 9, removeClippedSubviews: true, ListEmptyComponent: (searching && coldSearch && serverFailed && !serverLoading) ||
                     (themeServerActive && themeFailed && !themePending) ? (_jsxs(View, { children: [_jsx(Text, { style: styles.empty, children: "Search is not responding right now." }), _jsx(Pressable, { onPress: themeServerActive ? () => setThemeAttempt((n) => n + 1) : () => fetchServerPage(0, true), hitSlop: 8, accessibilityRole: "button", accessibilityLabel: "Retry the search", children: _jsx(Text, { style: [styles.clear, { textAlign: 'center' }], children: "Retry" }) })] })) : (_jsx(Text, { style: styles.empty, children: searching
                         ? // A theme search is warm and server-backed at once, so `!warm` alone would say
                             // "No cards match" for as long as its fetch (or drain) is in flight.
@@ -1870,7 +1903,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     ? !catalog && coldSetLoading
                                         ? 'Loading set…'
                                         : 'No cards in this set.'
-                                    : 'Nothing here.' })), ListFooterComponent: _jsxs(View, { style: styles.footer, children: [searching && meter.clamped && meter.total > meter.shown ? (meter.degraded ? (_jsxs(View, { style: styles.meterRow, accessibilityRole: "text", children: [_jsxs(Text, { style: styles.meterCount, children: ["+", meter.total - meter.shown, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Full artwork search is temporarily unavailable, so this shows the top ", meter.shown, ". Try again in a moment."] })] })) : (_jsxs(Pressable, { style: styles.meterRow, accessibilityRole: "button", accessibilityLabel: `${meter.total - meter.shown} more matches, unlock every match`, onPress: () => onLockedFeature?.('themeSearch'), children: [_jsxs(Text, { style: styles.meterCount, children: ["+", meter.total - meter.shown, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Showing the top ", meter.shown, ". Unlock every match \u2192"] })] }))) : null, footer] }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
+                                    : 'Nothing here.' })), ListFooterComponent: _jsxs(View, { style: styles.footer, children: [searching && meter.clamped && meter.total > meter.shown ? (meter.degraded ? (_jsxs(View, { style: styles.meterRow, accessibilityRole: "text", children: [_jsxs(Text, { style: styles.meterCount, children: ["+", meter.total - meter.shown, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Full artwork search is temporarily unavailable, so this shows the top ", meter.shown, ". Try again in a moment."] })] })) : (_jsxs(Pressable, { style: styles.meterRow, accessibilityRole: "button", accessibilityLabel: `${meter.total - meter.shown} more matches, unlock every match`, onPress: () => onLockedFeature?.('themeSearch'), children: [_jsxs(Text, { style: styles.meterCount, children: ["+", meter.total - meter.shown, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Showing the top ", meter.shown, ". Unlock every match \u2192"] })] }))) : null, isCardLevel && moreToLoad && !meter.clamped ? (_jsx(Pressable, { onPress: () => onEndReachedRef.current(), disabled: loadingMore, style: styles.loadMore, accessibilityRole: "button", accessibilityLabel: "Load more results", testID: "browse-load-more", children: _jsx(Text, { style: styles.loadMoreText, children: loadingMore ? 'Loading more…' : `Load more${data.length > visibleData.length ? ` (${data.length - visibleData.length} ready)` : ''}` }) })) : null, footer] }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
                     setMultiOpen(false);
                     setMultiSelectMode(false);
                     clearSelection();
@@ -2314,6 +2347,8 @@ function makeStyles(t, taxTileHeight) {
         meterCount: { fontSize: 15, fontWeight: '700', color: t.text },
         meterHint: { fontSize: 12, color: t.subtext },
         footer: { paddingTop: 4 },
+        loadMore: { alignSelf: 'center', marginTop: 8, marginBottom: 4, paddingVertical: 9, paddingHorizontal: 18, borderRadius: 999, borderWidth: 1, borderColor: t.border },
+        loadMoreText: { fontSize: 13, fontWeight: '600', color: t.accent },
         // series/set grid tiles
         taxTile: {
             height: taxTileHeight,

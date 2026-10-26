@@ -1674,6 +1674,14 @@ export function CatalogBrowser({
   }, [themeCountKey, themeAttempt]);
 
   // End-reached: grow the client window (local views) or fetch the next server page.
+  //
+  // CALLED FROM THREE PLACES (2026-10-26). The FlatList's own onEndReached fires on a scroll event
+  // when the end comes within reach, once per content length. That is not enough in a host where
+  // the viewport is already AT the end when the content grows (a wheel at the bottom of a sheet or
+  // a dock, a short list): the content length changes, no scroll event follows, and the list stalls
+  // with "217 results" over 90 tiles. So the same handler also runs from onContentSizeChange when
+  // the viewport is within a page of the new end, and from a "Load more" row at the foot, for a
+  // host where neither event reaches the list.
   const onEndReached = () => {
     if (serverPaged || !localView) {
       // A clamped page has nothing behind it to fetch: the meter row says what was withheld.
@@ -1696,6 +1704,28 @@ export function CatalogBrowser({
       void fetchThemes(themeHits, false);
     }
     setVisibleCount((n) => (n < data.length ? Math.min(n + PAGE_SIZE, data.length) : n));
+  };
+  const onEndReachedRef = useRef(onEndReached);
+  onEndReachedRef.current = onEndReached;
+  /** Is there anything past what the list shows: a client window still short of the data, a
+   *  lazy themed page, or a server page not yet asked for. Drives the Load more row. */
+  const moreToLoad =
+    serverPaged || !localView
+      ? coldSearch && !serverClamped && serverCards.length < serverTotal
+      : visibleCount < data.length || (themeServerActive && !themeNeedsAll && themeMore);
+  const loadingMore = serverLoading || themeLoading;
+  // The viewport, from the list's own events, so a content-size change can tell whether the end
+  // is already in view. Offsets are in the list's coordinates whatever the host does around it.
+  const listOffset = useRef(0);
+  const listHeight = useRef(0);
+  const onListScroll = (e: { nativeEvent: { contentOffset: { y: number }; layoutMeasurement: { height: number } } }) => {
+    listOffset.current = e.nativeEvent.contentOffset.y;
+    listHeight.current = e.nativeEvent.layoutMeasurement.height;
+  };
+  const onListContentSizeChange = (_w: number, h: number) => {
+    const vh = listHeight.current;
+    if (vh <= 0) return;
+    if (h - vh - listOffset.current < 0.8 * vh) onEndReachedRef.current();
   };
   useEffect(() => {
     if (!isCardLevel) return;
@@ -2701,6 +2731,12 @@ export function CatalogBrowser({
         keyboardDismissMode="on-drag"
         onEndReachedThreshold={0.8}
         onEndReached={onEndReached}
+        onScroll={onListScroll}
+        scrollEventThrottle={64}
+        onLayout={(e) => {
+          listHeight.current = e.nativeEvent.layout.height;
+        }}
+        onContentSizeChange={onListContentSizeChange}
         initialNumToRender={cols * 6}
         maxToRenderPerBatch={cols * 4}
         windowSize={9}
@@ -2775,6 +2811,22 @@ export function CatalogBrowser({
                   <Text style={styles.meterHint}>Showing the top {meter.shown}. Unlock every match →</Text>
                 </Pressable>
               )
+            ) : null}
+            {/* LOAD MORE (2026-10-26): the way on when scrolling cannot reach the end-reached
+                event (see onEndReached). Hidden while a page is in flight and when there is
+                nothing more; the count says how far the list still has to go. */}
+            {isCardLevel && moreToLoad && !meter.clamped ? (
+              <Pressable
+                onPress={() => onEndReachedRef.current()}
+                disabled={loadingMore}
+                style={styles.loadMore}
+                accessibilityRole="button"
+                accessibilityLabel="Load more results"
+                testID="browse-load-more">
+                <Text style={styles.loadMoreText}>
+                  {loadingMore ? 'Loading more…' : `Load more${data.length > visibleData.length ? ` (${data.length - visibleData.length} ready)` : ''}`}
+                </Text>
+              </Pressable>
             ) : null}
             {footer}
           </View>
@@ -3849,6 +3901,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     meterCount: { fontSize: 15, fontWeight: '700', color: t.text },
     meterHint: { fontSize: 12, color: t.subtext },
     footer: { paddingTop: 4 },
+    loadMore: { alignSelf: 'center', marginTop: 8, marginBottom: 4, paddingVertical: 9, paddingHorizontal: 18, borderRadius: 999, borderWidth: 1, borderColor: t.border },
+    loadMoreText: { fontSize: 13, fontWeight: '600', color: t.accent },
     // series/set grid tiles
     taxTile: {
       height: taxTileHeight,
