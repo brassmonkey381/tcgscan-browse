@@ -271,9 +271,9 @@ function makeStyles(t: BrowseTheme) {
       borderWidth: 1,
       borderColor: t.border,
     },
-    toggleOn: { borderColor: t.accent },
+    toggleOn: { borderColor: t.link },
     toggleText: { fontSize: 12, fontWeight: '600', color: t.subtext },
-    toggleTextOn: { color: t.accent },
+    toggleTextOn: { color: t.link },
     chip: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -289,7 +289,7 @@ function makeStyles(t: BrowseTheme) {
     chipText: { fontSize: 12, fontWeight: '600', color: t.subtext, flexShrink: 1 },
     chipTextOn: { color: t.accentText },
     dot: { width: 8, height: 8, borderRadius: 4 },
-    clear: { fontSize: 13, fontWeight: '600', color: t.accent },
+    clear: { fontSize: 13, fontWeight: '600', color: t.link },
     // The compact dropdown's sheet: the browser's PickerMenu shape, in this bar's own colours.
     menuBackdrop: { flex: 1, backgroundColor: t.overlay, alignItems: 'center', justifyContent: 'center', padding: 20 },
     menuSheet: { width: '100%', maxWidth: 360, maxHeight: '80%', borderRadius: 14, backgroundColor: t.background, padding: 10, gap: 6 },
@@ -312,9 +312,9 @@ function makeStyles(t: BrowseTheme) {
     },
     menuItemOn: { backgroundColor: t.selected },
     menuItemText: { flex: 1, fontSize: 14, color: t.text },
-    menuItemTextOn: { color: t.accent, fontWeight: '600' },
+    menuItemTextOn: { color: t.link, fontWeight: '600' },
     menuCheck: { fontSize: 14, color: t.subtext, width: 18, textAlign: 'right' },
     menuDone: { alignSelf: 'center', marginTop: 8, paddingVertical: 8, paddingHorizontal: 24 },
-    menuDoneText: { fontSize: 14, fontWeight: '700', color: t.accent },
+    menuDoneText: { fontSize: 14, fontWeight: '700', color: t.link },
   });
 }

@@ -3671,8 +3671,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     tabText: { fontSize: 13, fontWeight: '700', color: t.subtext },
     tabTextOn: { color: t.text },
     // analyticsLocked spotlight: accent ring + accent label on the inactive Analytics tab.
-    tabSpotlight: { borderWidth: 1, borderColor: t.accent },
-    tabTextSpotlight: { color: t.accent },
+    tabSpotlight: { borderWidth: 1, borderColor: t.link },
+    tabTextSpotlight: { color: t.link },
     controls: { gap: 6, paddingBottom: 8 },
     sectionLabel: {
       fontSize: 12,
@@ -3718,7 +3718,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     progressFill: { height: '100%', borderRadius: 2, backgroundColor: t.accent },
     pocketSimilar: {
       borderWidth: 1,
-      borderColor: t.accent,
+      borderColor: t.link,
       backgroundColor: t.selected,
       borderRadius: 8,
       paddingHorizontal: 10,
@@ -3752,8 +3752,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     // so often — light coming off the button rather than the button changing size.
     glowWrap: { position: 'relative' },
     glowHalo: { position: 'absolute', top: -4, right: -4, bottom: -4, left: -4, borderRadius: 13, backgroundColor: t.accent },
-    newArrow: { fontSize: 18, fontWeight: '900', color: t.accent, lineHeight: 20 },
-    newText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.5, color: t.accent },
+    newArrow: { fontSize: 18, fontWeight: '900', color: t.link, lineHeight: 20 },
+    newText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.5, color: t.link },
     // search manual panel
     manual: {
       borderWidth: 1,
@@ -3794,7 +3794,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     manualDesc: { flex: 1, fontSize: 12, color: t.subtext, lineHeight: 16 },
     metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
     meta: { fontSize: 12, color: t.subtext, flexShrink: 1 },
-    clear: { fontSize: 13, fontWeight: '600', color: t.accent },
+    clear: { fontSize: 13, fontWeight: '600', color: t.link },
     // "Similar to" source-card strip (the cards the similarity ran on, clickable)
     similarBar: { gap: 6 },
     similarThumbs: { gap: 6, paddingVertical: 2 },
@@ -3812,9 +3812,9 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       borderWidth: 1,
       borderColor: t.border,
     },
-    facetToggleOn: { borderColor: t.accent },
+    facetToggleOn: { borderColor: t.link },
     facetToggleText: { fontSize: 12, fontWeight: '600', color: t.subtext },
-    facetToggleTextOn: { color: t.accent },
+    facetToggleTextOn: { color: t.link },
     // The control strip: wraps, with a spacer that pushes Sort + size to the right edge on a wide
     // screen and onto their own line on a narrow one.
     controlsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
@@ -3836,8 +3836,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     menuItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 9, paddingHorizontal: 10, borderRadius: 9 },
     menuItemOn: { backgroundColor: t.imagePlaceholder },
     menuItemText: { fontSize: 13, color: t.text, flexShrink: 1 },
-    menuItemTextOn: { color: t.accent, fontWeight: '700' },
-    menuCheck: { fontSize: 13, fontWeight: '800', color: t.accent, width: 18, textAlign: 'right' },
+    menuItemTextOn: { color: t.link, fontWeight: '700' },
+    menuCheck: { fontSize: 13, fontWeight: '800', color: t.link, width: 18, textAlign: 'right' },
     menuDone: { alignItems: 'center', paddingVertical: 8, borderRadius: 9, backgroundColor: t.accent },
     menuDoneText: { fontSize: 13, fontWeight: '700', color: t.accentText },
     // The results row's right end: the on-device dot beside Clear.
@@ -3869,9 +3869,9 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       paddingVertical: 4,
       borderRadius: 999,
       borderWidth: 1,
-      borderColor: t.accent,
+      borderColor: t.link,
     },
-    sortDirText: { fontSize: 14, fontWeight: '800', color: t.accent },
+    sortDirText: { fontSize: 14, fontWeight: '800', color: t.link },
     // inline card-size control (S/M/L) pinned at the end of the sort row
     sizeChips: { flexDirection: 'row', gap: 4, marginLeft: 8 },
     sizeChip: {
@@ -3902,7 +3902,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     meterHint: { fontSize: 12, color: t.subtext },
     footer: { paddingTop: 4 },
     loadMore: { alignSelf: 'center', marginTop: 8, marginBottom: 4, paddingVertical: 9, paddingHorizontal: 18, borderRadius: 999, borderWidth: 1, borderColor: t.border },
-    loadMoreText: { fontSize: 13, fontWeight: '600', color: t.accent },
+    loadMoreText: { fontSize: 13, fontWeight: '600', color: t.link },
     // series/set grid tiles
     taxTile: {
       height: taxTileHeight,
@@ -3974,7 +3974,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     cardTile: { marginBottom: ROW_GAP },
     cardTileSelected: { backgroundColor: t.selected, borderRadius: 6 },
     // Keyboard-focus ring (web arrow keys) — outline, not layout: row geometry stays fixed.
-    cardTileFocused: { borderRadius: 6, borderWidth: 2, borderColor: t.accent },
+    cardTileFocused: { borderRadius: 6, borderWidth: 2, borderColor: t.link },
     cardImageWrap: {
       width: '100%',
       aspectRatio: 63 / 88,
@@ -4000,9 +4000,9 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     },
     cardQuickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
     cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
-    cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.accent, textAlign: 'center' },
+    cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.link, textAlign: 'center' },
     // multi-select: highlighted tile + a check badge, top-left of the thumb
-    cardTileMulti: { backgroundColor: t.selected, borderRadius: 6, borderWidth: 2, borderColor: t.accent },
+    cardTileMulti: { backgroundColor: t.selected, borderRadius: 6, borderWidth: 2, borderColor: t.link },
     cardCheck: {
       position: 'absolute',
       top: 3,
@@ -4091,7 +4091,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     bcItem: { flexDirection: 'row', alignItems: 'center' },
     bcSep: { fontSize: 13, color: t.faint, marginHorizontal: 6 },
     bcCrumb: { fontSize: 13 },
-    bcLink: { color: t.accent, fontWeight: '600' },
+    bcLink: { color: t.link, fontWeight: '600' },
     bcCurrent: { color: t.subtext },
   });
 }

@@ -952,7 +952,7 @@ function makeStyles(t: BrowseTheme) {
     },
     scardName: { fontSize: 10, lineHeight: 12, color: t.text, textAlign: 'center' },
     scardSet: { fontSize: 8, lineHeight: 10, color: t.subtext, textAlign: 'center' },
-    scardMeta: { fontSize: 9, lineHeight: 11, fontWeight: '700', color: t.accent, textAlign: 'center' },
+    scardMeta: { fontSize: 9, lineHeight: 11, fontWeight: '700', color: t.link, textAlign: 'center' },
 
     // "NEW SET / UPCOMING" filler between each set's run in the Cards carousel
     cardHeader: {
@@ -974,7 +974,7 @@ function makeStyles(t: BrowseTheme) {
       color: t.subtext,
       textTransform: 'uppercase' as const,
     },
-    cardHeaderKickerUpcoming: { color: t.accent },
+    cardHeaderKickerUpcoming: { color: t.link },
     cardHeaderName: { fontSize: 11, fontWeight: '800', color: t.text, textAlign: 'center', lineHeight: 14 },
     cardHeaderDate: { fontSize: 9, color: t.subtext, fontVariant: ['tabular-nums'] },
     cardHeaderLogo: { width: '100%', height: 40, marginTop: 2 },

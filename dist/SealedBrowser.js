@@ -220,7 +220,7 @@ function makeStyles(t) {
         },
         name: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
         // The one coloured thing on a tile, as on the card shelf — this is what the eye lands on.
-        price: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.accent, textAlign: 'center' },
+        price: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.link, textAlign: 'center' },
         empty: { alignItems: 'center', justifyContent: 'center', padding: 24 },
         emptyText: { color: t.subtext, fontSize: 13, lineHeight: 18, textAlign: 'center' },
     });

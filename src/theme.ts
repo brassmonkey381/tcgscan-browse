@@ -17,11 +17,15 @@ export interface BrowseTheme {
   subtext: string;
   /** Faint text (placeholders, breadcrumb separators, disabled). */
   faint: string;
-  /** Brand accent — active chips, primary buttons, chart line. */
+  /**
+   * Brand accent as a FILL: active chips, primary buttons, the progress bar. Never text, an outline
+   * or a line: a host's accent can be a fill-only colour (BiBo's yellow is 1.5:1 on paper), so
+   * accent-coloured ink uses `link`.
+   */
   accent: string;
   /** Text/inner drawn on an `accent` fill. */
   accentText: string;
-  /** Link-style accent text on a neutral background. */
+  /** Accent as INK on a neutral background: links, active labels, outlines, the chart line. */
   link: string;
   /** Sheet / list background. */
   background: string;

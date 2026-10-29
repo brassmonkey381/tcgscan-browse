@@ -388,8 +388,8 @@ export function ValueOverTimeChart({
           <Svg width={width} height={H}>
             <Defs>
               <LinearGradient id="votfill" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={theme.accent} stopOpacity={0.22} />
-                <Stop offset="1" stopColor={theme.accent} stopOpacity={0} />
+                <Stop offset="0" stopColor={theme.link} stopOpacity={0.22} />
+                <Stop offset="1" stopColor={theme.link} stopOpacity={0} />
               </LinearGradient>
             </Defs>
             {chart.ticks.map((t, i) => (
@@ -398,7 +398,7 @@ export function ValueOverTimeChart({
               </SvgText>
             ))}
             <Path d={chart.area} fill="url(#votfill)" />
-            <Path d={chart.d} stroke={theme.accent} strokeWidth={2} fill="none" strokeLinejoin="round" />
+            <Path d={chart.d} stroke={theme.link} strokeWidth={2} fill="none" strokeLinejoin="round" />
           </Svg>
         ) : (
           <View style={[styles.chartState, { height: H }]}>
@@ -432,7 +432,7 @@ function makeStyles(t: BrowseTheme) {
     topCard: { borderRadius: 12, padding: 12, gap: 1, backgroundColor: t.panel, borderWidth: 1, borderColor: t.border },
     topLabel: { fontSize: 11, fontWeight: '600', color: t.subtext },
     topName: { fontSize: 15, fontWeight: '700', color: t.text },
-    topVal: { fontSize: 16, fontWeight: '800', color: t.accent },
+    topVal: { fontSize: 16, fontWeight: '800', color: t.link },
     sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
     sectionTitle: { fontSize: 15, fontWeight: '700', color: t.text },
     kRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
