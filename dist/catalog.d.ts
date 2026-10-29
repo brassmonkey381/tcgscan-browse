@@ -54,6 +54,12 @@ export interface CatalogCard {
      *  full_art_detect.settle); a rule-decided card (Double Rare, "(Full Art)" in the name, IR/SIR,
      *  Common/Uncommon) keeps its rule. Read `card.fullArt === true`. */
     fullArt?: boolean;
+    /** The card's ART FRAME CLASS (`cards_en.frame`), e.g. `pk-sv-pokemon`: which printed layout it
+     *  has, so a host can cut the art window. The geometry is not here: `frames.json` beside the
+     *  catalog maps each class to {kind, orientation, x0, y0, x1, y1} in card fractions
+     *  (tcgscan-data docs/ART-FRAMES). Sparse: absent when the card has no class yet, and a host
+     *  then falls back to its own window. */
+    frame?: string;
     /** Printing language: 'en' (English) | 'ja' (Japanese). Defaults 'en' when a
      *  legacy/EN-only source omits it. Drives the language badge + facet. */
     language: CardLanguage;
@@ -167,6 +173,7 @@ export interface RawCard {
     scene_tags?: string[];
     full_art_kind?: string;
     full_art?: boolean;
+    frame?: string;
 }
 export interface RawSet {
     id: number | string;

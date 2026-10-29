@@ -161,6 +161,8 @@ class LocalCatalog {
                 fullArtKind: raw_c.full_art_kind ?? '',
                 // Sparse like the captions: set only when true, so absence stays visible.
                 ...(raw_c.full_art === true ? { fullArt: true } : {}),
+                // Sparse too: the publisher omits `frame` on a card with no class.
+                ...(typeof raw_c.frame === 'string' && raw_c.frame ? { frame: raw_c.frame } : {}),
             };
             this.cards.set(card.id, card);
             this.all.push(card);

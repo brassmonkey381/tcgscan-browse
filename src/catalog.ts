@@ -77,6 +77,12 @@ export interface CatalogCard {
    *  full_art_detect.settle); a rule-decided card (Double Rare, "(Full Art)" in the name, IR/SIR,
    *  Common/Uncommon) keeps its rule. Read `card.fullArt === true`. */
   fullArt?: boolean;
+  /** The card's ART FRAME CLASS (`cards_en.frame`), e.g. `pk-sv-pokemon`: which printed layout it
+   *  has, so a host can cut the art window. The geometry is not here: `frames.json` beside the
+   *  catalog maps each class to {kind, orientation, x0, y0, x1, y1} in card fractions
+   *  (tcgscan-data docs/ART-FRAMES). Sparse: absent when the card has no class yet, and a host
+   *  then falls back to its own window. */
+  frame?: string;
   /** Printing language: 'en' (English) | 'ja' (Japanese). Defaults 'en' when a
    *  legacy/EN-only source omits it. Drives the language badge + facet. */
   language: CardLanguage;
@@ -203,6 +209,7 @@ export interface RawCard {
   scene_tags?: string[]; // scene tags from the same pass (sparse, same cards)
   full_art_kind?: string; // how much of the card is the picture (see CatalogCard.fullArtKind)
   full_art?: boolean; // cards_en.full_art; the bundle ships only `true` (see CatalogCard.fullArt)
+  frame?: string; // cards_en.frame, the art frame class id; absent when unclassed (see CatalogCard.frame)
 }
 export interface RawSet {
   id: number | string;
@@ -380,6 +387,8 @@ class LocalCatalog implements Catalog {
         fullArtKind: raw_c.full_art_kind ?? '',
         // Sparse like the captions: set only when true, so absence stays visible.
         ...(raw_c.full_art === true ? { fullArt: true } : {}),
+        // Sparse too: the publisher omits `frame` on a card with no class.
+        ...(typeof raw_c.frame === 'string' && raw_c.frame ? { frame: raw_c.frame } : {}),
       };
       this.cards.set(card.id, card);
       this.all.push(card);
