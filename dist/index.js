@@ -8,7 +8,7 @@
  * inject app-specific actions (place/portfolio-add/find-similar) via props.
  */
 export { browseGeneration, useBrowseGeneration } from './generation';
-export { configureBrowse, resetBrowseData, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, cdnImageUrl, productUrl, setShopUrl, setColorUrl, affiliateUrl, ebaySearchUrl, ebayCardSearchUrl, } from './config';
+export { configureBrowse, resetBrowseData, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, cdnImageUrl, productUrl, setShopUrl, setColorUrl, affiliateUrl, affiliateConfigured, reportOutboundClick, ebaySearchUrl, ebayCardSearchUrl, } from './config';
 export { effectiveLanguages, getBrowseLanguages, hydrateBrowseLanguages, languageLabel, languageShortLabel, LANGUAGE_ORDER, normalizeLanguages, setBrowseLanguages, subscribeBrowseLanguages, useBrowseLanguages, } from './language';
 export { LanguageToggle } from './LanguageToggle';
 export { applyFeatureLocks, FEATURE_LABELS, isLocked, lockedQueryNotice, } from './features';

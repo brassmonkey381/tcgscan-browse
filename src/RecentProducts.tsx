@@ -34,7 +34,16 @@ import { CardActionModal } from './CardActionModal';
 import { CARD_SIZE_SCALE } from './cardSize';
 import { formatSetDate, type CardLanguage, type Catalog, type CatalogCard } from './catalog';
 import type { CardSize } from './state';
-import { cardThumbUrl, ebayCardSearchUrl, ebaySearchUrl, productUrl, setShopUrl } from './config';
+import {
+  cardThumbUrl,
+  ebayCardSearchUrl,
+  ebaySearchUrl,
+  productUrl,
+  reportOutboundClick,
+  setShopUrl,
+  type OutboundItem,
+  type OutboundNetwork,
+} from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
 import {
@@ -384,23 +393,38 @@ export function RecentProducts({
 
   const [actionCard, setActionCard] = useState<CatalogCard | null>(null);
 
-  const open = (url: string) => {
-    if (url) Linking.openURL(url).catch(() => {});
+  // Every outbound store link goes through here, and the host hears about it (configureBrowse
+  // onOutboundClick) BEFORE the URL opens: afterwards the app may already be in the background.
+  const open = (url: string, network: OutboundNetwork, item: OutboundItem, id: string) => {
+    if (!url) return;
+    reportOutboundClick({ network, item, id, url });
+    Linking.openURL(url).catch(() => {});
   };
 
   // Both affiliate stores side by side (TCGPlayer for market/NM price, eBay for singles + deals)
   // shared by set + card tiles. Each is ONE link → ONE destination the user picks: never spawn two
   // tabs from one tap (browsers popup-block the second). The eBay link is '' (hidden) when no EPN
   // campaign id is configured (ebaySearchUrl), so unconfigured builds show TCGPlayer only.
-  const storeLinks = (tcgUrl: string, ebayUrl: string, centered = false): ReactNode => (
+  const storeLinks = (
+    tcgUrl: string,
+    ebayUrl: string,
+    about: { item: OutboundItem; id: string },
+    centered = false,
+  ): ReactNode => (
     <View style={[styles.storeRow, centered && styles.storeRowCenter]}>
       {tcgUrl ? (
-        <Pressable onPress={() => open(tcgUrl)} hitSlop={4} accessibilityLabel="Shop on TCGPlayer">
+        <Pressable
+          onPress={() => open(tcgUrl, 'tcgplayer', about.item, about.id)}
+          hitSlop={4}
+          accessibilityLabel="Shop on TCGPlayer">
           <Text style={styles.tileLink}>TCGPlayer ↗</Text>
         </Pressable>
       ) : null}
       {ebayUrl ? (
-        <Pressable onPress={() => open(ebayUrl)} hitSlop={4} accessibilityLabel="Search on eBay">
+        <Pressable
+          onPress={() => open(ebayUrl, 'ebay', about.item, about.id)}
+          hitSlop={4}
+          accessibilityLabel="Search on eBay">
           <Text style={styles.tileLink}>eBay ↗</Text>
         </Pressable>
       ) : null}
@@ -449,7 +473,7 @@ export function RecentProducts({
       label: 'View on TCGPlayer ↗',
       onPress: (c) => {
         setActionCard(null);
-        open(productUrl(c.id));
+        open(productUrl(c.id), 'tcgplayer', 'card', c.id);
       },
     });
     // Find on eBay — only when an EPN campaign is configured (ebayCardSearchUrl returns '').
@@ -459,7 +483,7 @@ export function RecentProducts({
         label: 'Find on eBay ↗',
         onPress: (c) => {
           setActionCard(null);
-          open(ebayCardSearchUrl(c));
+          open(ebayCardSearchUrl(c), 'ebay', 'card', c.id);
         },
       });
     }
@@ -520,7 +544,7 @@ export function RecentProducts({
               .filter(Boolean)
               .join(' · ')}
           </Text>
-          {storeLinks(t.shopUrl, ebaySearchUrl(t.set.name))}
+          {storeLinks(t.shopUrl, ebaySearchUrl(t.set.name), { item: 'set', id: t.set.id })}
         </View>
         {t.set.coverUri && tileWidth >= NARROW_SET_TILE_W ? (
           // The set's official logo fills the footer's free corner. On a narrow tile there is no
@@ -552,7 +576,7 @@ export function RecentProducts({
           {card.setName}
         </Text>
       ) : null}
-      {storeLinks(productUrl(card.id), ebayCardSearchUrl(card), true)}
+      {storeLinks(productUrl(card.id), ebayCardSearchUrl(card), { item: 'card', id: card.id }, true)}
     </Pressable>
   );
 

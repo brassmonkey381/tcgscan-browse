@@ -67,6 +67,26 @@ export interface ThemedSearchProxy {
         game?: string;
     }) => Promise<string | null>;
 }
+/** The store an outbound link opens. One vocabulary for both apps and the kit. */
+export type OutboundNetwork = 'tcgplayer' | 'ebay';
+/** What the link is about: a single card, a sealed product, or a whole set's shop page. */
+export type OutboundItem = 'card' | 'sealed' | 'set';
+/**
+ * One outbound store click, reported to the host IMMEDIATELY BEFORE the kit opens the URL (the
+ * app may be backgrounded, or a web tab gone, by the time the browser returns). `id` is the
+ * catalog id (card id, sealed product id, set id) and never a name or a typed query. `affiliate`
+ * is false when this build carries no tracking for that network (no deep-link template, no
+ * campaign id), so a click we are not paid for is still counted as a click. `url` is for the
+ * host's debugging and must not travel into an analytics prop: it carries the query and the
+ * tracking tail.
+ */
+export interface OutboundClick {
+    network: OutboundNetwork;
+    item: OutboundItem;
+    id: string;
+    affiliate: boolean;
+    url: string;
+}
 export interface BrowseConfig {
     /**
      * Base URL for catalog.json / prices-summary.json / alternates.json.
@@ -117,6 +137,13 @@ export interface BrowseConfig {
     ebayCampaignId?: string;
     /** EPN customid (sub-id) stamped on eBay links for per-surface attribution, e.g. 'michi-recent'. */
     ebayCustomId?: string;
+    /**
+     * Called immediately before the kit opens an outbound store link (RecentProducts' TCGPlayer and
+     * eBay links, card and set). Fire-and-forget: the kit swallows anything it throws and opens the
+     * URL regardless. The kit does not know which host surface it is mounted on, so the host adds
+     * that when it records the click (see OutboundClick). Omit and nothing is reported.
+     */
+    onOutboundClick?: (click: OutboundClick) => void;
     /**
      * Persistence for the shared EN/JP printing-language preference. Omit and the choice is
      * session-only (still shared across every surface, just not remembered).
@@ -205,6 +232,18 @@ export declare function resolveImageUrl(path: string): string;
  * destination; a template without `{url}` gets the encoded destination appended (bare `?u=` style).
  */
 export declare function affiliateUrl(destination: string): string;
+/**
+ * Whether outbound links to `network` carry our tracking in THIS build: a TCGPlayer deep-link
+ * template, or an eBay campaign id. The apps stamp this on every click they record, so a build
+ * that shipped without the template shows up as untracked clicks rather than as no clicks.
+ */
+export declare function affiliateConfigured(network: OutboundNetwork): boolean;
+/**
+ * Tell the host an outbound store link is about to open (configureBrowse `onOutboundClick`).
+ * Call it BEFORE opening the URL. Never throws and never blocks the open: a reporting failure
+ * must not cost the user the link.
+ */
+export declare function reportOutboundClick(click: Omit<OutboundClick, 'affiliate'>): void;
 /**
  * TCGPlayer product page for a card — a pure function of its id (verified 100% of
  * the catalog). Stored per-card in the old fat catalog; derive it instead. Wrapped in the

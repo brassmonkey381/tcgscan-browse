@@ -29,6 +29,7 @@ const EBAY_POKEMON_TCG_CATEGORY = '2536';
 const POKEMON_LINE = { tcgplayerCategory: 'pokemon', ebayCategory: EBAY_POKEMON_TCG_CATEGORY };
 let productLine = POKEMON_LINE;
 let catalogSource = null;
+let onOutboundClick = null;
 let languageStore = null;
 let savedSearchStore = null;
 let themedSearch = null;
@@ -72,6 +73,7 @@ export function configureBrowse(next) {
     config.affiliateDeeplink = next.affiliateDeeplink ?? '';
     config.ebayCampaignId = next.ebayCampaignId ?? '';
     config.ebayCustomId = next.ebayCustomId ?? '';
+    onOutboundClick = next.onOutboundClick ?? null;
     catalogSource = next.catalogSource ?? null;
     languageStore = next.languageStore ?? null;
     savedSearchStore = next.savedSearchStore ?? null;
@@ -167,6 +169,29 @@ export function affiliateUrl(destination) {
         return destination;
     const enc = encodeURIComponent(destination);
     return t.includes('{url}') ? t.replace('{url}', enc) : `${t}${enc}`;
+}
+/**
+ * Whether outbound links to `network` carry our tracking in THIS build: a TCGPlayer deep-link
+ * template, or an eBay campaign id. The apps stamp this on every click they record, so a build
+ * that shipped without the template shows up as untracked clicks rather than as no clicks.
+ */
+export function affiliateConfigured(network) {
+    return network === 'tcgplayer' ? !!config.affiliateDeeplink : !!config.ebayCampaignId;
+}
+/**
+ * Tell the host an outbound store link is about to open (configureBrowse `onOutboundClick`).
+ * Call it BEFORE opening the URL. Never throws and never blocks the open: a reporting failure
+ * must not cost the user the link.
+ */
+export function reportOutboundClick(click) {
+    if (!onOutboundClick || !click.url)
+        return;
+    try {
+        onOutboundClick({ ...click, affiliate: affiliateConfigured(click.network) });
+    }
+    catch {
+        // swallow: analytics never costs the user the link
+    }
 }
 /**
  * TCGPlayer product page for a card — a pure function of its id (verified 100% of

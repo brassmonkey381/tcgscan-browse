@@ -26,7 +26,7 @@ import { Linking, Pressable, StyleSheet, Text, View, } from 'react-native';
 import { CardActionModal } from './CardActionModal';
 import { CARD_SIZE_SCALE } from './cardSize';
 import { formatSetDate } from './catalog';
-import { cardThumbUrl, ebayCardSearchUrl, ebaySearchUrl, productUrl, setShopUrl } from './config';
+import { cardThumbUrl, ebayCardSearchUrl, ebaySearchUrl, productUrl, reportOutboundClick, setShopUrl, } from './config';
 import { useImageManifest } from './images';
 import { usePriceSummary } from './prices';
 import { releaseTag, todayISO, RELEASE_TAG_FONT_SIZE, RELEASE_TAG_LINE_HEIGHT, } from './releaseTag';
@@ -247,15 +247,19 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     const cardsPerView = width > 0 ? Math.max(2, Math.min(9, Math.floor(width / cardTarget))) : 4;
     const setsPerView = width > 0 ? Math.max(2, Math.min(SETS_PER_VIEW_MAX, Math.floor((width + TILE_GAP) / (SET_TILE_TARGET_W + TILE_GAP)))) : SETS_PER_VIEW_MAX;
     const [actionCard, setActionCard] = useState(null);
-    const open = (url) => {
-        if (url)
-            Linking.openURL(url).catch(() => { });
+    // Every outbound store link goes through here, and the host hears about it (configureBrowse
+    // onOutboundClick) BEFORE the URL opens: afterwards the app may already be in the background.
+    const open = (url, network, item, id) => {
+        if (!url)
+            return;
+        reportOutboundClick({ network, item, id, url });
+        Linking.openURL(url).catch(() => { });
     };
     // Both affiliate stores side by side (TCGPlayer for market/NM price, eBay for singles + deals)
     // shared by set + card tiles. Each is ONE link → ONE destination the user picks: never spawn two
     // tabs from one tap (browsers popup-block the second). The eBay link is '' (hidden) when no EPN
     // campaign id is configured (ebaySearchUrl), so unconfigured builds show TCGPlayer only.
-    const storeLinks = (tcgUrl, ebayUrl, centered = false) => (_jsxs(View, { style: [styles.storeRow, centered && styles.storeRowCenter], children: [tcgUrl ? (_jsx(Pressable, { onPress: () => open(tcgUrl), hitSlop: 4, accessibilityLabel: "Shop on TCGPlayer", children: _jsx(Text, { style: styles.tileLink, children: "TCGPlayer \u2197" }) })) : null, ebayUrl ? (_jsx(Pressable, { onPress: () => open(ebayUrl), hitSlop: 4, accessibilityLabel: "Search on eBay", children: _jsx(Text, { style: styles.tileLink, children: "eBay \u2197" }) })) : null] }));
+    const storeLinks = (tcgUrl, ebayUrl, about, centered = false) => (_jsxs(View, { style: [styles.storeRow, centered && styles.storeRowCenter], children: [tcgUrl ? (_jsx(Pressable, { onPress: () => open(tcgUrl, 'tcgplayer', about.item, about.id), hitSlop: 4, accessibilityLabel: "Shop on TCGPlayer", children: _jsx(Text, { style: styles.tileLink, children: "TCGPlayer \u2197" }) })) : null, ebayUrl ? (_jsx(Pressable, { onPress: () => open(ebayUrl, 'ebay', about.item, about.id), hitSlop: 4, accessibilityLabel: "Search on eBay", children: _jsx(Text, { style: styles.tileLink, children: "eBay \u2197" }) })) : null] }));
     // The modal's actions for a card: add-to-binder (host chooser) + drive-the-other-browser
     // intents (when wired) + TCGPlayer.
     const actionsFor = (card) => {
@@ -298,7 +302,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
             label: 'View on TCGPlayer ↗',
             onPress: (c) => {
                 setActionCard(null);
-                open(productUrl(c.id));
+                open(productUrl(c.id), 'tcgplayer', 'card', c.id);
             },
         });
         // Find on eBay — only when an EPN campaign is configured (ebayCardSearchUrl returns '').
@@ -308,7 +312,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
                 label: 'Find on eBay ↗',
                 onPress: (c) => {
                     setActionCard(null);
-                    open(ebayCardSearchUrl(c));
+                    open(ebayCardSearchUrl(c), 'ebay', 'card', c.id);
                 },
             });
         }
@@ -324,8 +328,8 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
                         return (_jsx(View, { style: [styles.badge, tag.kind === 'countdown' && styles.badgeCountdown], pointerEvents: "none", children: _jsx(Text, { style: [styles.badgeText, tileWidth < NARROW_SET_TILE_W && styles.badgeTextNarrow], children: tag.label }) }));
                     })()] }), _jsxs(View, { style: styles.tileFooter, children: [_jsxs(View, { style: styles.tileFooterLeft, children: [_jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
                                     .filter(Boolean)
-                                    .join(' · ') }), storeLinks(t.shopUrl, ebaySearchUrl(t.set.name))] }), t.set.coverUri && tileWidth >= NARROW_SET_TILE_W ? (_jsx(Image, { source: { uri: t.set.coverUri }, style: styles.tileLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `logo-${t.set.id}`, transition: 100 })) : null] })] }));
-    const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions${card.releaseDate > today ? ' (upcoming)' : ''}`, children: [_jsx(CardThumb, { card: card, styles: styles, upcoming: !!card.releaseDate && card.releaseDate > today }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, storeLinks(productUrl(card.id), ebayCardSearchUrl(card), true)] }));
+                                    .join(' · ') }), storeLinks(t.shopUrl, ebaySearchUrl(t.set.name), { item: 'set', id: t.set.id })] }), t.set.coverUri && tileWidth >= NARROW_SET_TILE_W ? (_jsx(Image, { source: { uri: t.set.coverUri }, style: styles.tileLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `logo-${t.set.id}`, transition: 100 })) : null] })] }));
+    const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions${card.releaseDate > today ? ' (upcoming)' : ''}`, children: [_jsx(CardThumb, { card: card, styles: styles, upcoming: !!card.releaseDate && card.releaseDate > today }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, storeLinks(productUrl(card.id), ebayCardSearchUrl(card), { item: 'card', id: card.id }, true)] }));
     // The "NEW SET / UPCOMING" filler that heads each set's run in the Cards carousel — the set's
     // logo + name + date, styled like the Sealed carousel's set headers. Tapping opens the set.
     const renderCardHeader = (set, upcoming) => (_jsxs(Pressable, { style: styles.cardHeader, onPress: onOpenSet ? () => onOpenSet(set) : undefined, accessibilityRole: onOpenSet ? 'button' : undefined, accessibilityLabel: onOpenSet ? `Browse ${set.name}${upcoming ? ' (upcoming)' : ''}` : undefined, children: [_jsx(Text, { style: [styles.cardHeaderKicker, upcoming && styles.cardHeaderKickerUpcoming], children: releaseTag(set.releaseDate)?.label ?? 'NEW SET' }), _jsx(Text, { style: styles.cardHeaderName, numberOfLines: 3, children: set.name }), set.releaseDate ? _jsx(Text, { style: styles.cardHeaderDate, children: formatSetDate(set.releaseDate) }) : null, set.coverUri ? (_jsx(Image, { source: { uri: set.coverUri }, style: styles.cardHeaderLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `ch-logo-${set.id}`, transition: 100 })) : null] }));
