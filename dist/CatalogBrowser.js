@@ -1795,7 +1795,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
       search box itself never folds, so a new search is always one tap away. Wide screens are
       untouched: they have the room, and the chips are the fastest way to use it.
     */
-    const foldable = compactBar && searching && isCardLevel && !analyticsView && filteredCards.length > 0;
+    // visibleData, not filteredCards: a cold catalogue's server results and the theme meter's hits
+    // never pass through filteredCards, and a phone on its first visit is exactly the cold case.
+    const foldable = compactBar && searching && isCardLevel && !analyticsView && visibleData.length > 0;
     const folded = foldable && !toolsOpen;
     const foldSummary = folded
         ? [
