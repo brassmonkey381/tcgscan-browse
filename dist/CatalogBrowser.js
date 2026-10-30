@@ -1410,8 +1410,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const similarLocked = () => {
         if (!isLocked(lockedFeatures, 'findSimilar'))
             return false;
-        onLockedFeature?.('findSimilar');
-        return true;
+        // `true` from the host: a sample was spent on this tap, so this one search runs.
+        return onLockedFeature?.('findSimilar') !== true;
     };
     /** "Find similar" — embedding search on the data server, results shown in the grid. */
     const openSimilar = (card) => {

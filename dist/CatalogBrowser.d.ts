@@ -142,7 +142,13 @@ interface CatalogBrowserProps {
      * Fired when the user reaches for a locked feature — the host opens its own upsell. Without it
      * a locked control is simply inert (still visibly locked, just not clickable-into-anything).
      */
-    onLockedFeature?: (feature: BrowseFeature) => void;
+    /**
+     * Return `true` to say the host handled the lock and the action should PROCEED this once (a
+     * per-use free sample the host just spent on it). Anything else refuses, as before. Honoured by
+     * the one-shot similarity search; the other locked controls stay refused and the host lifts the
+     * lock through `lockedFeatures`.
+     */
+    onLockedFeature?: (feature: BrowseFeature) => void | boolean;
     /**
      * Card-tile size (S/M/L) — the app's GLOBAL default for this browser. The in-toolbar Size toggle
      * still overrides it locally; when the app changes this prop (e.g. a home-screen size control),
