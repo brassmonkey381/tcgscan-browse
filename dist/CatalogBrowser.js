@@ -1797,7 +1797,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     */
     // visibleData, not filteredCards: a cold catalogue's server results and the theme meter's hits
     // never pass through filteredCards, and a phone on its first visit is exactly the cold case.
-    const foldable = compactBar && searching && isCardLevel && !analyticsView && visibleData.length > 0;
+    // Any card list, not only a search: a set opened from the series drill-down stacked the same
+    // rows over its first card (owner's phone screenshots, 2026-10-29).
+    const foldable = compactBar && isCardLevel && !analyticsView && visibleData.length > 0;
     const folded = foldable && !toolsOpen;
     const foldSummary = folded
         ? [
@@ -1880,7 +1882,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     const src = findCard(sid);
                                     const uri = cardThumbUrl(sid, 245);
                                     return (_jsx(Pressable, { style: styles.similarThumb, onPress: () => src && setActionCard(src), children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: sid, transition: 80 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: src?.name?.slice(0, 1) ?? '?' }) })) }, sid));
-                                }) })] })) : seriesId ? (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs })) : taxBarOn ? null : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), searching && lockNotice ? (_jsx(Pressable, { onPress: () => onLockedFeature?.(isLocked(lockedFeatures, 'sortByValue') ? 'sortByValue' : 'priceFilter'), style: styles.lockNoticeRow, children: _jsx(Text, { style: styles.lockNotice, numberOfLines: 2, children: lockNotice }) })) : null, analyticsScope ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
+                                }) })] })) : seriesId ? (foldable ? (_jsxs(View, { style: styles.metaRow, children: [_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }), _jsx(Pressable, { onPress: () => setToolsOpen((v) => !v), hitSlop: 8, accessibilityRole: "button", accessibilityState: { expanded: !folded }, children: _jsx(Text, { style: styles.clear, children: folded ? 'Tools' : 'Hide tools' }) })] })) : (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }))) : taxBarOn ? null : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), searching && lockNotice ? (_jsx(Pressable, { onPress: () => onLockedFeature?.(isLocked(lockedFeatures, 'sortByValue') ? 'sortByValue' : 'priceFilter'), style: styles.lockNoticeRow, children: _jsx(Text, { style: styles.lockNotice, numberOfLines: 2, children: lockNotice }) })) : null, analyticsScope ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
                             const on = t === analyticsTab;
                             const label = t === 'analytics' ? 'Analytics' : analyticsScope === 'series' ? 'Sets' : 'Cards';
                             // Locked analytics: accent-ring the tab so the gated perk draws the eye.

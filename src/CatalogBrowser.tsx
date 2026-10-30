@@ -2317,7 +2317,9 @@ export function CatalogBrowser({
   */
   // visibleData, not filteredCards: a cold catalogue's server results and the theme meter's hits
   // never pass through filteredCards, and a phone on its first visit is exactly the cold case.
-  const foldable = compactBar && searching && isCardLevel && !analyticsView && visibleData.length > 0;
+  // Any card list, not only a search: a set opened from the series drill-down stacked the same
+  // rows over its first card (owner's phone screenshots, 2026-10-29).
+  const foldable = compactBar && isCardLevel && !analyticsView && visibleData.length > 0;
   const folded = foldable && !toolsOpen;
   const foldSummary = folded
     ? [
@@ -2614,7 +2616,16 @@ export function CatalogBrowser({
             </ScrollView>
           </View>
         ) : seriesId ? (
-          <Breadcrumb styles={styles} crumbs={crumbs} />
+          foldable ? (
+            <View style={styles.metaRow}>
+              <Breadcrumb styles={styles} crumbs={crumbs} />
+              <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: !folded }}>
+                <Text style={styles.clear}>{folded ? 'Tools' : 'Hide tools'}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Breadcrumb styles={styles} crumbs={crumbs} />
+          )
         ) : taxBarOn ? null : (
           <Text style={styles.meta}>{series.length} series</Text>
         )}
