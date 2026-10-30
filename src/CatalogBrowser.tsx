@@ -863,6 +863,8 @@ export function CatalogBrowser({
   };
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  /** On a phone, the control rows fold away once a search has results; Tools brings them back. */
+  const [toolsOpen, setToolsOpen] = useState(false);
   // Saved searches — starred query+facets+sort combos, shared across every mounted browser
   // (see savedSearches.ts for the per-platform persistence story).
   const [savedList, setSavedList] = useState<SavedSearch[]>(listSavedSearches());
@@ -2304,6 +2306,27 @@ export function CatalogBrowser({
   const analyticsView = analyticsScope != null && analyticsTab === 'analytics';
   // Series/set levels get Collection + Size without waiting for a drill-down or a search.
   const taxBarOn = !isCardLevel && !analyticsView && level !== 'coldidle';
+  /*
+    THE FOLD (owner, 2026-10-29, from a phone screenshot in which the first card sat below
+    the fold under game, Color, Theme, the search box, the art row, Group, the count, the
+    filter row, Select multiple and Sort). On a compact bar, once a search has results, every
+    row between the search box and the cards folds into the count line: what is active is
+    named there in words, a Tools link reopens the rows, and Hide tools folds them again. The
+    search box itself never folds, so a new search is always one tap away. Wide screens are
+    untouched: they have the room, and the chips are the fastest way to use it.
+  */
+  const foldable = compactBar && searching && isCardLevel && !analyticsView && filteredCards.length > 0;
+  const folded = foldable && !toolsOpen;
+  const foldSummary = folded
+    ? [
+        themeFrameEff === 'full' ? 'Full art' : themeFrameEff === 'window' ? 'Windowed' : '',
+        themeTypesEff.length ? `${themeTypesEff.length} type${themeTypesEff.length === 1 ? '' : 's'}` : '',
+        activeFilterCount ? `${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'}` : '',
+        effSort.field !== 'relevance' ? `${SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? ''} ${effSort.dir === 'asc' ? '↑' : '↓'}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
 
   // getItemLayout: for the grid, every `cols` items share a row of `rowHeight`; for the
   // single-column text levels each item is one row. Lets the list skip hundreds/thousands
@@ -2342,7 +2365,7 @@ export function CatalogBrowser({
   return (
     <View style={styles.browser} onLayout={onLayout}>
       <View style={styles.controls}>
-        {featureRow ? (
+        {folded ? null : featureRow ? (
           <View style={styles.triColorRow}>
             {featureRowLead}
             {onColorSearch ? (
@@ -2421,7 +2444,7 @@ export function CatalogBrowser({
         {/* The theme toolbar: shown while a themed query is on screen and the registry offers it
             (a secondary game's `theme_search`, or Pokemon's `search_cards` with `themeTools`).
             Its controls are server parameters. */}
-        {toolbarActive ? (
+        {toolbarActive && !folded ? (
           <ThemeFilterBar
             theme={theme}
             frame={themeFrameEff}
@@ -2438,7 +2461,7 @@ export function CatalogBrowser({
           />
         ) : null}
         {/* Saved-search chips: one tap re-runs the starred search; long-press removes it. */}
-        {savedList.length > 0 ? (
+        {savedList.length > 0 && !folded ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -2511,8 +2534,14 @@ export function CatalogBrowser({
                   : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`}
               {' · '}
               {describeQuery(effParsed, viewCards)}
+              {foldSummary ? ` · ${foldSummary}` : ''}
             </Text>
             <View style={styles.metaEnd}>
+              {foldable ? (
+                <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: !folded }}>
+                  <Text style={styles.clear}>{folded ? 'Tools' : 'Hide tools'}</Text>
+                </Pressable>
+              ) : null}
               {warm ? (
                 <View style={styles.modeInline} accessibilityLabel="On-device search, instant">
                   <View style={[styles.modeDot, styles.modeDotReady]} />
@@ -2622,7 +2651,7 @@ export function CatalogBrowser({
             S/M/L on the right; a spacer between that wraps the right half onto its own line when
             the width runs out. This was five rows (badge, results, filters, sort, select), each
             mostly empty; a browse should start with cards, not chrome. */}
-        {isCardLevel && !analyticsView ? (
+        {isCardLevel && !analyticsView && !folded ? (
           <FacetBar
             styles={styles}
             compact={compactBar}
