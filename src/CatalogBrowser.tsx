@@ -2419,7 +2419,9 @@ export function CatalogBrowser({
             placeholderTextColor={theme.faint}
             autoCorrect={false}
             clearButtonMode="while-editing"
-            style={[styles.search, styles.searchFlex]}
+            // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input
+            // under 16px, and the zoom stays after the search. The compact box is the phone's.
+            style={[styles.search, styles.searchFlex, compactSearch && styles.searchCompact]}
           />
           <View style={styles.searchToolsInline}>
             {/* EN/JP bound. Rides with the search controls because it applies to the SEARCH, not
@@ -3733,6 +3735,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       fontSize: 14,
       color: t.text,
     },
+    searchCompact: { fontSize: 16 },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     searchFlex: { flex: 1 },
     // Compact (phone-width) search: input on its own line, controls beneath it.
