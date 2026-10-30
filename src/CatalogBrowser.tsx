@@ -2543,7 +2543,7 @@ export function CatalogBrowser({
             <View style={styles.metaEnd}>
               {foldable ? (
                 <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: !folded }}>
-                  <Text style={styles.clear}>{folded ? 'Tools' : 'Hide tools'}</Text>
+                  <Text style={styles.clear}>{folded ? 'Sort & filter' : 'Hide sort & filter'}</Text>
                 </Pressable>
               ) : null}
               {warm ? (
@@ -2620,7 +2620,7 @@ export function CatalogBrowser({
             <View style={styles.metaRow}>
               <Breadcrumb styles={styles} crumbs={crumbs} />
               <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: !folded }}>
-                <Text style={styles.clear}>{folded ? 'Tools' : 'Hide tools'}</Text>
+                <Text style={styles.clear}>{folded ? 'Sort & filter' : 'Hide sort & filter'}</Text>
               </Pressable>
             </View>
           ) : (
