@@ -2340,6 +2340,48 @@ export function CatalogBrowser({
     return { length: rowHeight, offset: rowHeight * row, index };
   };
 
+  // SELECT, ON THE RESULTS LINE (owner, 2026-10-30). It lived in the facet strip, which a phone
+  // folds behind "Sort & filter", so the one batch tool was hidden exactly where placing cards one
+  // tap at a time hurts most. The results line has room at its end on every width, so it rides
+  // there as the only filled button in the chrome: the text links (Sort & filter, Clear) and the
+  // outline chips (S/M/L) are settings; this one starts something.
+  const selecting = multiSelectMode || selectedIds.length > 0;
+  const selectControl =
+    canMultiSelect && isCardLevel && !analyticsView ? (
+      selecting ? (
+        <>
+          <Pressable
+            disabled={selectedIds.length < 2}
+            onPress={() => setMultiOpen(true)}
+            accessibilityRole="button"
+            style={[styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff]}>
+            <Text style={styles.selectBtnText} numberOfLines={1}>
+              {selectedIds.length < 2
+                ? `${selectedIds.length} selected · tap 2+`
+                : `Continue with ${selectedIds.length} →`}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setMultiSelectMode(false);
+              clearSelection();
+            }}
+            hitSlop={8}
+            accessibilityRole="button">
+            <Text style={styles.clear}>Cancel</Text>
+          </Pressable>
+        </>
+      ) : (
+        <Pressable
+          onPress={() => setMultiSelectMode(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Select multiple cards"
+          style={styles.selectBtn}>
+          <Text style={styles.selectBtnText}>☑ Select</Text>
+        </Pressable>
+      )
+    ) : null;
+
   // The resolved multi-selection — feeds both the batch modal's thumbs and its add-all payload.
   const selectedCards = multiOpen
     ? selectedIds.map((id) => findCard(id)).filter((c): c is CatalogCard => Boolean(c))
@@ -2543,20 +2585,25 @@ export function CatalogBrowser({
               {foldSummary ? ` · ${foldSummary}` : ''}
             </Text>
             <View style={styles.metaEnd}>
-              {foldable ? (
+              {selectControl}
+              {/* While selecting, the row's other links step aside: the count and Continue need
+                  the width, and the query's echo is what the user is picking from. */}
+              {foldable && !selecting ? (
                 <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: !folded }}>
                   <Text style={styles.clear}>{folded ? 'Sort & filter' : 'Hide sort & filter'}</Text>
                 </Pressable>
               ) : null}
-              {warm ? (
+              {warm && !selecting ? (
                 <View style={styles.modeInline} accessibilityLabel="On-device search, instant">
                   <View style={[styles.modeDot, styles.modeDotReady]} />
                   <Text style={styles.modeText}>On-device</Text>
                 </View>
               ) : null}
-              <Pressable onPress={() => onChangeQuery('')} hitSlop={8}>
-                <Text style={styles.clear}>Clear</Text>
-              </Pressable>
+              {!selecting ? (
+                <Pressable onPress={() => onChangeQuery('')} hitSlop={8}>
+                  <Text style={styles.clear}>Clear</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         ) : similarTo ? (
@@ -2575,14 +2622,19 @@ export function CatalogBrowser({
                       ? 'Finding similar cards…'
                       : 'No similar cards found.'}
               </Text>
-              {!similarTo.injected && !similarBusy && similarCards.length === 0 ? (
-                <Pressable onPress={() => runSimilar(similarSteps)} hitSlop={8}>
-                  <Text style={styles.clear}>Retry</Text>
-                </Pressable>
-              ) : null}
-              <Pressable onPress={clearSimilar} hitSlop={8}>
-                <Text style={styles.clear}>Clear</Text>
-              </Pressable>
+              <View style={styles.metaEnd}>
+                {similarCards.length > 0 ? selectControl : null}
+                {!similarTo.injected && !similarBusy && similarCards.length === 0 ? (
+                  <Pressable onPress={() => runSimilar(similarSteps)} hitSlop={8}>
+                    <Text style={styles.clear}>Retry</Text>
+                  </Pressable>
+                ) : null}
+                {!selecting ? (
+                  <Pressable onPress={clearSimilar} hitSlop={8}>
+                    <Text style={styles.clear}>Clear</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
             {/* The source card(s) the similarity ran on — tap one to open its sheet. */}
             <ScrollView
@@ -2618,12 +2670,17 @@ export function CatalogBrowser({
             </ScrollView>
           </View>
         ) : seriesId ? (
-          foldable ? (
+          foldable || selectControl ? (
             <View style={styles.metaRow}>
               <Breadcrumb styles={styles} crumbs={crumbs} />
-              <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: !folded }}>
-                <Text style={styles.clear}>{folded ? 'Sort & filter' : 'Hide sort & filter'}</Text>
-              </Pressable>
+              <View style={styles.metaEnd}>
+                {selectControl}
+                {foldable && !selecting ? (
+                  <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: !folded }}>
+                    <Text style={styles.clear}>{folded ? 'Sort & filter' : 'Hide sort & filter'}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           ) : (
             <Breadcrumb styles={styles} crumbs={crumbs} />
@@ -2662,8 +2719,8 @@ export function CatalogBrowser({
             })}
           </View>
         ) : null}
-        {/* ONE CONTROL STRIP. Filters, Color, Collection and Select multiple on the left; Sort and
-            S/M/L on the right; a spacer between that wraps the right half onto its own line when
+        {/* ONE CONTROL STRIP. Filters, Color and Collection on the left; Sort and
+            S/M/L on the right (Select rides the results line above: see `selectControl`); a spacer between that wraps the right half onto its own line when
             the width runs out. This was five rows (badge, results, filters, sort, select), each
             mostly empty; a browse should start with cards, not chrome. */}
         {isCardLevel && !analyticsView && !folded ? (
@@ -2697,35 +2754,8 @@ export function CatalogBrowser({
                 onPickSize={pickCardSize}
                 lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
               />
-            }>
-            {canMultiSelect ? (
-              multiSelectMode || selectedIds.length > 0 ? (
-                <>
-                  <Text style={styles.selectMeta} numberOfLines={1}>
-                    {selectedIds.length} selected{selectedIds.length < 2 ? ' · tap 2+' : ''}
-                  </Text>
-                  <Pressable
-                    disabled={selectedIds.length < 2}
-                    onPress={() => setMultiOpen(true)}
-                    style={[styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff]}>
-                    <Text style={styles.selectBtnText}>Continue →</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      setMultiSelectMode(false);
-                      clearSelection();
-                    }}
-                    hitSlop={8}>
-                    <Text style={styles.clear}>Cancel</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <Pressable onPress={() => setMultiSelectMode(true)} style={styles.facetToggle}>
-                  <Text style={styles.facetToggleText}>⊕ Select multiple</Text>
-                </Pressable>
-              )
-            ) : null}
-          </FacetBar>
+            }
+          />
         ) : null}
         {/* Series/set levels get Collection + Size without waiting for a drill-down or a search. */}
         {taxBarOn ? (
@@ -3043,6 +3073,17 @@ function CardTile({
 }) {
   // Grid tier: the 245px webp (~20KB) by default; large tiles request 640px so they stay sharp.
   const uri = cardThumbUrl(card.id, tier);
+  // THE PILL ANSWERS ITS OWN TAP (owner, 2026-10-30). On a phone the quick action lands somewhere
+  // the sheet is covering, so nothing on screen changed and people tapped again. The pill flips to
+  // a green check for a beat, on the tile that was tapped, which is where the eye already is.
+  // Keyed by card id: a recycled tile showing another card never inherits the check.
+  const [doneId, setDoneId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!doneId) return;
+    const h = setTimeout(() => setDoneId(null), 1400);
+    return () => clearTimeout(h);
+  }, [doneId]);
+  const quickDone = doneId === card.id;
   return (
     <Pressable
       style={[
@@ -3110,12 +3151,15 @@ function CardTile({
         {quickAction ? (
           // Nested Pressable captures its own tap, so the tile's sheet doesn't open.
           <Pressable
-            style={styles.cardQuick}
+            style={[styles.cardQuick, quickDone && styles.cardQuickDone]}
             hitSlop={6}
-            onPress={() => quickAction.onPress(card)}
+            onPress={() => {
+              quickAction.onPress(card);
+              setDoneId(card.id);
+            }}
             accessibilityLabel={typeof quickAction.label === 'string' ? quickAction.label : 'Quick action'}>
             <Text style={styles.cardQuickText} numberOfLines={1}>
-              {typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label}
+              {quickDone ? '✓' : typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label}
             </Text>
           </Pressable>
         ) : null}
@@ -3576,7 +3620,7 @@ function FacetBar({
   ownedState?: boolean | null;
   /** The right end of the strip (Sort + size). */
   trailing?: ReactNode;
-  /** Extra left-side controls (the host's Select multiple). */
+  /** Extra left-side controls. */
   children?: ReactNode;
 }) {
   const hasFacets = options.length > 0;
@@ -4043,6 +4087,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       alignItems: 'center',
       justifyContent: 'center',
     },
+    // The same green as the owned badge: "done" reads one way across the tile.
+    cardQuickDone: { backgroundColor: '#2e9e5b' },
     cardQuickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
     cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
     cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.link, textAlign: 'center' },
@@ -4125,10 +4171,11 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     cardGroupText: { color: '#fff', fontSize: 8, fontWeight: '800', lineHeight: 11, flexShrink: 1 },
     // multi-select control row (mode toggle + Continue)
     selectRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-    selectMeta: { fontSize: 12, color: t.subtext, flexShrink: 1 },
-    selectBtn: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, backgroundColor: t.accent },
+    // The results line's one filled button. Slim enough (1px) to sit in that line without
+    // growing it: the browse should start with cards, not chrome.
+    selectBtn: { paddingVertical: 1, paddingHorizontal: 10, borderRadius: 999, backgroundColor: t.accent },
     selectBtnOff: { opacity: 0.4 },
-    selectBtnText: { color: t.accentText, fontSize: 12, fontWeight: '700' },
+    selectBtnText: { color: t.accentText, fontSize: 12, fontWeight: '700', lineHeight: 16 },
     selectToggle: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: t.border },
     selectToggleText: { fontSize: 12, fontWeight: '600', color: t.link },
     // breadcrumb

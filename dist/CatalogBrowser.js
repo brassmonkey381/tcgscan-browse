@@ -1,4 +1,4 @@
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
 /**
  * Taxonomy browse for the 1×1 "Cards" section of the CardPicker.
  *
@@ -1818,6 +1818,18 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         const row = Math.floor(index / cols);
         return { length: rowHeight, offset: rowHeight * row, index };
     };
+    // SELECT, ON THE RESULTS LINE (owner, 2026-10-30). It lived in the facet strip, which a phone
+    // folds behind "Sort & filter", so the one batch tool was hidden exactly where placing cards one
+    // tap at a time hurts most. The results line has room at its end on every width, so it rides
+    // there as the only filled button in the chrome: the text links (Sort & filter, Clear) and the
+    // outline chips (S/M/L) are settings; this one starts something.
+    const selecting = multiSelectMode || selectedIds.length > 0;
+    const selectControl = canMultiSelect && isCardLevel && !analyticsView ? (selecting ? (_jsxs(_Fragment, { children: [_jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), accessibilityRole: "button", style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, numberOfLines: 1, children: selectedIds.length < 2
+                        ? `${selectedIds.length} selected · tap 2+`
+                        : `Continue with ${selectedIds.length} →` }) }), _jsx(Pressable, { onPress: () => {
+                    setMultiSelectMode(false);
+                    clearSelection();
+                }, hitSlop: 8, accessibilityRole: "button", children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), accessibilityRole: "button", accessibilityLabel: "Select multiple cards", style: styles.selectBtn, children: _jsx(Text, { style: styles.selectBtnText, children: "\u2611 Select" }) }))) : null;
     // The resolved multi-selection — feeds both the batch modal's thumbs and its add-all payload.
     const selectedCards = multiOpen
         ? selectedIds.map((id) => findCard(id)).filter((c) => Boolean(c))
@@ -1871,7 +1883,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                                 : `${filteredCards.length} of ${viewCards.length}`
                                             : serverClamped
                                                 ? `Top ${serverCards.length} of ${serverTotal} matches`
-                                                : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards), foldSummary ? ` · ${foldSummary}` : ''] }), _jsxs(View, { style: styles.metaEnd, children: [foldable ? (_jsx(Pressable, { onPress: () => setToolsOpen((v) => !v), hitSlop: 8, accessibilityRole: "button", accessibilityState: { expanded: !folded }, children: _jsx(Text, { style: styles.clear, children: folded ? 'Sort & filter' : 'Hide sort & filter' }) })) : null, warm ? (_jsxs(View, { style: styles.modeInline, accessibilityLabel: "On-device search, instant", children: [_jsx(View, { style: [styles.modeDot, styles.modeDotReady] }), _jsx(Text, { style: styles.modeText, children: "On-device" })] })) : null, _jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarTo.injected
+                                                : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards), foldSummary ? ` · ${foldSummary}` : ''] }), _jsxs(View, { style: styles.metaEnd, children: [selectControl, foldable && !selecting ? (_jsx(Pressable, { onPress: () => setToolsOpen((v) => !v), hitSlop: 8, accessibilityRole: "button", accessibilityState: { expanded: !folded }, children: _jsx(Text, { style: styles.clear, children: folded ? 'Sort & filter' : 'Hide sort & filter' }) })) : null, warm && !selecting ? (_jsxs(View, { style: styles.modeInline, accessibilityLabel: "On-device search, instant", children: [_jsx(View, { style: [styles.modeDot, styles.modeDotReady] }), _jsx(Text, { style: styles.modeText, children: "On-device" })] })) : null, !selecting ? (_jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarTo.injected
                                             ? similarCards.length > 0
                                                 ? `${filteredCards.length} cards · ${similarTo.name}`
                                                 : similarBusy
@@ -1881,11 +1893,11 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                                 ? `${filteredCards.length} cards similar to${similarTo.ids.length > 1 ? ' all of' : ''}${refineNote}:`
                                                 : similarBusy
                                                     ? 'Finding similar cards…'
-                                                    : 'No similar cards found.' }), !similarTo.injected && !similarBusy && similarCards.length === 0 ? (_jsx(Pressable, { onPress: () => runSimilar(similarSteps), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Retry" }) })) : null, _jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })] }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.similarThumbs, keyboardShouldPersistTaps: "handled", children: similarTo.ids.map((sid) => {
+                                                    : 'No similar cards found.' }), _jsxs(View, { style: styles.metaEnd, children: [similarCards.length > 0 ? selectControl : null, !similarTo.injected && !similarBusy && similarCards.length === 0 ? (_jsx(Pressable, { onPress: () => runSimilar(similarSteps), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Retry" }) })) : null, !selecting ? (_jsx(Pressable, { onPress: clearSimilar, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] })] }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.similarThumbs, keyboardShouldPersistTaps: "handled", children: similarTo.ids.map((sid) => {
                                     const src = findCard(sid);
                                     const uri = cardThumbUrl(sid, 245);
                                     return (_jsx(Pressable, { style: styles.similarThumb, onPress: () => src && setActionCard(src), children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: sid, transition: 80 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: src?.name?.slice(0, 1) ?? '?' }) })) }, sid));
-                                }) })] })) : seriesId ? (foldable ? (_jsxs(View, { style: styles.metaRow, children: [_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }), _jsx(Pressable, { onPress: () => setToolsOpen((v) => !v), hitSlop: 8, accessibilityRole: "button", accessibilityState: { expanded: !folded }, children: _jsx(Text, { style: styles.clear, children: folded ? 'Sort & filter' : 'Hide sort & filter' }) })] })) : (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }))) : taxBarOn ? null : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), searching && lockNotice ? (_jsx(Pressable, { onPress: () => onLockedFeature?.(isLocked(lockedFeatures, 'sortByValue') ? 'sortByValue' : 'priceFilter'), style: styles.lockNoticeRow, children: _jsx(Text, { style: styles.lockNotice, numberOfLines: 2, children: lockNotice }) })) : null, analyticsScope ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
+                                }) })] })) : seriesId ? (foldable || selectControl ? (_jsxs(View, { style: styles.metaRow, children: [_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }), _jsxs(View, { style: styles.metaEnd, children: [selectControl, foldable && !selecting ? (_jsx(Pressable, { onPress: () => setToolsOpen((v) => !v), hitSlop: 8, accessibilityRole: "button", accessibilityState: { expanded: !folded }, children: _jsx(Text, { style: styles.clear, children: folded ? 'Sort & filter' : 'Hide sort & filter' }) })) : null] })] })) : (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }))) : taxBarOn ? null : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), searching && lockNotice ? (_jsx(Pressable, { onPress: () => onLockedFeature?.(isLocked(lockedFeatures, 'sortByValue') ? 'sortByValue' : 'priceFilter'), style: styles.lockNoticeRow, children: _jsx(Text, { style: styles.lockNotice, numberOfLines: 2, children: lockNotice }) })) : null, analyticsScope ? (_jsx(View, { style: styles.tabRow, children: ['cards', 'analytics'].map((t) => {
                             const on = t === analyticsTab;
                             const label = t === 'analytics' ? 'Analytics' : analyticsScope === 'series' ? 'Sets' : 'Cards';
                             // Locked analytics: accent-ring the tab so the gated perk draws the eye.
@@ -1897,10 +1909,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                         onColorSearch: onColorSearch, colorActive: !!similarTo?.injected, 
                         // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
                         // injecting the have: token so it composes with the rest of the filters.
-                        onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, trailing: _jsx(SortControls, { styles: styles, compact: compactBar, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize, lockedSorts: isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined }), children: canMultiSelect ? (multiSelectMode || selectedIds.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: styles.selectMeta, numberOfLines: 1, children: [selectedIds.length, " selected", selectedIds.length < 2 ? ' · tap 2+' : ''] }), _jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, children: "Continue \u2192" }) }), _jsx(Pressable, { onPress: () => {
-                                        setMultiSelectMode(false);
-                                        clearSelection();
-                                    }, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), style: styles.facetToggle, children: _jsx(Text, { style: styles.facetToggleText, children: "\u2295 Select multiple" }) }))) : null })) : null, taxBarOn ? (_jsx(TaxonomyBar, { styles: styles, 
+                        onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, trailing: _jsx(SortControls, { styles: styles, compact: compactBar, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, size: cardSize, onPickSize: pickCardSize, lockedSorts: isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined }) })) : null, taxBarOn ? (_jsx(TaxonomyBar, { styles: styles, 
                         // The series count rides this bar at the top level (one row, not two: owner, 2026-10-25).
                         lead: !seriesId && !searching && !similarTo ? `${series.length} series` : undefined, onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, size: cardSize, onPickSize: pickCardSize })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
                 // Gated (e.g. guest): the app-supplied CTA replaces the analytics panels.
@@ -1959,13 +1968,28 @@ function TaxonomyTile({ styles, title, meta, coverUri, width, onPress, completio
 function CardTile({ styles, comingSoon, card, width, tier = 245, selected, multiSelected, focused, onPress, label, value, priceTag, quickAction, owned, groupStart, }) {
     // Grid tier: the 245px webp (~20KB) by default; large tiles request 640px so they stay sharp.
     const uri = cardThumbUrl(card.id, tier);
+    // THE PILL ANSWERS ITS OWN TAP (owner, 2026-10-30). On a phone the quick action lands somewhere
+    // the sheet is covering, so nothing on screen changed and people tapped again. The pill flips to
+    // a green check for a beat, on the tile that was tapped, which is where the eye already is.
+    // Keyed by card id: a recycled tile showing another card never inherits the check.
+    const [doneId, setDoneId] = useState(null);
+    useEffect(() => {
+        if (!doneId)
+            return;
+        const h = setTimeout(() => setDoneId(null), 1400);
+        return () => clearTimeout(h);
+    }, [doneId]);
+    const quickDone = doneId === card.id;
     return (_jsxs(Pressable, { style: [
             styles.cardTile,
             { width },
             selected && styles.cardTileSelected,
             multiSelected && styles.cardTileMulti,
             focused && styles.cardTileFocused,
-        ], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : comingSoon ? (_jsx(Image, { source: comingSoon, style: styles.cardImage, contentFit: "cover", transition: 100, accessibilityLabel: "Image coming soon" })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), groupStart ? (_jsxs(View, { style: styles.cardGroupBand, pointerEvents: "none", children: [groupStart.color ? _jsx(View, { style: [styles.cardGroupDot, { backgroundColor: groupStart.color }] }) : null, _jsx(Text, { style: styles.cardGroupText, numberOfLines: 1, children: groupStart.label })] })) : null, multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : owned ? (_jsx(View, { style: styles.cardOwnedBadge, children: _jsx(Text, { style: styles.cardOwnedBadgeText, children: "\u2713" }) })) : null, card.language === 'ja' ? (_jsx(View, { style: styles.cardLangBadge, children: _jsx(Text, { style: styles.cardLangBadgeText, children: "JP" }) })) : null, priceTag != null && priceTag > 0 ? (_jsx(View, { style: styles.cardPriceTag, children: _jsx(Text, { style: styles.cardPriceTagText, children: formatUsd(priceTag) }) })) : null, quickAction ? (_jsx(Pressable, { style: styles.cardQuick, hitSlop: 6, onPress: () => quickAction.onPress(card), accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
+        ], onPress: onPress, children: [_jsxs(View, { style: styles.cardImageWrap, children: [uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100 })) : comingSoon ? (_jsx(Image, { source: comingSoon, style: styles.cardImage, contentFit: "cover", transition: 100, accessibilityLabel: "Image coming soon" })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: "no image" }) })), groupStart ? (_jsxs(View, { style: styles.cardGroupBand, pointerEvents: "none", children: [groupStart.color ? _jsx(View, { style: [styles.cardGroupDot, { backgroundColor: groupStart.color }] }) : null, _jsx(Text, { style: styles.cardGroupText, numberOfLines: 1, children: groupStart.label })] })) : null, multiSelected ? (_jsx(View, { style: styles.cardCheck, children: _jsx(Text, { style: styles.cardCheckText, children: "\u2713" }) })) : owned ? (_jsx(View, { style: styles.cardOwnedBadge, children: _jsx(Text, { style: styles.cardOwnedBadgeText, children: "\u2713" }) })) : null, card.language === 'ja' ? (_jsx(View, { style: styles.cardLangBadge, children: _jsx(Text, { style: styles.cardLangBadgeText, children: "JP" }) })) : null, priceTag != null && priceTag > 0 ? (_jsx(View, { style: styles.cardPriceTag, children: _jsx(Text, { style: styles.cardPriceTagText, children: formatUsd(priceTag) }) })) : null, quickAction ? (_jsx(Pressable, { style: [styles.cardQuick, quickDone && styles.cardQuickDone], hitSlop: 6, onPress: () => {
+                            quickAction.onPress(card);
+                            setDoneId(card.id);
+                        }, accessibilityLabel: typeof quickAction.label === 'string' ? quickAction.label : 'Quick action', children: _jsx(Text, { style: styles.cardQuickText, numberOfLines: 1, children: quickDone ? '✓' : typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label }) })) : null] }), _jsx(Text, { style: styles.cardName, numberOfLines: 1, children: label ?? card.name }), value != null && value > 0 ? (_jsx(Text, { style: styles.cardValue, numberOfLines: 1, children: formatUsd(value) })) : null] }));
 }
 /**
  * A V-UNION group tile (Size=V-UNION): the assembled art (its top-left piece thumb) with a
@@ -2475,6 +2499,8 @@ function makeStyles(t, taxTileHeight) {
             alignItems: 'center',
             justifyContent: 'center',
         },
+        // The same green as the owned badge: "done" reads one way across the tile.
+        cardQuickDone: { backgroundColor: '#2e9e5b' },
         cardQuickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
         cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
         cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.link, textAlign: 'center' },
@@ -2557,10 +2583,11 @@ function makeStyles(t, taxTileHeight) {
         cardGroupText: { color: '#fff', fontSize: 8, fontWeight: '800', lineHeight: 11, flexShrink: 1 },
         // multi-select control row (mode toggle + Continue)
         selectRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-        selectMeta: { fontSize: 12, color: t.subtext, flexShrink: 1 },
-        selectBtn: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, backgroundColor: t.accent },
+        // The results line's one filled button. Slim enough (1px) to sit in that line without
+        // growing it: the browse should start with cards, not chrome.
+        selectBtn: { paddingVertical: 1, paddingHorizontal: 10, borderRadius: 999, backgroundColor: t.accent },
         selectBtnOff: { opacity: 0.4 },
-        selectBtnText: { color: t.accentText, fontSize: 12, fontWeight: '700' },
+        selectBtnText: { color: t.accentText, fontSize: 12, fontWeight: '700', lineHeight: 16 },
         selectToggle: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: t.border },
         selectToggleText: { fontSize: 12, fontWeight: '600', color: t.link },
         // breadcrumb
