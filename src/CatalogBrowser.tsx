@@ -3793,7 +3793,9 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     },
     searchCompact: { fontSize: 16 },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    searchFlex: { flex: 1 },
+    // minWidth 0: a TextInput's placeholder sets its minimum width on the web, so a wide hint (a
+    // host's pixel face) would push the EN/JP and help buttons off the row.
+    searchFlex: { flex: 1, minWidth: 0 },
     // Compact (phone-width) search: input on its own line, controls beneath it.
     searchCol: { gap: 6 },
     searchFull: { width: '100%' },

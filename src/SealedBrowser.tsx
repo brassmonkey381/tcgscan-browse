@@ -330,7 +330,9 @@ function makeStyles(t: BrowseTheme) {
       ...(t.searchFont ? { fontFamily: t.searchFont } : null),
     },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    searchFlex: { flex: 1 },
+    // minWidth 0: a TextInput's placeholder sets its minimum width on the web, so a wide hint (a
+    // host's pixel face) would push the EN/JP and help buttons off the row.
+    searchFlex: { flex: 1, minWidth: 0 },
     // A stacked facet block: label + size toggle on one line, the chips full-width under it.
     facetGroup: { gap: 6 },
     facetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
