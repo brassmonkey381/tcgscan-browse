@@ -54,6 +54,8 @@ export function LanguageToggle({
             style={({ pressed }) => [
               styles.btn,
               { backgroundColor: active ? t.accent : t.panel, borderColor: t.border },
+              // A host's lip under each pill (theme `lip`), like every chip in the kit.
+              t.lip ? { borderBottomWidth: 3, borderBottomColor: (active && t.lipOn) || t.lip } : null,
               pressed && styles.pressed,
             ]}>
             <Text style={[styles.txt, { color: active ? t.accentText : t.subtext }]}>

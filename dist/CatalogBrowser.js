@@ -1864,7 +1864,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     };
     return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [folded ? null : featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
                                     ? `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards`
-                                    : `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.faint, autoCorrect: false, clearButtonMode: "while-editing", 
+                                    : `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.searchPlaceholder ?? theme.faint, autoCorrect: false, clearButtonMode: "while-editing", 
                                 // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input
                                 // under 16px, and the zoom stays after the search. The compact box is the phone's.
                                 style: [styles.search, styles.searchFlex, compactSearch && styles.searchCompact] }), _jsxs(View, { style: styles.searchToolsInline, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), toolbarActive && !folded ? (_jsx(ThemeFilterBar, { theme: theme, frame: themeFrameEff, onPickFrame: pickThemeFrame, typeGroups: themeGroups, typeLabel: themeTypeLabel, types: themeTypesEff, onToggleType: toggleThemeType, onClearTypes: () => setThemeTypes([]), group: themeGroupOn, onToggleGroup: () => setThemeGroupSel(!themeGroupOn), counts: themeServerActive ? themeCounts : pokeCounts, compact: compactBar })) : null, savedList.length > 0 && !folded ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, !warm ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch) })] }), !warm && catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
@@ -2158,6 +2158,8 @@ function Glow({ children, styles, delay = 0 }) {
                     },
                 ] }), children] }));
 }
+/** A host's lip under a chip or toggle (theme `lip`), or nothing. */
+const lipEdge = (t, on = false) => t.lip ? { borderBottomWidth: 3, borderBottomColor: (on && t.lipOn) || t.lip } : null;
 function makeStyles(t, taxTileHeight) {
     return StyleSheet.create({
         browser: { flex: 1 },
@@ -2183,13 +2185,15 @@ function makeStyles(t, taxTileHeight) {
             marginTop: 4,
         },
         search: {
-            borderWidth: 1,
+            borderWidth: t.searchFill ? 0 : 1,
             borderColor: t.border,
             borderRadius: 8,
             paddingHorizontal: 10,
             paddingVertical: 7,
             fontSize: 14,
-            color: t.text,
+            color: t.searchText ?? t.text,
+            ...(t.searchFill ? { backgroundColor: t.searchFill } : null),
+            ...(t.searchFont ? { fontFamily: t.searchFont } : null),
         },
         searchCompact: { fontSize: 16 },
         searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -2273,8 +2277,9 @@ function makeStyles(t, taxTileHeight) {
             borderRadius: 999,
             borderWidth: 1,
             borderColor: t.border,
+            ...lipEdge(t),
         },
-        manualTabOn: { backgroundColor: t.accent, borderColor: t.accent },
+        manualTabOn: { backgroundColor: t.accent, borderColor: t.accent, ...lipEdge(t, true) },
         manualTabText: { fontSize: 12, fontWeight: '600', color: t.subtext },
         manualTabTextOn: { color: '#fff' },
         manualSection: { gap: 3 },
@@ -2312,6 +2317,7 @@ function makeStyles(t, taxTileHeight) {
             borderRadius: 999,
             borderWidth: 1,
             borderColor: t.border,
+            ...lipEdge(t),
         },
         facetToggleOn: { borderColor: t.link },
         facetToggleText: { fontSize: 12, fontWeight: '600', color: t.subtext },
@@ -2352,8 +2358,9 @@ function makeStyles(t, taxTileHeight) {
             borderWidth: 1,
             borderColor: t.border,
             maxWidth: 180,
+            ...lipEdge(t),
         },
-        chipOn: { backgroundColor: t.accent, borderColor: t.accent },
+        chipOn: { backgroundColor: t.accent, borderColor: t.accent, ...lipEdge(t, true) },
         chipText: { fontSize: 12, fontWeight: '600', color: t.subtext },
         chipTextOn: { color: t.accentText },
         // A host-locked chip: still readable (the plan difference should be discoverable, not
@@ -2371,6 +2378,7 @@ function makeStyles(t, taxTileHeight) {
             borderRadius: 999,
             borderWidth: 1,
             borderColor: t.link,
+            ...lipEdge(t),
         },
         sortDirText: { fontSize: 14, fontWeight: '800', color: t.link },
         // inline card-size control (S/M/L) pinned at the end of the sort row
@@ -2383,6 +2391,7 @@ function makeStyles(t, taxTileHeight) {
             borderRadius: 999,
             borderWidth: 1,
             borderColor: t.border,
+            ...lipEdge(t),
         },
         // list
         column: { gap: GRID_GAP, justifyContent: 'flex-start' },

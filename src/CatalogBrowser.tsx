@@ -2464,7 +2464,7 @@ export function CatalogBrowser({
                 ? `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards`
                 : `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`
             }
-            placeholderTextColor={theme.faint}
+            placeholderTextColor={theme.searchPlaceholder ?? theme.faint}
             autoCorrect={false}
             clearButtonMode="while-editing"
             // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input
@@ -3752,6 +3752,10 @@ function Glow({ children, styles, delay = 0 }: { children: ReactNode; styles: Re
   );
 }
 
+/** A host's lip under a chip or toggle (theme `lip`), or nothing. */
+const lipEdge = (t: BrowseTheme, on = false) =>
+  t.lip ? { borderBottomWidth: 3, borderBottomColor: (on && t.lipOn) || t.lip } : null;
+
 function makeStyles(t: BrowseTheme, taxTileHeight: number) {
   return StyleSheet.create({
     browser: { flex: 1 },
@@ -3777,13 +3781,15 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       marginTop: 4,
     },
     search: {
-      borderWidth: 1,
+      borderWidth: t.searchFill ? 0 : 1,
       borderColor: t.border,
       borderRadius: 8,
       paddingHorizontal: 10,
       paddingVertical: 7,
       fontSize: 14,
-      color: t.text,
+      color: t.searchText ?? t.text,
+      ...(t.searchFill ? { backgroundColor: t.searchFill } : null),
+      ...(t.searchFont ? { fontFamily: t.searchFont } : null),
     },
     searchCompact: { fontSize: 16 },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -3867,8 +3873,9 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       borderRadius: 999,
       borderWidth: 1,
       borderColor: t.border,
+      ...lipEdge(t),
     },
-    manualTabOn: { backgroundColor: t.accent, borderColor: t.accent },
+    manualTabOn: { backgroundColor: t.accent, borderColor: t.accent, ...lipEdge(t, true) },
     manualTabText: { fontSize: 12, fontWeight: '600', color: t.subtext },
     manualTabTextOn: { color: '#fff' },
     manualSection: { gap: 3 },
@@ -3906,6 +3913,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       borderRadius: 999,
       borderWidth: 1,
       borderColor: t.border,
+      ...lipEdge(t),
     },
     facetToggleOn: { borderColor: t.link },
     facetToggleText: { fontSize: 12, fontWeight: '600', color: t.subtext },
@@ -3946,8 +3954,9 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       borderWidth: 1,
       borderColor: t.border,
       maxWidth: 180,
+      ...lipEdge(t),
     },
-    chipOn: { backgroundColor: t.accent, borderColor: t.accent },
+    chipOn: { backgroundColor: t.accent, borderColor: t.accent, ...lipEdge(t, true) },
     chipText: { fontSize: 12, fontWeight: '600', color: t.subtext },
     chipTextOn: { color: t.accentText },
     // A host-locked chip: still readable (the plan difference should be discoverable, not
@@ -3965,6 +3974,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       borderRadius: 999,
       borderWidth: 1,
       borderColor: t.link,
+      ...lipEdge(t),
     },
     sortDirText: { fontSize: 14, fontWeight: '800', color: t.link },
     // inline card-size control (S/M/L) pinned at the end of the sort row
@@ -3977,6 +3987,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       borderRadius: 999,
       borderWidth: 1,
       borderColor: t.border,
+      ...lipEdge(t),
     },
     // list
     column: { gap: GRID_GAP, justifyContent: 'flex-start' },

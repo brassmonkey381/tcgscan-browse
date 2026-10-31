@@ -55,6 +55,18 @@ export interface BrowseTheme {
     comingSoonImage?: number | {
         uri: string;
     };
+    /**
+     * HOST SKIN, all optional; omitted, the kit draws exactly as before (tcgscan-app's BiBo, owner's
+     * style picks 2026-10-30). `lip` is a solid 3pt edge under every chip and toggle, `lipOn` the
+     * one under an active (accent) chip. The search field becomes a screen: `searchFill` behind it,
+     * `searchText` for what is typed, `searchPlaceholder` for its hint, in `searchFont`.
+     */
+    lip?: string;
+    lipOn?: string;
+    searchFill?: string;
+    searchText?: string;
+    searchPlaceholder?: string;
+    searchFont?: string;
 }
 /** The kit's original light look — the default when an app passes no theme. */
 export declare const lightTheme: BrowseTheme;

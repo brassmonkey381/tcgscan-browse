@@ -32,6 +32,8 @@ export function LanguageToggle({ value, onChange, theme, }) {
             return (_jsx(Pressable, { onPress: () => toggle(code), accessibilityRole: "button", accessibilityState: { selected: active }, accessibilityLabel: `Show ${languageLabel(code)} cards`, style: ({ pressed }) => [
                     styles.btn,
                     { backgroundColor: active ? t.accent : t.panel, borderColor: t.border },
+                    // A host's lip under each pill (theme `lip`), like every chip in the kit.
+                    t.lip ? { borderBottomWidth: 3, borderBottomColor: (active && t.lipOn) || t.lip } : null,
                     pressed && styles.pressed,
                 ], children: _jsx(Text, { style: [styles.txt, { color: active ? t.accentText : t.subtext }], children: languageShortLabel(code) }) }, code));
         }) }));

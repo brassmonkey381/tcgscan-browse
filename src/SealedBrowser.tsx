@@ -159,7 +159,7 @@ export function SealedBrowser({
             value={query}
             onChangeText={setQuery}
             placeholder="Search sealed products…"
-            placeholderTextColor={theme.faint}
+            placeholderTextColor={theme.searchPlaceholder ?? theme.faint}
             autoCorrect={false}
             autoCapitalize="none"
             clearButtonMode="while-editing"
@@ -319,13 +319,15 @@ function makeStyles(t: BrowseTheme) {
       marginTop: 4,
     },
     search: {
-      borderWidth: 1,
+      borderWidth: t.searchFill ? 0 : 1,
       borderColor: t.border,
       borderRadius: 8,
       paddingHorizontal: 10,
       paddingVertical: 7,
       fontSize: 14,
-      color: t.text,
+      color: t.searchText ?? t.text,
+      ...(t.searchFill ? { backgroundColor: t.searchFill } : null),
+      ...(t.searchFont ? { fontFamily: t.searchFont } : null),
     },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     searchFlex: { flex: 1 },

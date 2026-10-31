@@ -105,7 +105,7 @@ export function SealedBrowser({ theme: themeProp, languages, numColumns, onOpen,
             : searching
                 ? `Nothing matches “${query.trim()}”.`
                 : 'No sealed products here.';
-    return (_jsxs(View, { style: styles.wrap, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Sealed" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: query, onChangeText: setQuery, placeholder: "Search sealed products\u2026", placeholderTextColor: theme.faint, autoCorrect: false, autoCapitalize: "none", clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), languages ? null : _jsx(LanguageToggle, { theme: themeProp })] }), _jsxs(View, { style: styles.facetGroup, children: [_jsxs(View, { style: styles.facetHead, children: [_jsx(Text, { style: styles.facetLabel, children: "Type" }), numColumns ? null : (_jsxs(View, { style: styles.sizeChips, children: [_jsx(Text, { style: styles.facetLabel, children: "Size" }), CARD_SIZES.map((s) => {
+    return (_jsxs(View, { style: styles.wrap, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Sealed" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: query, onChangeText: setQuery, placeholder: "Search sealed products\u2026", placeholderTextColor: theme.searchPlaceholder ?? theme.faint, autoCorrect: false, autoCapitalize: "none", clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), languages ? null : _jsx(LanguageToggle, { theme: themeProp })] }), _jsxs(View, { style: styles.facetGroup, children: [_jsxs(View, { style: styles.facetHead, children: [_jsx(Text, { style: styles.facetLabel, children: "Type" }), numColumns ? null : (_jsxs(View, { style: styles.sizeChips, children: [_jsx(Text, { style: styles.facetLabel, children: "Size" }), CARD_SIZES.map((s) => {
                                                 const on = s === size;
                                                 return (_jsx(Pressable, { onPress: () => setSize(s), accessibilityRole: "button", accessibilityState: { selected: on }, accessibilityLabel: `Tile size ${s}`, style: [styles.sizeChip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], children: s }) }, s));
                                             })] }))] }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, keyboardShouldPersistTaps: "handled", contentContainerStyle: styles.chipRow, children: [{ key: 'all', label: 'Everything', short: 'Everything' }, ...SEALED_GROUPS].map((g) => {
@@ -134,13 +134,15 @@ function makeStyles(t) {
             marginTop: 4,
         },
         search: {
-            borderWidth: 1,
+            borderWidth: t.searchFill ? 0 : 1,
             borderColor: t.border,
             borderRadius: 8,
             paddingHorizontal: 10,
             paddingVertical: 7,
             fontSize: 14,
-            color: t.text,
+            color: t.searchText ?? t.text,
+            ...(t.searchFill ? { backgroundColor: t.searchFill } : null),
+            ...(t.searchFont ? { fontFamily: t.searchFont } : null),
         },
         searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
         searchFlex: { flex: 1 },
