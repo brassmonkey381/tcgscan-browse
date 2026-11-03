@@ -37,3 +37,18 @@ export declare function cardGridColumns(containerWidth: number, baseTileWidth: n
 export declare function cardTileWidthFor(containerWidth: number, cols: number, gap?: number): number;
 /** The image tier a tile of `tileWidth` px should request (640 for large tiles, else 245). */
 export declare function cardTierFor(tileWidth: number): 245 | 640;
+/**
+ * THE QUICK-ADD PILL GROWS WITH THE TILE (owner, 2026-11-03: "the (+) button should scale up with
+ * display size"). A fixed 18px circle was right on a dense phone grid and lost on an L tile or a
+ * desktop column. About a sixth of the tile's width, never under the 18px it was, never over 34.
+ * Shared with the sealed shelf so the two pills always match.
+ */
+export declare function quickPillSize(tileWidth: number): {
+    minWidth: number;
+    height: number;
+    borderRadius: number;
+};
+export declare function quickTextSize(tileWidth: number): {
+    fontSize: number;
+    lineHeight: number;
+};

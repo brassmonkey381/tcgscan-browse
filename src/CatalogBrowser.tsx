@@ -59,6 +59,8 @@ import {
   cardGridColumns,
   cardTierFor,
   cardTileWidthFor,
+  quickPillSize,
+  quickTextSize,
 } from './cardSize';
 import { browseState, subscribeBrowseCommand, type CardSize } from './state';
 import {
@@ -95,6 +97,7 @@ import { applyFeatureLocks, isLocked, lockedQueryNotice, type BrowseFeature } fr
 import { useImageManifest } from './images';
 import { LANGUAGE_ORDER, languageLabel, useBrowseLanguages } from './language';
 import { LanguageToggle } from './LanguageToggle';
+import { Segmented } from './Segmented';
 import { formatUsd, usePriceSummary } from './prices';
 import {
   releaseTag,
@@ -211,10 +214,10 @@ const SORT_OPTIONS: { field: QuerySort; label: string }[] = [
 ];
 
 /** UI size control: the tile-size steps offered by the Size chips. */
-const SIZE_OPTIONS: { size: CardSize; label: string }[] = [
-  { size: 'S', label: 'S' },
-  { size: 'M', label: 'M' },
-  { size: 'L', label: 'L' },
+const SIZE_OPTIONS: { size: CardSize; label: string; a11y: string }[] = [
+  { size: 'S', label: 'S', a11y: 'Small cards' },
+  { size: 'M', label: 'M', a11y: 'Medium cards' },
+  { size: 'L', label: 'L', a11y: 'Large cards' },
 ];
 /**
  * Below this measured content width the search row stacks (input on one line, EN/JP + ★ + ? on
@@ -2377,10 +2380,63 @@ export function CatalogBrowser({
           role="button"
           accessibilityLabel="Select multiple cards"
           style={styles.selectBtn}>
-          <Text style={styles.selectBtnText}>☑ Select</Text>
+          <Text style={styles.selectBtnText}>⊕ Select</Text>
         </Pressable>
       )
     ) : null;
+
+  // Sets | Analytics (or Cards | Analytics): rides the end of the breadcrumb line, unless Select
+  // is on that line too and the screen is a phone's.
+  const tabsOwnLine = compactBar && !!selectControl;
+  const analyticsTabs = analyticsScope ? (
+    <View style={styles.tabRow}>
+      {(['cards', 'analytics'] as const).map((t) => {
+        const on = t === analyticsTab;
+        const label = t === 'analytics' ? 'Analytics' : analyticsScope === 'series' ? 'Sets' : 'Cards';
+        // Locked analytics: accent-ring the tab so the gated perk draws the eye.
+        const spotlight = t === 'analytics' && !!analyticsLocked && !on;
+        return (
+          <Pressable
+            key={t}
+            onPress={() => setAnalyticsTab(t)}
+            role="tab"
+            aria-selected={on}
+            style={[styles.tab, on && styles.tabOn, spotlight && styles.tabSpotlight]}>
+            <Text style={[styles.tabText, on && styles.tabTextOn, spotlight && styles.tabTextSpotlight]}>{label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  ) : null;
+
+  /*
+    SORT & FILTER, ON THE GROUP ROW AT EVERY LEVEL (owner, 2026-11-03: "include the Sort & Filter
+    text here, before search even starts"). On a phone with cards on screen it unfolds the filter
+    and sort rows; on a wide screen, where those rows always show, it opens the filter panel.
+    On the series and set shelves it unfolds one row: the Collection filter, and the sort the next
+    cards arrive in. Collection lives under Sort & filter everywhere (owner, 2026-11-03), never loose.
+  */
+  const sortFilterControl = analyticsView ? null : isCardLevel ? (
+    <Pressable
+      onPress={() => (foldable ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v))}
+      role="button"
+      aria-expanded={foldable ? !folded : filtersOpen}
+      style={[styles.facetToggle, (foldable ? !folded : filtersOpen) && styles.facetToggleOn]}>
+      <Text style={[styles.facetToggleText, (foldable ? !folded : filtersOpen) && styles.facetToggleTextOn]} numberOfLines={1}>
+        {`Sort & filter${activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''} ▾`}
+      </Text>
+    </Pressable>
+  ) : (
+    <Pressable
+      onPress={() => setToolsOpen((v) => !v)}
+      role="button"
+      aria-expanded={toolsOpen}
+      style={[styles.facetToggle, toolsOpen && styles.facetToggleOn]}>
+      <Text style={[styles.facetToggleText, toolsOpen && styles.facetToggleTextOn]} numberOfLines={1}>
+        Sort & filter ▾
+      </Text>
+    </Pressable>
+  );
 
   // The resolved multi-selection — feeds both the batch modal's thumbs and its add-all payload.
   const selectedCards = multiOpen
@@ -2466,9 +2522,6 @@ export function CatalogBrowser({
             style={[styles.search, styles.searchFlex, compactSearch && styles.searchCompact]}
           />
           <View style={styles.searchToolsInline}>
-            {/* EN/JP bound. Rides with the search controls because it applies to the SEARCH, not
-                the results — flipping it re-runs every query/similarity call against the server. */}
-            {languageToggleVisible ? <LanguageToggle theme={themeProp} /> : null}
             {canSaveSearch ? (
               <Pressable
                 onPress={() => toggleSavedSearch(currentSearch())}
@@ -2489,6 +2542,39 @@ export function CatalogBrowser({
             </Pressable>
           </View>
         </View>
+        {/*
+          THE GROUP ROW (owner, 2026-11-03): under the search, never folded, at every level. The
+          language bound and the card size are each one button group (pick one), and Sort & filter
+          is here before a search even starts. The language rides near the search because it
+          applies to the SEARCH, not the results: flipping it re-runs every call against the server.
+        */}
+        <View style={styles.groupRow}>
+          {languageToggleVisible ? <LanguageToggle theme={themeProp} /> : null}
+          <SizeChips theme={theme} size={cardSize} onPickSize={pickCardSize} />
+          <View style={styles.controlsSpacer} />
+          {sortFilterControl}
+        </View>
+        {!isCardLevel && !analyticsView && toolsOpen ? (
+          <View style={styles.controlsRow}>
+            {ownedIds ? (
+              <CollectionChip styles={styles} onCycle={cycleOwnedFilter} state={parsed.owned ?? null} />
+            ) : null}
+            <PickerMenu
+              styles={styles}
+              label="Sort"
+              title="Sort cards by"
+              summary={SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance'}
+              items={SORT_OPTIONS.map((o) => ({
+                key: o.field,
+                label: o.label,
+                locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
+              }))}
+              selected={[effSort.field]}
+              onToggle={(key) => pickSort(key as QuerySort)}
+              closeOnPick
+            />
+          </View>
+        ) : null}
         {/* The theme toolbar: shown while a themed query is on screen and the registry offers it
             (a secondary game's `theme_search`, or Pokemon's `search_cards` with `themeTools`).
             Its controls are server parameters. */}
@@ -2528,20 +2614,19 @@ export function CatalogBrowser({
             ))}
           </ScrollView>
         ) : null}
-        {/* Search-source badge: ⚡ on-device (catalog in memory) once warm, else ☁ server search
-            with a tqdm-style download bar (% · MB · ETA) while the catalog loads. */}
-        {/* While the catalog loads this is the progress readout and earns its row. Once warm it
-            becomes a dot at the end of the results row (below): "instant" is worth a word, not a
-            line, and the line was the first of five stacked above the first card. */}
-        {!warm ? (
+        {/* The load readout, only while there is nothing to search with yet. Where server search
+            answers in the meantime (coldSearch) the readout said "Server search, instant", a line
+            about plumbing the owner asked to remove (2026-11-03): the search simply works, and the
+            catalog warming behind it changes nothing anyone can see. */}
+        {!warm && !coldSearch ? (
           <View>
             <View style={styles.modeBadge}>
-              <View style={[styles.modeDot, warm ? styles.modeDotReady : styles.modeDotLoading]} />
+              <View style={[styles.modeDot, styles.modeDotLoading]} />
               <Text style={styles.modeText} numberOfLines={1}>
-                {warm ? 'On-device search, instant' : loadLabel(catalogStatus, coldSearch)}
+                {loadLabel(catalogStatus, coldSearch)}
               </Text>
             </View>
-            {!warm && catalogStatus.status !== 'error' ? (
+            {catalogStatus.status !== 'error' ? (
               <View style={styles.progressTrack}>
                 <View
                   style={[styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }]}
@@ -2560,6 +2645,55 @@ export function CatalogBrowser({
             </Text>
           </Pressable>
         ) : null}
+        {/* ONE CONTROL STRIP. Filters, Color and Collection on the left; Sort and
+            S/M/L on the right (Select rides the results line above: see `selectControl`); a spacer between that wraps the right half onto its own line when
+            the width runs out. This was five rows (badge, results, filters, sort, select), each
+            mostly empty; a browse should start with cards, not chrome. */}
+        {isCardLevel && !analyticsView && !folded ? (
+          <FacetBar
+            styles={styles}
+            compact={compactBar}
+            options={facetOptions}
+            selection={selection}
+            activeCount={activeFilterCount}
+            open={filtersOpen}
+            onToggleOpen={() => setFiltersOpen((v) => !v)}
+            onToggleValue={toggleFacetValue}
+            onClear={clearFilters}
+            // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
+            // up while a color result set (similarTo.injected) is what's on screen.
+            onColorSearch={onColorSearch}
+            colorActive={!!similarTo?.injected}
+            // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
+            // injecting the have: token so it composes with the rest of the filters.
+            onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
+            ownedState={parsed.owned}
+            trailing={
+              <SortControls
+                styles={styles}
+                compact={compactBar}
+                field={effSort.field}
+                dir={effSort.dir}
+                onPick={pickSort}
+                onToggleDir={toggleSortDir}
+                lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
+              />
+            }
+          />
+        ) : null}
+        {/* The series count, on the top shelf. */}
+        {taxBarOn ? (
+          <TaxonomyBar
+            styles={styles}
+            // The series count rides this bar at the top level (one row, not two: owner, 2026-10-25).
+            lead={!seriesId && !searching && !similarTo ? `${series.length} series` : undefined}
+          />
+        ) : null}
+        {/*
+          THE CONTEXT LINE, LAST BEFORE THE GRID (owner, 2026-11-03: "in the first row just above
+          the picture grid, below the chips"): the results count, or where you are (the breadcrumb)
+          with Sets | Analytics at its end. It names what the grid under it is, so it sits on it.
+        */}
         {searching ? (
           <View style={styles.metaRow}>
             {/* Echo the PARSED query, not the raw text, the user sees exactly how
@@ -2586,19 +2720,7 @@ export function CatalogBrowser({
             </Text>
             <View style={styles.metaEnd}>
               {selectControl}
-              {/* While selecting, the row's other links step aside: the count and Continue need
-                  the width, and the query's echo is what the user is picking from. */}
-              {foldable && !selecting ? (
-                <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} role="button" aria-expanded={!folded}>
-                  <Text style={styles.clear}>{folded ? 'Sort & filter' : 'Hide sort & filter'}</Text>
-                </Pressable>
-              ) : null}
-              {warm && !selecting ? (
-                <View style={styles.modeInline} accessibilityLabel="On-device search, instant">
-                  <View style={[styles.modeDot, styles.modeDotReady]} />
-                  <Text style={styles.modeText}>On-device</Text>
-                </View>
-              ) : null}
+              {/* While selecting, Clear steps aside: the count and Continue need the width. */}
               {!selecting ? (
                 <Pressable onPress={() => onChangeQuery('')} hitSlop={8}>
                   <Text style={styles.clear}>Clear</Text>
@@ -2670,18 +2792,27 @@ export function CatalogBrowser({
             </ScrollView>
           </View>
         ) : seriesId ? (
-          foldable || selectControl ? (
-            <View style={styles.metaRow}>
-              <Breadcrumb styles={styles} crumbs={crumbs} />
-              <View style={styles.metaEnd}>
-                {selectControl}
-                {foldable && !selecting ? (
-                  <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} role="button" aria-expanded={!folded}>
-                    <Text style={styles.clear}>{folded ? 'Sort & filter' : 'Hide sort & filter'}</Text>
-                  </Pressable>
-                ) : null}
+          selectControl || analyticsTabs ? (
+            tabsOwnLine ? (
+              // A set's three crumbs, Select and the tabs do not fit one phone line: the crumbs
+              // keep theirs, and the tabs and Select share the next (tabs at the start, as on a
+              // series, Select at the end, as on a results line).
+              <>
+                <Breadcrumb styles={styles} crumbs={crumbs} />
+                <View style={styles.metaRow}>
+                  {selecting ? <View /> : analyticsTabs}
+                  <View style={styles.metaEnd}>{selectControl}</View>
+                </View>
+              </>
+            ) : (
+              <View style={styles.metaRow}>
+                <Breadcrumb styles={styles} crumbs={crumbs} />
+                <View style={styles.metaEnd}>
+                  {selectControl}
+                  {selecting ? null : analyticsTabs}
+                </View>
               </View>
-            </View>
+            )
           ) : (
             <Breadcrumb styles={styles} crumbs={crumbs} />
           )
@@ -2701,73 +2832,6 @@ export function CatalogBrowser({
               {lockNotice}
             </Text>
           </Pressable>
-        ) : null}
-        {analyticsScope ? (
-          <View style={styles.tabRow}>
-            {(['cards', 'analytics'] as const).map((t) => {
-              const on = t === analyticsTab;
-              const label = t === 'analytics' ? 'Analytics' : analyticsScope === 'series' ? 'Sets' : 'Cards';
-              // Locked analytics: accent-ring the tab so the gated perk draws the eye.
-              const spotlight = t === 'analytics' && !!analyticsLocked && !on;
-              return (
-                <Pressable key={t} onPress={() => setAnalyticsTab(t)} style={[styles.tab, on && styles.tabOn, spotlight && styles.tabSpotlight]}>
-                  <Text style={[styles.tabText, on && styles.tabTextOn, spotlight && styles.tabTextSpotlight]}>
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-        {/* ONE CONTROL STRIP. Filters, Color and Collection on the left; Sort and
-            S/M/L on the right (Select rides the results line above: see `selectControl`); a spacer between that wraps the right half onto its own line when
-            the width runs out. This was five rows (badge, results, filters, sort, select), each
-            mostly empty; a browse should start with cards, not chrome. */}
-        {isCardLevel && !analyticsView && !folded ? (
-          <FacetBar
-            styles={styles}
-            compact={compactBar}
-            options={facetOptions}
-            selection={selection}
-            activeCount={activeFilterCount}
-            open={filtersOpen}
-            onToggleOpen={() => setFiltersOpen((v) => !v)}
-            onToggleValue={toggleFacetValue}
-            onClear={clearFilters}
-            // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
-            // up while a color result set (similarTo.injected) is what's on screen.
-            onColorSearch={onColorSearch}
-            colorActive={!!similarTo?.injected}
-            // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
-            // injecting the have: token so it composes with the rest of the filters.
-            onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
-            ownedState={parsed.owned}
-            trailing={
-              <SortControls
-                styles={styles}
-                compact={compactBar}
-                field={effSort.field}
-                dir={effSort.dir}
-                onPick={pickSort}
-                onToggleDir={toggleSortDir}
-                size={cardSize}
-                onPickSize={pickCardSize}
-                lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
-              />
-            }
-          />
-        ) : null}
-        {/* Series/set levels get Collection + Size without waiting for a drill-down or a search. */}
-        {taxBarOn ? (
-          <TaxonomyBar
-            styles={styles}
-            // The series count rides this bar at the top level (one row, not two: owner, 2026-10-25).
-            lead={!seriesId && !searching && !similarTo ? `${series.length} series` : undefined}
-            onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
-            ownedState={parsed.owned}
-            size={cardSize}
-            onPickSize={pickCardSize}
-          />
         ) : null}
       </View>
 
@@ -3151,14 +3215,14 @@ function CardTile({
         {quickAction ? (
           // Nested Pressable captures its own tap, so the tile's sheet doesn't open.
           <Pressable
-            style={[styles.cardQuick, quickDone && styles.cardQuickDone]}
+            style={[styles.cardQuick, quickPillSize(width), quickDone && styles.cardQuickDone]}
             hitSlop={6}
             onPress={() => {
               quickAction.onPress(card);
               setDoneId(card.id);
             }}
             accessibilityLabel={typeof quickAction.label === 'string' ? quickAction.label : 'Quick action'}>
-            <Text style={styles.cardQuickText} numberOfLines={1}>
+            <Text style={[styles.cardQuickText, quickTextSize(width)]} numberOfLines={1}>
               {quickDone ? '✓' : typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label}
             </Text>
           </Pressable>
@@ -3320,8 +3384,6 @@ function SortControls({
   dir,
   onPick,
   onToggleDir,
-  size,
-  onPickSize,
   lockedSorts,
 }: {
   styles: Styles;
@@ -3332,8 +3394,6 @@ function SortControls({
   lockedSorts?: QuerySort[];
   onPick: (field: QuerySort) => void;
   onToggleDir: () => void;
-  size: CardSize;
-  onPickSize: (size: CardSize) => void;
 }) {
   const current = SORT_OPTIONS.find((o) => o.field === field)?.label ?? 'Relevance';
   return (
@@ -3380,7 +3440,6 @@ function SortControls({
           <Text style={styles.sortDirText}>{dir === 'asc' ? '↑' : '↓'}</Text>
         </Pressable>
       ) : null}
-      <SizeChips styles={styles} size={size} onPickSize={onPickSize} />
     </View>
   );
 }
@@ -3483,29 +3542,22 @@ function PickerMenu({
  * Session-sticky; L pulls the 640px thumb.
  */
 function SizeChips({
-  styles,
+  theme,
   size,
   onPickSize,
 }: {
-  styles: Styles;
+  theme: BrowseTheme;
   size: CardSize;
   onPickSize: (size: CardSize) => void;
 }) {
   return (
-    <View style={styles.sizeChips}>
-      {SIZE_OPTIONS.map((o) => {
-        const on = o.size === size;
-        return (
-          <Pressable
-            key={o.size}
-            onPress={() => onPickSize(o.size)}
-            style={[styles.sizeChip, on && styles.chipOn]}
-            accessibilityLabel={`Card size ${o.label}`}>
-            <Text style={[styles.chipText, on && styles.chipTextOn]}>{o.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <Segmented<CardSize>
+      theme={theme}
+      label="Card size"
+      value={size}
+      onChange={onPickSize}
+      options={SIZE_OPTIONS.map((o) => ({ value: o.size, label: o.label, a11y: o.a11y }))}
+    />
   );
 }
 
@@ -3538,48 +3590,19 @@ function CollectionChip({
 }
 
 /**
- * The slim bar the SERIES/SET levels get: Collection + Size, with no Filters or Sort.
+ * The top shelf's one line of context ("33 series"). It used to be a bar holding Collection and
+ * Size too; Size moved to the group row and Collection under Sort & filter (owner, 2026-11-03).
  *
- * Why it exists: those two controls used to appear only once you had drilled into a set or typed a
- * search, so "show me what I own" and "make these tiles bigger" were invisible from the front door
- * — the two places a collector most wants them. Filters and Sort stay behind, because their fields
- * are card fields (hp, type, price) and there is nothing here for them to act on.
- *
- * Tapping Collection from here injects `have:` into the query, which turns the view into a card
+ * Tapping Collection from a shelf injects `have:` into the query, which turns the view into a card
  * search across the whole catalogue. That IS the intent: "show me my cards", answered immediately
  * rather than after picking a series and a set.
  */
-function TaxonomyBar({
-  styles,
-  lead,
-  onCycleOwned,
-  ownedState,
-  size,
-  onPickSize,
-}: {
-  styles: Styles;
-  /** A line of context at the start of the bar ("17 series"), so it does not take a row of its own. */
-  lead?: string;
-  onCycleOwned?: () => void;
-  ownedState?: boolean | null;
-  size: CardSize;
-  onPickSize: (size: CardSize) => void;
-}) {
+function TaxonomyBar({ styles, lead }: { styles: Styles; lead?: string }) {
+  if (!lead) return null;
   return (
-    <View style={styles.facetBar}>
-      <View style={styles.facetHeader}>
-        {lead ? (
-          <Text style={styles.meta} numberOfLines={1}>
-            {lead}
-          </Text>
-        ) : null}
-        {onCycleOwned ? (
-          <CollectionChip styles={styles} onCycle={onCycleOwned} state={ownedState ?? null} />
-        ) : null}
-        <View style={styles.taxBarSpacer} />
-        <SizeChips styles={styles} size={size} onPickSize={onPickSize} />
-      </View>
-    </View>
+    <Text style={styles.meta} numberOfLines={1}>
+      {lead}
+    </Text>
   );
 }
 
@@ -3802,6 +3825,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     },
     searchCompact: { fontSize: 16 },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    // Language, size, then Sort & filter at the far end; wraps rather than scrolls on a narrow embed.
+    groupRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
     // minWidth 0: a TextInput's placeholder sets its minimum width on the web, so a wide hint (a
     // host's pixel face) would push the EN/JP and help buttons off the row.
     searchFlex: { flex: 1, minWidth: 0 },
@@ -3816,7 +3841,6 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     // search-source badge (on-device / loading / — later — server)
     modeBadge: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     modeDot: { width: 7, height: 7, borderRadius: 4 },
-    modeDotReady: { backgroundColor: t.accent },
     modeDotLoading: { backgroundColor: t.faint },
     modeText: { fontSize: 11, color: t.faint, flexShrink: 1 },
     // tqdm-style catalog-load bar under the badge
@@ -3917,7 +3941,6 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     facetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
     // Keeps Size pinned right on the taxonomy bar even when the Collection chip is absent
     // (a guest, or a host that supplied no owned ids), where space-between alone would left-align it.
-    taxBarSpacer: { flex: 1 },
     facetToggle: {
       paddingHorizontal: 10,
       paddingVertical: 4,
@@ -3954,9 +3977,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     menuCheck: { fontSize: 13, fontWeight: '800', color: t.link, width: 18, textAlign: 'right' },
     menuDone: { alignItems: 'center', paddingVertical: 8, borderRadius: 9, backgroundColor: t.accent },
     menuDoneText: { fontSize: 13, fontWeight: '700', color: t.accentText },
-    // The results row's right end: the on-device dot beside Clear.
     metaEnd: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    modeInline: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     chipRow: { gap: 6, paddingRight: 8 },
     chip: {
       paddingHorizontal: 10,
@@ -3977,7 +3998,6 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     lockNoticeRow: { paddingHorizontal: 2, paddingBottom: 4 },
     lockNotice: { fontSize: 11, color: t.faint, fontStyle: 'italic' },
     // sort control (field chips + a ↑/↓ direction toggle)
-    sortScroll: { flexShrink: 1 },
     sortDir: {
       width: 30,
       alignItems: 'center',
@@ -3988,18 +4008,6 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       ...lipEdge(t),
     },
     sortDirText: { fontSize: 14, fontWeight: '800', color: t.link },
-    // inline card-size control (S/M/L) pinned at the end of the sort row
-    sizeChips: { flexDirection: 'row', gap: 4, marginLeft: 8 },
-    sizeChip: {
-      minWidth: 26,
-      alignItems: 'center',
-      paddingHorizontal: 7,
-      paddingVertical: 5,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: t.border,
-      ...lipEdge(t),
-    },
     // list
     column: { gap: GRID_GAP, justifyContent: 'flex-start' },
     listContent: { paddingBottom: 16 },
@@ -4104,22 +4112,19 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     cardImage: { width: '100%', height: '100%' },
     cardImageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     cardImageFallbackText: { color: t.faint, fontSize: 8 },
-    // inline quick-action pill: top-right of the thumb, accent-filled
+    // inline quick-action pill: top-right of the thumb (its size is quickPillSize's)
     cardQuick: {
       position: 'absolute',
       top: 3,
       right: 3,
-      minWidth: 18,
-      height: 18,
       paddingHorizontal: 4,
-      borderRadius: 9,
-      backgroundColor: t.accent,
+      backgroundColor: t.quickFill ?? t.accent,
       alignItems: 'center',
       justifyContent: 'center',
     },
     // The same green as the owned badge: "done" reads one way across the tile.
     cardQuickDone: { backgroundColor: '#2e9e5b' },
-    cardQuickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+    cardQuickText: { color: t.quickText ?? t.accentText, fontWeight: '800' },
     cardName: { fontSize: 9, lineHeight: 12, marginTop: 2, color: t.subtext, textAlign: 'center' },
     cardValue: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: t.link, textAlign: 'center' },
     // multi-select: highlighted tile + a check badge, top-left of the thumb
@@ -4209,7 +4214,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     selectToggle: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: t.border },
     selectToggleText: { fontSize: 12, fontWeight: '600', color: t.link },
     // breadcrumb
-    bcBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
+    // Shrinks and wraps inside its line, so the controls at the line's end are never pushed off.
+    bcBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', flexShrink: 1 },
     bcItem: { flexDirection: 'row', alignItems: 'center' },
     bcSep: { fontSize: 13, color: t.faint, marginHorizontal: 6 },
     bcCrumb: { fontSize: 13 },

@@ -32,7 +32,8 @@ import { Image } from 'expo-image';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
 import { LanguageToggle } from './LanguageToggle';
-import { CARD_GRID_GAP, CARD_SIZES, cardTileWidthFor } from './cardSize';
+import { Segmented } from './Segmented';
+import { CARD_GRID_GAP, CARD_SIZES, cardTileWidthFor, quickPillSize, quickTextSize } from './cardSize';
 import { useBrowseLanguages } from './language';
 import { formatUsd } from './prices';
 import { releaseTag, RELEASE_TAG_FONT_SIZE, RELEASE_TAG_LINE_HEIGHT } from './releaseTag';
@@ -105,15 +106,12 @@ export function SealedBrowser({ theme: themeProp, languages, numColumns, onOpen,
             : searching
                 ? `Nothing matches “${query.trim()}”.`
                 : 'No sealed products here.';
-    return (_jsxs(View, { style: styles.wrap, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [_jsx(Text, { style: styles.sectionLabel, children: "Sealed" }), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: query, onChangeText: setQuery, placeholder: "Search sealed products", placeholderTextColor: theme.searchPlaceholder ?? theme.faint, autoCorrect: false, autoCapitalize: "none", clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }), languages ? null : _jsx(LanguageToggle, { theme: themeProp })] }), _jsxs(View, { style: styles.facetGroup, children: [_jsxs(View, { style: styles.facetHead, children: [_jsx(Text, { style: styles.facetLabel, children: "Type" }), numColumns ? null : (_jsxs(View, { style: styles.sizeChips, children: [_jsx(Text, { style: styles.facetLabel, children: "Size" }), CARD_SIZES.map((s) => {
-                                                const on = s === size;
-                                                return (_jsx(Pressable, { onPress: () => setSize(s), role: "button", "aria-selected": on, accessibilityLabel: `Tile size ${s}`, style: [styles.sizeChip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], children: s }) }, s));
-                                            })] }))] }), _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, keyboardShouldPersistTaps: "handled", contentContainerStyle: styles.chipRow, children: [{ key: 'all', label: 'Everything', short: 'Everything' }, ...SEALED_GROUPS].map((g) => {
-                                    const on = group === g.key;
-                                    return (_jsx(Pressable, { onPress: () => setGroup(g.key), role: "button", "aria-selected": on, accessibilityLabel: g.label, style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: g.short }) }, g.key));
-                                }) })] })] }), _jsx(FlatList, { data: shown, keyExtractor: (p) => p.id, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, ListEmptyComponent: _jsx(View, { style: styles.empty, children: _jsx(Text, { style: styles.emptyText, children: emptyText }) }), renderItem: ({ item: p }) => {
+    return (_jsxs(View, { style: styles.wrap, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [theme.hideSectionLabel ? null : _jsx(Text, { style: styles.sectionLabel, children: "Sealed" }), _jsx(View, { style: styles.searchRow, children: _jsx(TextInput, { value: query, onChangeText: setQuery, placeholder: "Search sealed products", placeholderTextColor: theme.searchPlaceholder ?? theme.faint, autoCorrect: false, autoCapitalize: "none", clearButtonMode: "while-editing", style: [styles.search, styles.searchFlex] }) }), languages && numColumns ? null : (_jsxs(View, { style: styles.groupRow, children: [languages ? null : _jsx(LanguageToggle, { theme: themeProp }), numColumns ? null : (_jsx(Segmented, { theme: theme, label: "Tile size", value: size, onChange: setSize, options: CARD_SIZES.map((s) => ({ value: s, label: s, a11y: `Tile size ${s}` })) }))] })), _jsx(View, { style: styles.facetGroup, children: _jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, keyboardShouldPersistTaps: "handled", contentContainerStyle: styles.chipRow, children: [{ key: 'all', label: 'Everything', short: 'Everything' }, ...SEALED_GROUPS].map((g) => {
+                                const on = group === g.key;
+                                return (_jsx(Pressable, { onPress: () => setGroup(g.key), role: "button", "aria-selected": on, accessibilityLabel: g.label, style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: g.short }) }, g.key));
+                            }) }) })] }), _jsx(FlatList, { data: shown, keyExtractor: (p) => p.id, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, ListEmptyComponent: _jsx(View, { style: styles.empty, children: _jsx(Text, { style: styles.emptyText, children: emptyText }) }), renderItem: ({ item: p }) => {
                     const price = formatUsd(priceOf(p.id));
-                    return (_jsxs(Pressable, { style: [styles.tile, tileW > 0 ? { width: tileW } : null], role: onOpen ? 'button' : undefined, accessibilityLabel: p.name, disabled: !onOpen, onPress: onOpen ? () => onOpen(p) : undefined, children: [_jsxs(View, { style: styles.imageWrap, children: [_jsx(Image, { source: { uri: (tileW >= 150 ? p.imageMedium : p.imageSmall) || p.image }, style: styles.image, contentFit: "contain", transition: 100, recyclingKey: p.id }), onAdd ? (_jsx(Pressable, { hitSlop: 6, accessibilityLabel: `Add ${p.name}`, onPress: () => onAdd(p), style: styles.quick, children: _jsx(Text, { style: styles.quickText, children: addLabel }) })) : null, (() => {
+                    return (_jsxs(Pressable, { style: [styles.tile, tileW > 0 ? { width: tileW } : null], role: onOpen ? 'button' : undefined, accessibilityLabel: p.name, disabled: !onOpen, onPress: onOpen ? () => onOpen(p) : undefined, children: [_jsxs(View, { style: styles.imageWrap, children: [_jsx(Image, { source: { uri: (tileW >= 150 ? p.imageMedium : p.imageSmall) || p.image }, style: styles.image, contentFit: "contain", transition: 100, recyclingKey: p.id }), onAdd ? (_jsx(Pressable, { hitSlop: 6, accessibilityLabel: `Add ${p.name}`, onPress: () => onAdd(p), style: [styles.quick, quickPillSize(tileW)], children: _jsx(Text, { style: [styles.quickText, quickTextSize(tileW)], children: addLabel }) })) : null, (() => {
                                         const tag = releaseTag(p.releaseDate);
                                         if (!tag)
                                             return null;
@@ -145,15 +143,14 @@ function makeStyles(t) {
             ...(t.searchFont ? { fontFamily: t.searchFont } : null),
         },
         searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        groupRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
         // minWidth 0: a TextInput's placeholder sets its minimum width on the web, so a wide hint (a
         // host's pixel face) would push the EN/JP and help buttons off the row.
         searchFlex: { flex: 1, minWidth: 0 },
         // A stacked facet block: label + size toggle on one line, the chips full-width under it.
         facetGroup: { gap: 6 },
-        facetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
         // No fixed width any more — the label shares its line with one right-aligned control
         // instead of holding a column open in front of a scroll view.
-        facetLabel: { fontSize: 11, fontWeight: '600', color: t.subtext },
         chipRow: { gap: 6, paddingRight: 8 },
         chip: {
             paddingHorizontal: 10,
@@ -166,16 +163,6 @@ function makeStyles(t) {
         chipOn: { backgroundColor: t.accent, borderColor: t.accent },
         chipText: { fontSize: 12, fontWeight: '600', color: t.subtext },
         chipTextOn: { color: t.accentText },
-        sizeChips: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-        sizeChip: {
-            minWidth: 26,
-            alignItems: 'center',
-            paddingHorizontal: 7,
-            paddingVertical: 5,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: t.border,
-        },
         // The grid. No tile chrome: the art carries the rounding, exactly as on the card shelf — and
         // at the S step a border plus padding would eat half of a ~40px tile.
         column: { gap: CARD_GRID_GAP, justifyContent: 'flex-start' },
@@ -193,15 +180,12 @@ function makeStyles(t) {
             position: 'absolute',
             top: 3,
             right: 3,
-            minWidth: 18,
-            height: 18,
             paddingHorizontal: 4,
-            borderRadius: 9,
-            backgroundColor: t.accent,
+            backgroundColor: t.quickFill ?? t.accent,
             alignItems: 'center',
             justifyContent: 'center',
         },
-        quickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+        quickText: { color: t.quickText ?? t.accentText, fontWeight: '800' },
         // Bottom-left, so it never collides with the add button top-right.
         badge: {
             position: 'absolute',

@@ -62,3 +62,18 @@ export function cardTileWidthFor(
 export function cardTierFor(tileWidth: number): 245 | 640 {
   return tileWidth >= CARD_HIRES_TILE_W ? 640 : 245;
 }
+
+/**
+ * THE QUICK-ADD PILL GROWS WITH THE TILE (owner, 2026-11-03: "the (+) button should scale up with
+ * display size"). A fixed 18px circle was right on a dense phone grid and lost on an L tile or a
+ * desktop column. About a sixth of the tile's width, never under the 18px it was, never over 34.
+ * Shared with the sealed shelf so the two pills always match.
+ */
+export function quickPillSize(tileWidth: number) {
+  const d = Math.round(Math.min(34, Math.max(18, tileWidth * 0.16)));
+  return { minWidth: d, height: d, borderRadius: d / 2 };
+}
+export function quickTextSize(tileWidth: number) {
+  const d = Math.round(Math.min(34, Math.max(18, tileWidth * 0.16)));
+  return { fontSize: Math.round(d * 0.62), lineHeight: Math.round(d * 0.8) };
+}

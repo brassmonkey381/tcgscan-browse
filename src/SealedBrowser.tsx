@@ -41,7 +41,8 @@ import {
 } from 'react-native';
 
 import { LanguageToggle } from './LanguageToggle';
-import { CARD_GRID_GAP, CARD_SIZES, cardTileWidthFor } from './cardSize';
+import { Segmented } from './Segmented';
+import { CARD_GRID_GAP, CARD_SIZES, cardTileWidthFor, quickPillSize, quickTextSize } from './cardSize';
 import type { CardLanguage } from './catalog';
 import { useBrowseLanguages } from './language';
 import { formatUsd } from './prices';
@@ -152,8 +153,7 @@ export function SealedBrowser({
   return (
     <View style={styles.wrap} onLayout={onLayout}>
       <View style={styles.controls}>
-        <Text style={styles.sectionLabel}>Sealed</Text>
-        {/* Input and the EN/JP pills share a row, as they do above the card grid. */}
+        {theme.hideSectionLabel ? null : <Text style={styles.sectionLabel}>Sealed</Text>}
         <View style={styles.searchRow}>
           <TextInput
             value={query}
@@ -165,40 +165,24 @@ export function SealedBrowser({
             clearButtonMode="while-editing"
             style={[styles.search, styles.searchFlex]}
           />
-          {languages ? null : <LanguageToggle theme={themeProp} />}
         </View>
-        {/* TWO ROWS, NOT ONE. The card shelf puts a facet label, its chips and the size toggle on
-            a single line, and that shape does not survive nine chips: the horizontal ScrollView
-            sizes to its content, so on a phone it pushed S/M/L clean off the right edge — the
-            size control was unreachable and about two Types were visible at a time.
-
-            So the labels and the size toggle take a header line of their own, aligned to the two
-            ends (which is what makes the block read as a bar rather than a pile), and the chips
-            get the full width underneath. Same tokens, same chips; the row they sit on is just no
-            longer being shared with two other controls. */}
-        <View style={styles.facetGroup}>
-          <View style={styles.facetHead}>
-            <Text style={styles.facetLabel}>Type</Text>
+        {/* The same group row as the card shelf (owner, 2026-11-03): language and tile size, each
+            one button group, under the search. Then the Type chips get the full width. */}
+        {languages && numColumns ? null : (
+          <View style={styles.groupRow}>
+            {languages ? null : <LanguageToggle theme={themeProp} />}
             {numColumns ? null : (
-              <View style={styles.sizeChips}>
-                <Text style={styles.facetLabel}>Size</Text>
-                {CARD_SIZES.map((s) => {
-                  const on = s === size;
-                  return (
-                    <Pressable
-                      key={s}
-                      onPress={() => setSize(s)}
-                      role="button"
-                      aria-selected={on}
-                      accessibilityLabel={`Tile size ${s}`}
-                      style={[styles.sizeChip, on && styles.chipOn]}>
-                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{s}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <Segmented<CardSize>
+                theme={theme}
+                label="Tile size"
+                value={size}
+                onChange={setSize}
+                options={CARD_SIZES.map((s) => ({ value: s, label: s, a11y: `Tile size ${s}` }))}
+              />
             )}
           </View>
+        )}
+        <View style={styles.facetGroup}>
           {/* `short`, not `label`: a chip only has to say which filter it is, and the long form
               spent the row's whole width on "Elite Trainer Boxes". The full name stays on the
               accessibility label, so nothing is lost to a screen reader. */}
@@ -273,8 +257,8 @@ export function SealedBrowser({
                     hitSlop={6}
                     accessibilityLabel={`Add ${p.name}`}
                     onPress={() => onAdd(p)}
-                    style={styles.quick}>
-                    <Text style={styles.quickText}>{addLabel}</Text>
+                    style={[styles.quick, quickPillSize(tileW)]}>
+                    <Text style={[styles.quickText, quickTextSize(tileW)]}>{addLabel}</Text>
                   </Pressable>
                 ) : null}
                 {/* Sealed carries a release date and never showed it, so a box shipping next week
@@ -330,15 +314,14 @@ function makeStyles(t: BrowseTheme) {
       ...(t.searchFont ? { fontFamily: t.searchFont } : null),
     },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    groupRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
     // minWidth 0: a TextInput's placeholder sets its minimum width on the web, so a wide hint (a
     // host's pixel face) would push the EN/JP and help buttons off the row.
     searchFlex: { flex: 1, minWidth: 0 },
     // A stacked facet block: label + size toggle on one line, the chips full-width under it.
     facetGroup: { gap: 6 },
-    facetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     // No fixed width any more — the label shares its line with one right-aligned control
     // instead of holding a column open in front of a scroll view.
-    facetLabel: { fontSize: 11, fontWeight: '600', color: t.subtext },
     chipRow: { gap: 6, paddingRight: 8 },
     chip: {
       paddingHorizontal: 10,
@@ -351,16 +334,6 @@ function makeStyles(t: BrowseTheme) {
     chipOn: { backgroundColor: t.accent, borderColor: t.accent },
     chipText: { fontSize: 12, fontWeight: '600', color: t.subtext },
     chipTextOn: { color: t.accentText },
-    sizeChips: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    sizeChip: {
-      minWidth: 26,
-      alignItems: 'center',
-      paddingHorizontal: 7,
-      paddingVertical: 5,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: t.border,
-    },
     // The grid. No tile chrome: the art carries the rounding, exactly as on the card shelf — and
     // at the S step a border plus padding would eat half of a ~40px tile.
     column: { gap: CARD_GRID_GAP, justifyContent: 'flex-start' },
@@ -378,15 +351,12 @@ function makeStyles(t: BrowseTheme) {
       position: 'absolute',
       top: 3,
       right: 3,
-      minWidth: 18,
-      height: 18,
       paddingHorizontal: 4,
-      borderRadius: 9,
-      backgroundColor: t.accent,
+      backgroundColor: t.quickFill ?? t.accent,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    quickText: { color: t.accentText, fontSize: 11, fontWeight: '800', lineHeight: 14 },
+    quickText: { color: t.quickText ?? t.accentText, fontWeight: '800' },
     // Bottom-left, so it never collides with the add button top-right.
     badge: {
       position: 'absolute',

@@ -69,6 +69,10 @@ export interface BrowseTheme {
     /** Leave out the 'Cards · 1×1' section label above the search (tcgscan-app, 2026-11-03: it takes
      *  room and names nothing a BiBo user needs). Omitted = drawn, as michi-maker's picker wants. */
     hideSectionLabel?: boolean;
+    /** The quick-add pill on card and sealed tiles: its fill and its glyph. Omitted = `accent` and
+     *  `accentText`, as before (tcgscan-app tries BiBo's cyber cyan here, owner 2026-11-03). */
+    quickFill?: string;
+    quickText?: string;
     lip?: string;
     lipOn?: string;
     searchFill?: string;

@@ -11,6 +11,7 @@ export { browseGeneration, useBrowseGeneration } from './generation';
 export { configureBrowse, resetBrowseData, getApiKey, getApiUrl, getBrowseUrl, getImgBase, resolveImageUrl, cardThumbUrl, cdnImageUrl, productUrl, setShopUrl, setColorUrl, affiliateUrl, affiliateConfigured, reportOutboundClick, ebaySearchUrl, ebayCardSearchUrl, type BrowseConfig, type CatalogSource, type LanguageStore, type OutboundClick, type OutboundItem, type OutboundNetwork, type ProductLine, type SavedSearchStore, type ThemedSearchProxy, } from './config';
 export { effectiveLanguages, getBrowseLanguages, hydrateBrowseLanguages, languageLabel, languageShortLabel, LANGUAGE_ORDER, normalizeLanguages, setBrowseLanguages, subscribeBrowseLanguages, useBrowseLanguages, } from './language';
 export { LanguageToggle } from './LanguageToggle';
+export { Segmented, type SegmentOption } from './Segmented';
 export { applyFeatureLocks, FEATURE_LABELS, isLocked, lockedQueryNotice, type BrowseFeature, } from './features';
 export { hydrateImageManifest, imageManifestReady, imageManifestRevision, loadImageManifest, registerImageManifest, secondaryManifestReady, subscribeImageManifest, useImageManifest, type ManifestCache, type SecondaryManifest, } from './images';
 export { buildCatalog, evolutionNeighbors, formatSetDate, getCatalog, getCatalogStatus, getLoadedCatalog, loadCatalog, prefetchCatalog, seriesDateRange, subscribeCatalog, subscribeCatalogStatus, useCatalogStatus, type Catalog, type CatalogStatus, type CatalogLoadStatus, type CatalogCard, type CatalogSeries, type CatalogSet, type CardKind, type CardLanguage, type RawCard, type RawCatalog, type RawSeries, type RawSet, type RawVUnionGroup, type VUnionGroup, } from './catalog';
@@ -28,7 +29,7 @@ export { describeQuery, filterCards, matchCard, parseQuery, MANUAL_TABS, QUERY_H
 export { daysUntilRelease, isUpcoming, releaseTag, todayISO, JUST_RELEASED_DAYS, RECENT_DAYS, RELEASE_SOON_DAYS, RELEASE_TAG_FONT_SIZE, RELEASE_TAG_LINE_HEIGHT, VERY_RECENT_DAYS, type ReleaseTag, type ReleaseTagKind, } from './releaseTag';
 export { hydrateSavedSearches, isSearchSaved, listSavedSearches, removeSavedSearch, subscribeSavedSearches, toggleSavedSearch, type SavedSearch, } from './savedSearches';
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, type CardSize, } from './state';
-export { CARD_SIZES, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, CARD_GRID_GAP, CARD_HIRES_TILE_W, cardGridColumns, cardTileWidthFor, cardTierFor, } from './cardSize';
+export { CARD_SIZES, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, CARD_GRID_GAP, CARD_HIRES_TILE_W, cardGridColumns, cardTileWidthFor, cardTierFor, quickPillSize, quickTextSize, } from './cardSize';
 export { CatalogBrowser } from './CatalogBrowser';
 export type { ThemeTypeGroup } from './ThemeFilterBar';
 export { CardActionModal } from './CardActionModal';

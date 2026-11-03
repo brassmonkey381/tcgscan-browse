@@ -52,6 +52,7 @@ export {
 } from './language';
 
 export { LanguageToggle } from './LanguageToggle';
+export { Segmented, type SegmentOption } from './Segmented';
 
 export {
   applyFeatureLocks,
@@ -286,6 +287,8 @@ export {
   cardGridColumns,
   cardTileWidthFor,
   cardTierFor,
+  quickPillSize,
+  quickTextSize,
 } from './cardSize';
 
 export { CatalogBrowser } from './CatalogBrowser';

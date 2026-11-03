@@ -1,8 +1,11 @@
 /**
- * EN / JP printing-language toggle — the kit-owned control for the shared language preference.
+ * EN / JP / EN + JP printing-language control: the kit-owned control for the shared language
+ * preference.
  *
- * Two pills, multi-select: either or both can be on, and at least one always stays selected
- * (toggling off the last one is a no-op) so a browse surface is never constrained to nothing.
+ * A button group, pick one (owner, 2026-11-03). It used to be two pills that toggled
+ * independently, where "both" meant both pills lit; that read as two filters rather than one
+ * choice, so "both" is now an option of its own. The value behind it is unchanged: a list of
+ * languages, never empty, so a browse surface is never constrained to nothing.
  *
  * By default it drives the SHARED preference (`useBrowseLanguages`), which is what makes the
  * choice apply BEFORE every search the kit runs — query search, the series/set drill-down, the
@@ -11,11 +14,12 @@
  *
  * Pass `value`/`onChange` to drive it from app-owned state instead (the controlled form).
  */
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-
 import type { CardLanguage } from './catalog';
-import { LANGUAGE_ORDER, languageLabel, languageShortLabel, useBrowseLanguages } from './language';
+import { LANGUAGE_ORDER, useBrowseLanguages } from './language';
+import { Segmented } from './Segmented';
 import { resolveTheme, type BrowseTheme } from './theme';
+
+type Choice = 'en' | 'ja' | 'both';
 
 export function LanguageToggle({
   value,
@@ -32,50 +36,19 @@ export function LanguageToggle({
   const langs = value ?? shared;
   const set = onChange ?? setShared;
   const t = resolveTheme(theme);
-
-  const toggle = (code: CardLanguage) => {
-    const on = langs.includes(code);
-    if (on && langs.length === 1) return; // keep at least one language selected
-    // Re-derive in canonical order so the value is stable regardless of tap order.
-    set(LANGUAGE_ORDER.filter((c) => (c === code ? !on : langs.includes(c))));
-  };
+  const choice: Choice = langs.length === 1 ? (langs[0] === 'ja' ? 'ja' : 'en') : 'both';
 
   return (
-    <View style={styles.row}>
-      {LANGUAGE_ORDER.map((code) => {
-        const active = langs.includes(code);
-        return (
-          <Pressable
-            key={code}
-            onPress={() => toggle(code)}
-            role="button"
-            aria-selected={active}
-            accessibilityLabel={`Show ${languageLabel(code)} cards`}
-            style={({ pressed }) => [
-              styles.btn,
-              { backgroundColor: active ? t.accent : t.panel, borderColor: t.border },
-              // A host's lip under each pill (theme `lip`), like every chip in the kit.
-              t.lip ? { borderBottomWidth: 3, borderBottomColor: (active && t.lipOn) || t.lip } : null,
-              pressed && styles.pressed,
-            ]}>
-            <Text style={[styles.txt, { color: active ? t.accentText : t.subtext }]}>
-              {languageShortLabel(code)}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <Segmented<Choice>
+      theme={t}
+      label="Card language"
+      value={choice}
+      onChange={(c) => set(c === 'both' ? [...LANGUAGE_ORDER] : [c])}
+      options={[
+        { value: 'en', label: 'EN', a11y: 'English cards' },
+        { value: 'ja', label: 'JP', a11y: 'Japanese cards' },
+        { value: 'both', label: 'EN + JP', a11y: 'English and Japanese cards' },
+      ]}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 4 },
-  btn: {
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  pressed: { opacity: 0.7 },
-  txt: { fontSize: 12, fontWeight: '600' },
-});
