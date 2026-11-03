@@ -557,7 +557,7 @@ const emptyTexts = () =>
   assert.deepEqual(ids(), ['c2', 'c1', 'c0'], '(i) clamped rows grouped by registry order: ' + ids());
   assert.deepEqual(flat().props.data.map((it) => it.groupStart?.key), ['Grass', 'Fire', 'Water'], '(i) group labels');
   // Picking a chip re-asks the server with it.
-  const fire = r.root.findAll((n) => n.type === 'Pressable' && n.props.accessibilityRole === 'checkbox' && n.props.accessibilityLabel === 'Fire');
+  const fire = r.root.findAll((n) => n.type === 'Pressable' && n.props.role === 'checkbox' && n.props.accessibilityLabel === 'Fire');
   assert.equal(fire.length, 1, '(i) a Fire chip (no counts: plain label)');
   await TR.act(async () => { fire[0].props.onPress(); });
   await settle();
