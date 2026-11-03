@@ -31,6 +31,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  */
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { count } from './counts';
 const FRAME_OPTIONS = [
     { frame: 'all', label: 'All art' },
     { frame: 'full', label: 'Full art' },
@@ -59,7 +60,7 @@ export function ThemeFilterBar({ theme, frame, onPickFrame, typeGroups, typeLabe
     const typeRow = (g, inSheet) => {
         const on = types.includes(g.key);
         const n = counts ? counts.type[g.key] ?? 0 : null;
-        return (_jsxs(Pressable, { onPress: () => onToggleType(g.key), style: inSheet ? [styles.menuItem, on && styles.menuItemOn] : [styles.chip, on && styles.chipOn], accessibilityRole: "checkbox", accessibilityState: { checked: on }, accessibilityLabel: n == null ? g.label : `${g.label}, ${n} matches`, children: [_jsx(View, { style: [styles.dot, { backgroundColor: g.color || theme.faint }] }), _jsxs(Text, { style: inSheet ? [styles.menuItemText, on && styles.menuItemTextOn] : [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: [g.label, n == null ? '' : ` ${n.toLocaleString()}`] }), inSheet ? _jsx(Text, { style: [styles.menuCheck, on && styles.menuItemTextOn], children: on ? '✓' : '' }) : null] }, g.key));
+        return (_jsxs(Pressable, { onPress: () => onToggleType(g.key), style: inSheet ? [styles.menuItem, on && styles.menuItemOn] : [styles.chip, on && styles.chipOn], accessibilityRole: "checkbox", accessibilityState: { checked: on }, accessibilityLabel: n == null ? g.label : `${g.label}, ${n} matches`, children: [_jsx(View, { style: [styles.dot, { backgroundColor: g.color || theme.faint }] }), _jsxs(Text, { style: inSheet ? [styles.menuItemText, on && styles.menuItemTextOn] : [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: [g.label, n == null ? '' : ` ${count(n)}`] }), inSheet ? _jsx(Text, { style: [styles.menuCheck, on && styles.menuItemTextOn], children: on ? '✓' : '' }) : null] }, g.key));
     };
     if (compact) {
         return (_jsxs(View, { style: styles.bar, children: [_jsxs(View, { style: styles.row, children: [_jsx(View, { style: styles.segment, accessibilityRole: "radiogroup", children: FRAME_OPTIONS.map((o, i) => {
@@ -71,7 +72,7 @@ export function ThemeFilterBar({ theme, frame, onPickFrame, typeGroups, typeLabe
     return (_jsxs(View, { style: styles.bar, children: [_jsxs(View, { style: styles.row, children: [_jsx(View, { style: styles.segment, accessibilityRole: "radiogroup", children: FRAME_OPTIONS.map((o, i) => {
                             const on = o.frame === frame;
                             const n = frameCount(o.frame);
-                            return (_jsx(Pressable, { onPress: () => onPickFrame(o.frame), style: [styles.segmentItem, i > 0 && styles.segmentDivider, on && styles.segmentItemOn], accessibilityRole: "radio", accessibilityState: { checked: on }, accessibilityLabel: n == null ? o.label : `${o.label}, ${n} matches`, children: _jsxs(Text, { style: [styles.segmentText, on && styles.segmentTextOn], numberOfLines: 1, children: [o.label, n == null ? '' : ` ${n.toLocaleString()}`] }) }, o.frame));
+                            return (_jsx(Pressable, { onPress: () => onPickFrame(o.frame), style: [styles.segmentItem, i > 0 && styles.segmentDivider, on && styles.segmentItemOn], accessibilityRole: "radio", accessibilityState: { checked: on }, accessibilityLabel: n == null ? o.label : `${o.label}, ${n} matches`, children: _jsxs(Text, { style: [styles.segmentText, on && styles.segmentTextOn], numberOfLines: 1, children: [o.label, n == null ? '' : ` ${count(n)}`] }) }, o.frame));
                         }) }), groups.length > 0 ? (_jsx(Pressable, { onPress: onToggleGroup, style: [styles.toggle, group && styles.toggleOn], accessibilityRole: "switch", accessibilityState: { checked: group }, accessibilityLabel: `Group by ${label}`, children: _jsxs(Text, { style: [styles.toggleText, group && styles.toggleTextOn], numberOfLines: 1, children: [group ? '☑' : '☐', " Group by ", label.toLowerCase()] }) })) : null, types.length > 0 ? (_jsx(Pressable, { onPress: onClearTypes, hitSlop: 8, accessibilityRole: "button", accessibilityLabel: `Clear ${label} chips`, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] }), visibleGroups.length > 0 ? _jsx(View, { style: styles.row, children: visibleGroups.map((g) => typeRow(g, false)) }) : null] }));
 }
 function makeStyles(t) {

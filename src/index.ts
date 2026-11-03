@@ -296,3 +296,4 @@ export { RecentProducts, type FeedSet } from './RecentProducts';
 // through its own HomeSealed carousel — which is how the kit hides a surface from one app: the
 // host decides by importing, not by a flag (RecentProducts is the same story in reverse).
 export { SealedBrowser } from './SealedBrowser';
+export { count, plural } from './counts';

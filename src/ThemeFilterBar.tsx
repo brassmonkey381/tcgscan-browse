@@ -33,6 +33,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import type { ThemeFacetCounts, ThemeFrame } from './search';
 import type { BrowseTheme } from './theme';
+import { count } from './counts';
 
 /** One registry type group: its key (what `p_types` and `type_group` carry), label and colour. */
 export interface ThemeTypeGroup {
@@ -116,7 +117,7 @@ export function ThemeFilterBar({
           style={inSheet ? [styles.menuItemText, on && styles.menuItemTextOn] : [styles.chipText, on && styles.chipTextOn]}
           numberOfLines={1}>
           {g.label}
-          {n == null ? '' : ` ${n.toLocaleString()}`}
+          {n == null ? '' : ` ${count(n)}`}
         </Text>
         {inSheet ? <Text style={[styles.menuCheck, on && styles.menuItemTextOn]}>{on ? '✓' : ''}</Text> : null}
       </Pressable>
@@ -218,7 +219,7 @@ export function ThemeFilterBar({
                 accessibilityLabel={n == null ? o.label : `${o.label}, ${n} matches`}>
                 <Text style={[styles.segmentText, on && styles.segmentTextOn]} numberOfLines={1}>
                   {o.label}
-                  {n == null ? '' : ` ${n.toLocaleString()}`}
+                  {n == null ? '' : ` ${count(n)}`}
                 </Text>
               </Pressable>
             );

@@ -54,8 +54,9 @@ import {
 } from './releaseTag';
 import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable, type SetMeta } from './search';
 import { similarAvailable } from './similar';
-import { resolveTheme, tileShadow, type BrowseTheme } from './theme';
+import { resolveTheme, tileShadow as baseTileShadow, type BrowseTheme } from './theme';
 import type { CardAction } from './actions';
+import { count } from './counts';
 
 /** Gap between tiles in a carousel (px). */
 const TILE_GAP = 10;
@@ -416,8 +417,8 @@ export function RecentProducts({
         <Pressable
           onPress={() => open(tcgUrl, 'tcgplayer', about.item, about.id)}
           hitSlop={4}
-          accessibilityLabel="Shop on TCGPlayer">
-          <Text style={styles.tileLink}>TCGPlayer ↗</Text>
+          accessibilityLabel="Shop on TCGplayer">
+          <Text style={styles.tileLink}>TCGplayer ↗</Text>
         </Pressable>
       ) : null}
       {ebayUrl ? (
@@ -439,7 +440,7 @@ export function RecentProducts({
       actions.push({
         key: 'add-to-binder',
         kind: 'primary',
-        label: 'Add to a binder…',
+        label: 'Add to a binder',
         onPress: (c) => {
           setActionCard(null);
           onAddToBinder(c);
@@ -470,7 +471,7 @@ export function RecentProducts({
       key: 'tcgplayer',
       // Add-to-binder owns the primary slot when wired; TCGPlayer becomes secondary.
       kind: onAddToBinder ? 'default' : 'primary',
-      label: 'View on TCGPlayer ↗',
+      label: 'View on TCGplayer ↗',
       onPress: (c) => {
         setActionCard(null);
         open(productUrl(c.id), 'tcgplayer', 'card', c.id);
@@ -540,7 +541,7 @@ export function RecentProducts({
             {t.set.name}
           </Text>
           <Text style={styles.tileMeta} numberOfLines={1}>
-            {[formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
+            {[formatSetDate(t.set.releaseDate), count(t.set.cardCount, 'card')]
               .filter(Boolean)
               .join(' · ')}
           </Text>
@@ -841,6 +842,7 @@ function CardThumb({
 }
 
 function makeStyles(t: BrowseTheme) {
+  const tileShadow = t.flatTiles ? {} : baseTileShadow;
   return StyleSheet.create({
     root: { gap: 10 },
     header: { fontSize: 18, fontWeight: '800', color: t.text },

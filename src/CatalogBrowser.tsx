@@ -120,8 +120,9 @@ import {
   type ThemeToolbar,
 } from './search';
 import { useTaxonomy, type TaxonomySource } from './taxonomy';
-import { resolveTheme, tileShadow, type BrowseTheme } from './theme';
+import { resolveTheme, tileShadow as baseTileShadow, type BrowseTheme } from './theme';
 import { ThemeFilterBar, type ThemeTypeGroup } from './ThemeFilterBar';
+import { count } from './counts';
 
 /** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
  *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
@@ -2211,7 +2212,7 @@ export function CatalogBrowser({
   const renderItem = ({ item, index }: { item: BrowseItem; index: number }) => {
     if (item.kind === 'series') {
       const s = item.series;
-      const meta = [seriesDateRange(s), `${s.cardCount.toLocaleString()} cards`, `${s.setIds.length} sets`]
+      const meta = [seriesDateRange(s), count(s.cardCount, 'card'), count(s.setIds.length, 'set')]
         .filter(Boolean)
         .join(' · ');
       return (
@@ -2228,7 +2229,7 @@ export function CatalogBrowser({
     }
     if (item.kind === 'set') {
       const s = item.set;
-      const meta = [s.code, `${s.cardCount.toLocaleString()} cards`, formatSetDate(s.releaseDate)]
+      const meta = [s.code, count(s.cardCount, 'card'), formatSetDate(s.releaseDate)]
         .filter(Boolean)
         .join(' · ');
       return (
@@ -2364,7 +2365,7 @@ export function CatalogBrowser({
             <Text style={styles.selectBtnText} numberOfLines={1}>
               {selectedIds.length < 2
                 ? `${selectedIds.length} selected · tap 2+`
-                : `Continue with ${selectedIds.length} →`}
+                : `Continue with ${count(selectedIds.length)}`}
             </Text>
           </Pressable>
           <Pressable
@@ -2461,8 +2462,8 @@ export function CatalogBrowser({
             onChangeText={onChangeQuery}
             placeholder={
               compactSearch
-                ? `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards`
-                : `Search ${tax?.cardCount ? tax.cardCount.toLocaleString() + ' ' : ''}cards, ${QUERY_HINT}`
+                ? `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards`
+                : `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards, ${QUERY_HINT}`
             }
             placeholderTextColor={theme.searchPlaceholder ?? theme.faint}
             autoCorrect={false}
@@ -2575,17 +2576,17 @@ export function CatalogBrowser({
                 ? // The theme meter: the server's count (theme + words + frame + type), with the
                   // device-only filters' cut shown as "N of M" once every hit is here.
                   themeClamped
-                  ? `Top ${themeHits.length} of ${themeTotal} matches`
+                  ? `Top ${count(themeHits.length)} of ${count(themeTotal, 'match')}`
                   : !themePending && !themeMore && filteredCards.length !== themeTotal
                     ? `${filteredCards.length} of ${themeTotal}`
-                    : `${themeTotal} result${themeTotal === 1 ? '' : 's'}${themePending ? '…' : ''}`
+                    : `${count(themeTotal, 'result')}${themePending ? '…' : ''}`
                 : warm && !coldSearch
                 ? filteredCards.length === viewCards.length
-                  ? `${viewCards.length} result${viewCards.length === 1 ? '' : 's'}`
+                  ? count(viewCards.length, 'result')
                   : `${filteredCards.length} of ${viewCards.length}`
                 : serverClamped
-                  ? `Top ${serverCards.length} of ${serverTotal} matches`
-                  : `${serverTotal} result${serverTotal === 1 ? '' : 's'}${serverLoading ? '…' : ''}`}
+                  ? `Top ${count(serverCards.length)} of ${count(serverTotal, 'match')}`
+                  : `${count(serverTotal, 'result')}${serverLoading ? '…' : ''}`}
               {' · '}
               {describeQuery(effParsed, viewCards)}
               {foldSummary ? ` · ${foldSummary}` : ''}
@@ -2888,7 +2889,7 @@ export function CatalogBrowser({
                   <Text style={styles.meterCount}>+{meter.total - meter.shown} more matches</Text>
                   {/* THE OFFER, NOT THE PRICE. The dialog this opens names the plan and sells it;
                       naming it here too made the row an argument rather than a door. */}
-                  <Text style={styles.meterHint}>Showing the top {meter.shown}. Unlock every match →</Text>
+                  <Text style={styles.meterHint}>Showing the top {count(meter.shown)}. Unlock every match</Text>
                 </Pressable>
               )
             ) : null}
@@ -2901,10 +2902,10 @@ export function CatalogBrowser({
                 disabled={loadingMore}
                 style={styles.loadMore}
                 accessibilityRole="button"
-                accessibilityLabel="Load more results"
+                accessibilityLabel="Show more results"
                 testID="browse-load-more">
                 <Text style={styles.loadMoreText}>
-                  {loadingMore ? 'Loading more…' : `Load more${data.length > visibleData.length ? ` (${data.length - visibleData.length} ready)` : ''}`}
+                  {loadingMore ? 'Loading more…' : `Show more${data.length > visibleData.length ? ` (${count(data.length - visibleData.length)})` : ''}`}
                 </Text>
               </Pressable>
             ) : null}
@@ -3015,7 +3016,7 @@ function TaxonomyTile({
       {completion && completion.total > 0 ? (
         <>
           <Text style={styles.taxCompletion} numberOfLines={1}>
-            {completion.owned.toLocaleString()} / {completion.total.toLocaleString()} owned
+            {count(completion.owned)} / {count(completion.total)} owned
           </Text>
           <View style={styles.taxProgressTrack}>
             <View style={[styles.taxProgressFill, { width: `${pct ?? 0}%` as `${number}%` }]} />
@@ -3757,6 +3758,7 @@ const lipEdge = (t: BrowseTheme, on = false) =>
   t.lip ? { borderBottomWidth: 3, borderBottomColor: (on && t.lipOn) || t.lip } : null;
 
 function makeStyles(t: BrowseTheme, taxTileHeight: number) {
+  const tileShadow = t.flatTiles ? {} : baseTileShadow;
   return StyleSheet.create({
     browser: { flex: 1 },
     // The list must claim the remaining sheet height (sibling of the fixed-height controls)

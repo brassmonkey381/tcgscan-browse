@@ -61,6 +61,11 @@ export interface BrowseTheme {
      * one under an active (accent) chip. The search field becomes a screen: `searchFill` behind it,
      * `searchText` for what is typed, `searchPlaceholder` for its hint, in `searchFont`.
      */
+    /**
+     * Draw tiles and panels flat, with no drop shadow (tcgscan-app's card and depth picks: flat cards,
+     * no lift). Omitted = today's soft tile shadow, which michi-maker keeps.
+     */
+    flatTiles?: boolean;
     lip?: string;
     lipOn?: string;
     searchFill?: string;

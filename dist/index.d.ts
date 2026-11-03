@@ -34,3 +34,4 @@ export type { ThemeTypeGroup } from './ThemeFilterBar';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts, type FeedSet } from './RecentProducts';
 export { SealedBrowser } from './SealedBrowser';
+export { count, plural } from './counts';

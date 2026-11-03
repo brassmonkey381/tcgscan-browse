@@ -158,7 +158,7 @@ export function SealedBrowser({
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search sealed products…"
+            placeholder="Search sealed products"
             placeholderTextColor={theme.searchPlaceholder ?? theme.faint}
             autoCorrect={false}
             autoCapitalize="none"

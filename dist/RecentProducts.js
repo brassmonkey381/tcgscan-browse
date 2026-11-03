@@ -32,7 +32,8 @@ import { usePriceSummary } from './prices';
 import { releaseTag, todayISO, RELEASE_TAG_FONT_SIZE, RELEASE_TAG_LINE_HEIGHT, } from './releaseTag';
 import { fetchRecentWindow, fetchSetMeta, serverSearchAvailable } from './search';
 import { similarAvailable } from './similar';
-import { resolveTheme, tileShadow } from './theme';
+import { resolveTheme, tileShadow as baseTileShadow } from './theme';
+import { count } from './counts';
 /** Gap between tiles in a carousel (px). */
 const TILE_GAP = 10;
 /** Set tiles shown at once (the reference wall's cadence). */
@@ -259,7 +260,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     // shared by set + card tiles. Each is ONE link → ONE destination the user picks: never spawn two
     // tabs from one tap (browsers popup-block the second). The eBay link is '' (hidden) when no EPN
     // campaign id is configured (ebaySearchUrl), so unconfigured builds show TCGPlayer only.
-    const storeLinks = (tcgUrl, ebayUrl, about, centered = false) => (_jsxs(View, { style: [styles.storeRow, centered && styles.storeRowCenter], children: [tcgUrl ? (_jsx(Pressable, { onPress: () => open(tcgUrl, 'tcgplayer', about.item, about.id), hitSlop: 4, accessibilityLabel: "Shop on TCGPlayer", children: _jsx(Text, { style: styles.tileLink, children: "TCGPlayer \u2197" }) })) : null, ebayUrl ? (_jsx(Pressable, { onPress: () => open(ebayUrl, 'ebay', about.item, about.id), hitSlop: 4, accessibilityLabel: "Search on eBay", children: _jsx(Text, { style: styles.tileLink, children: "eBay \u2197" }) })) : null] }));
+    const storeLinks = (tcgUrl, ebayUrl, about, centered = false) => (_jsxs(View, { style: [styles.storeRow, centered && styles.storeRowCenter], children: [tcgUrl ? (_jsx(Pressable, { onPress: () => open(tcgUrl, 'tcgplayer', about.item, about.id), hitSlop: 4, accessibilityLabel: "Shop on TCGplayer", children: _jsx(Text, { style: styles.tileLink, children: "TCGplayer \u2197" }) })) : null, ebayUrl ? (_jsx(Pressable, { onPress: () => open(ebayUrl, 'ebay', about.item, about.id), hitSlop: 4, accessibilityLabel: "Search on eBay", children: _jsx(Text, { style: styles.tileLink, children: "eBay \u2197" }) })) : null] }));
     // The modal's actions for a card: add-to-binder (host chooser) + drive-the-other-browser
     // intents (when wired) + TCGPlayer.
     const actionsFor = (card) => {
@@ -268,7 +269,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
             actions.push({
                 key: 'add-to-binder',
                 kind: 'primary',
-                label: 'Add to a binder…',
+                label: 'Add to a binder',
                 onPress: (c) => {
                     setActionCard(null);
                     onAddToBinder(c);
@@ -299,7 +300,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
             key: 'tcgplayer',
             // Add-to-binder owns the primary slot when wired; TCGPlayer becomes secondary.
             kind: onAddToBinder ? 'default' : 'primary',
-            label: 'View on TCGPlayer ↗',
+            label: 'View on TCGplayer ↗',
             onPress: (c) => {
                 setActionCard(null);
                 open(productUrl(c.id), 'tcgplayer', 'card', c.id);
@@ -326,7 +327,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
                         if (!tag)
                             return null;
                         return (_jsx(View, { style: [styles.badge, tag.kind === 'countdown' && styles.badgeCountdown], pointerEvents: "none", children: _jsx(Text, { style: [styles.badgeText, tileWidth < NARROW_SET_TILE_W && styles.badgeTextNarrow], children: tag.label }) }));
-                    })()] }), _jsxs(View, { style: styles.tileFooter, children: [_jsxs(View, { style: styles.tileFooterLeft, children: [_jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), `${t.set.cardCount.toLocaleString()} cards`]
+                    })()] }), _jsxs(View, { style: styles.tileFooter, children: [_jsxs(View, { style: styles.tileFooterLeft, children: [_jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), count(t.set.cardCount, 'card')]
                                     .filter(Boolean)
                                     .join(' · ') }), storeLinks(t.shopUrl, ebaySearchUrl(t.set.name), { item: 'set', id: t.set.id })] }), t.set.coverUri && tileWidth >= NARROW_SET_TILE_W ? (_jsx(Image, { source: { uri: t.set.coverUri }, style: styles.tileLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `logo-${t.set.id}`, transition: 100 })) : null] })] }));
     const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions${card.releaseDate > today ? ' (upcoming)' : ''}`, children: [_jsx(CardThumb, { card: card, styles: styles, upcoming: !!card.releaseDate && card.releaseDate > today }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, storeLinks(productUrl(card.id), ebayCardSearchUrl(card), { item: 'card', id: card.id }, true)] }));
@@ -416,6 +417,7 @@ function CardThumb({ card, styles, upcoming = false, }) {
     return (_jsxs(View, { style: styles.scardImg, children: [missing ? (_jsx(View, { style: styles.thumbPlaceholder, children: _jsx(Text, { style: styles.thumbPlaceholderText, numberOfLines: 2, children: card.releaseDate ? formatFullDate(card.releaseDate) : 'No image' }) })) : (_jsx(Image, { source: { uri }, style: styles.fillImg, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: card.id, transition: 100, onError: () => setFailedUri(uri) })), upcoming ? (_jsx(View, { style: styles.badge, pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, children: "Upcoming" }) })) : null] }));
 }
 function makeStyles(t) {
+    const tileShadow = t.flatTiles ? {} : baseTileShadow;
     return StyleSheet.create({
         root: { gap: 10 },
         header: { fontSize: 18, fontWeight: '800', color: t.text },
