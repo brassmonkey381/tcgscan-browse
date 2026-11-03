@@ -92,7 +92,7 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
         <Pressable style={[styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }]} onPress={() => {}}>
           {/* SCROLLS WHEN IT DOES NOT FIT: a tall card on a short phone (or a long action list)
               used to push Cancel off the screen with no way to reach it. */}
-          <ScrollView contentContainerStyle={styles.sheetBody} bounces={false} nestedScrollEnabled>
+          <ScrollView style={{ overscrollBehavior: 'contain' } as object} contentContainerStyle={styles.sheetBody} bounces={false} alwaysBounceVertical={false} overScrollMode="never" nestedScrollEnabled>
           <View style={[styles.imageWrap, { maxHeight: imageMaxHeight }]}>
             {uri ? (
               <Image source={{ uri }} style={styles.image} contentFit="contain" transition={120} />
@@ -209,7 +209,7 @@ export function MultiCardActionModal({
         <Pressable style={[styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }]} onPress={() => {}}>
           {/* SCROLLS WHEN IT DOES NOT FIT: a tall card on a short phone (or a long action list)
               used to push Cancel off the screen with no way to reach it. */}
-          <ScrollView contentContainerStyle={styles.sheetBody} bounces={false} nestedScrollEnabled>
+          <ScrollView style={{ overscrollBehavior: 'contain' } as object} contentContainerStyle={styles.sheetBody} bounces={false} alwaysBounceVertical={false} overScrollMode="never" nestedScrollEnabled>
           <View style={[styles.imageWrap, { maxHeight: imageMaxHeight }]}>
             <ScrollView contentContainerStyle={styles.multiGrid}>
               {cards.map((c) => {

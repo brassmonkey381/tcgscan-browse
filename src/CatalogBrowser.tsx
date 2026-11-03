@@ -3266,7 +3266,15 @@ function SearchManual({ styles, onClose }: { styles: Styles; onClose: () => void
       {/* SCROLLS IN PLACE: the manual sits above the results, outside the list's scroll, so a
           long tab used to run off the screen with no way to reach its end. Half the window at
           most, then it scrolls on its own. */}
-      <ScrollView style={{ maxHeight: Math.round(windowHeight * 0.5) }} contentContainerStyle={{ gap: 8 }} nestedScrollEnabled>
+      <ScrollView
+        // overscrollBehavior: the web's own bounce and scroll chaining stop here too (react-native-web).
+        style={[{ maxHeight: Math.round(windowHeight * 0.5) }, { overscrollBehavior: 'contain' } as object]}
+        contentContainerStyle={{ gap: 8 }}
+        nestedScrollEnabled
+        // A plain stop at either end: no rubber band, no glow, no snap back (owner's ask).
+        bounces={false}
+        alwaysBounceVertical={false}
+        overScrollMode="never">
         {QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (
           <View key={section.title} style={styles.manualSection}>
             <Text style={styles.manualSectionTitle}>{section.title}</Text>
