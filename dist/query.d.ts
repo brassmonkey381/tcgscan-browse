@@ -83,6 +83,11 @@ export type FieldKey = 'artist' | 'illustrator' | 'rarity' | 'set' | 'series' | 
 /** Artwork scene: the caption and tags a vision model wrote about the picture.
  *  Deliberately NOT part of the bare-word haystack — see `lowered`. */
  | 'theme';
+/**
+ * Natural direction for each sort field when none is given (priciest/newest/highest first). THE ONE
+ * TABLE: the browser's sort chips read it too (tcgscan-app's list-order pick: one direction map).
+ */
+export declare const SORT_DEFAULT_DIR: Record<QuerySort, SortDir>;
 /** `rarity:"holo rare"` / `artist:arita` / `hp>200` / `>$100` / bare words — quote-aware. */
 export declare function parseQuery(raw: string): ParsedQuery;
 /**

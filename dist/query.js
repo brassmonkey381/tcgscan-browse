@@ -96,8 +96,11 @@ const SORT_ALIASES = {
     rel: { field: 'relevance' },
     best: { field: 'relevance' },
 };
-/** Natural direction for each sort field when none is given (priciest/newest/highest first). */
-const SORT_DEFAULT_DIR = {
+/**
+ * Natural direction for each sort field when none is given (priciest/newest/highest first). THE ONE
+ * TABLE: the browser's sort chips read it too (tcgscan-app's list-order pick: one direction map).
+ */
+export const SORT_DEFAULT_DIR = {
     relevance: 'desc',
     value: 'desc',
     date: 'desc',

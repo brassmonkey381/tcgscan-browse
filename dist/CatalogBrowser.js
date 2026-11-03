@@ -45,6 +45,7 @@ import { useTaxonomy } from './taxonomy';
 import { resolveTheme, tileShadow as baseTileShadow } from './theme';
 import { ThemeFilterBar } from './ThemeFilterBar';
 import { count } from './counts';
+import { SORT_DEFAULT_DIR } from './query';
 /** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
  *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
 const PAGE_SIZE = 90;
@@ -129,14 +130,6 @@ const INLINE_FACET_MAX = 6;
 /** Stable array identity for the one sort the `sortByValue` lock covers (avoids a new array
  *  per render feeding SortBar's props). */
 const SORT_LOCKED_BY_VALUE = ['value'];
-const SORT_DEFAULT_DIR = {
-    relevance: 'desc',
-    value: 'desc',
-    date: 'desc',
-    name: 'asc',
-    hp: 'desc',
-    stage: 'asc',
-};
 /** Display order for cold-mode facet values (server returns them unordered). */
 function orderFacetValues(key, values) {
     const uniq = [...new Set(values)];
