@@ -23,7 +23,7 @@ import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-run
  */
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
+import { AccessibilityInfo, Animated, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions, } from 'react-native';
 import { describeQuery, filterCards, parseQuery, QUERY_HINT, MANUAL_TABS, QUERY_MANUAL, runQuery, sortCards, withoutTheme, } from './query';
 import { CARD_GRID_GAP, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, cardGridColumns, cardTierFor, cardTileWidthFor, } from './cardSize';
 import { browseState, subscribeBrowseCommand } from './state';
@@ -2009,11 +2009,12 @@ function SearchManual({ styles, onClose }) {
     // artwork search should not read the sort grammar to reach it. The tab is remembered while the
     // browser is mounted, so closing and reopening lands where you were.
     const [tab, setTab] = useState(manualTabPref);
+    const { height: windowHeight } = useWindowDimensions();
     const pick = (t) => {
         manualTabPref = t;
         setTab(t);
     };
-    return (_jsxs(View, { style: styles.manual, children: [_jsxs(View, { style: styles.manualHeader, children: [_jsx(Text, { style: styles.manualTitle, children: "Search syntax" }), _jsx(Pressable, { onPress: onClose, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Close" }) })] }), _jsx(View, { style: styles.manualTabs, accessibilityRole: "tablist", children: MANUAL_TABS.map((t) => (_jsx(Pressable, { onPress: () => pick(t.id), accessibilityRole: "tab", accessibilityState: { selected: t.id === tab }, style: [styles.manualTab, t.id === tab && styles.manualTabOn], children: _jsx(Text, { style: [styles.manualTabText, t.id === tab && styles.manualTabTextOn], children: t.label }) }, t.id))) }), QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (_jsxs(View, { style: styles.manualSection, children: [_jsx(Text, { style: styles.manualSectionTitle, children: section.title }), section.rows.map(([code, description]) => (_jsxs(View, { style: styles.manualRow, children: [_jsx(Text, { style: styles.manualCode, children: code }), _jsx(Text, { style: styles.manualDesc, children: description })] }, code)))] }, section.title)))] }));
+    return (_jsxs(View, { style: styles.manual, children: [_jsxs(View, { style: styles.manualHeader, children: [_jsx(Text, { style: styles.manualTitle, children: "Search syntax" }), _jsx(Pressable, { onPress: onClose, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Close" }) })] }), _jsx(View, { style: styles.manualTabs, accessibilityRole: "tablist", children: MANUAL_TABS.map((t) => (_jsx(Pressable, { onPress: () => pick(t.id), accessibilityRole: "tab", accessibilityState: { selected: t.id === tab }, style: [styles.manualTab, t.id === tab && styles.manualTabOn], children: _jsx(Text, { style: [styles.manualTabText, t.id === tab && styles.manualTabTextOn], children: t.label }) }, t.id))) }), _jsx(ScrollView, { style: { maxHeight: Math.round(windowHeight * 0.5) }, contentContainerStyle: { gap: 8 }, nestedScrollEnabled: true, children: QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (_jsxs(View, { style: styles.manualSection, children: [_jsx(Text, { style: styles.manualSectionTitle, children: section.title }), section.rows.map(([code, description]) => (_jsxs(View, { style: styles.manualRow, children: [_jsx(Text, { style: styles.manualCode, children: code }), _jsx(Text, { style: styles.manualDesc, children: description })] }, code)))] }, section.title))) })] }));
 }
 /** Series › Set path; tap an ancestor to drill up. */
 function Breadcrumb({ styles, crumbs }) {

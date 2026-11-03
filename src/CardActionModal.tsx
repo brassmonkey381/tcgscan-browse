@@ -40,6 +40,8 @@ interface CardActionModalProps {
 const SHEET_MAX_WIDTH = 460;
 const IMAGE_VIEWPORT_FRACTION = 0.6;
 const IMAGE_MAX_HEIGHT = 640;
+/** The backdrop's padding, top and bottom: the sheet never grows past the screen less this. */
+const SHEET_MARGIN = 40;
 
 export function CardActionModal({ card, actions, value, onClose, theme = lightTheme }: CardActionModalProps) {
   const styles = makeStyles(theme);
@@ -87,7 +89,10 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         {/* stopPropagation wrapper so taps inside the sheet don't dismiss */}
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable style={[styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }]} onPress={() => {}}>
+          {/* SCROLLS WHEN IT DOES NOT FIT: a tall card on a short phone (or a long action list)
+              used to push Cancel off the screen with no way to reach it. */}
+          <ScrollView contentContainerStyle={styles.sheetBody} bounces={false} nestedScrollEnabled>
           <View style={[styles.imageWrap, { maxHeight: imageMaxHeight }]}>
             {uri ? (
               <Image source={{ uri }} style={styles.image} contentFit="contain" transition={120} />
@@ -157,6 +162,7 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
               <Text style={styles.actionCancelText}>Cancel</Text>
             </Pressable>
           </View>
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
@@ -200,7 +206,10 @@ export function MultiCardActionModal({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable style={[styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }]} onPress={() => {}}>
+          {/* SCROLLS WHEN IT DOES NOT FIT: a tall card on a short phone (or a long action list)
+              used to push Cancel off the screen with no way to reach it. */}
+          <ScrollView contentContainerStyle={styles.sheetBody} bounces={false} nestedScrollEnabled>
           <View style={[styles.imageWrap, { maxHeight: imageMaxHeight }]}>
             <ScrollView contentContainerStyle={styles.multiGrid}>
               {cards.map((c) => {
@@ -276,6 +285,7 @@ export function MultiCardActionModal({
               <Text style={styles.actionCancelText}>Cancel</Text>
             </Pressable>
           </View>
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
@@ -296,9 +306,9 @@ function makeStyles(t: BrowseTheme) {
       maxWidth: SHEET_MAX_WIDTH,
       borderRadius: 14,
       backgroundColor: t.background,
-      padding: 14,
-      gap: 4,
+      overflow: 'hidden',
     },
+    sheetBody: { padding: 14, gap: 4 },
     imageWrap: {
       width: '100%',
       aspectRatio: 63 / 88,

@@ -35,6 +35,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
 import {
@@ -3237,6 +3238,7 @@ function SearchManual({ styles, onClose }: { styles: Styles; onClose: () => void
   // artwork search should not read the sort grammar to reach it. The tab is remembered while the
   // browser is mounted, so closing and reopening lands where you were.
   const [tab, setTab] = useState<ManualTab>(manualTabPref);
+  const { height: windowHeight } = useWindowDimensions();
   const pick = (t: ManualTab) => {
     manualTabPref = t;
     setTab(t);
@@ -3261,17 +3263,22 @@ function SearchManual({ styles, onClose }: { styles: Styles; onClose: () => void
           </Pressable>
         ))}
       </View>
-      {QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (
-        <View key={section.title} style={styles.manualSection}>
-          <Text style={styles.manualSectionTitle}>{section.title}</Text>
-          {section.rows.map(([code, description]) => (
-            <View key={code} style={styles.manualRow}>
-              <Text style={styles.manualCode}>{code}</Text>
-              <Text style={styles.manualDesc}>{description}</Text>
-            </View>
-          ))}
-        </View>
-      ))}
+      {/* SCROLLS IN PLACE: the manual sits above the results, outside the list's scroll, so a
+          long tab used to run off the screen with no way to reach its end. Half the window at
+          most, then it scrolls on its own. */}
+      <ScrollView style={{ maxHeight: Math.round(windowHeight * 0.5) }} contentContainerStyle={{ gap: 8 }} nestedScrollEnabled>
+        {QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (
+          <View key={section.title} style={styles.manualSection}>
+            <Text style={styles.manualSectionTitle}>{section.title}</Text>
+            {section.rows.map(([code, description]) => (
+              <View key={code} style={styles.manualRow}>
+                <Text style={styles.manualCode}>{code}</Text>
+                <Text style={styles.manualDesc}>{description}</Text>
+              </View>
+            ))}
+          </View>
+        ))}
+      </ScrollView>
     </View>
   );
 }
