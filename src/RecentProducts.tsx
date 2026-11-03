@@ -501,7 +501,7 @@ export function RecentProducts({
     <Pressable
       style={styles.tile}
       onPress={onOpenSet ? () => onOpenSet(t.set) : undefined}
-      accessibilityRole={onOpenSet ? 'button' : undefined}
+      role={onOpenSet ? 'button' : undefined}
       accessibilityLabel={onOpenSet ? `Browse ${t.set.name}${t.upcoming ? ' (upcoming)' : ''}` : undefined}>
       <View style={styles.montage}>
         {t.montage.map((card) => (
@@ -587,7 +587,7 @@ export function RecentProducts({
     <Pressable
       style={styles.cardHeader}
       onPress={onOpenSet ? () => onOpenSet(set) : undefined}
-      accessibilityRole={onOpenSet ? 'button' : undefined}
+      role={onOpenSet ? 'button' : undefined}
       accessibilityLabel={onOpenSet ? `Browse ${set.name}${upcoming ? ' (upcoming)' : ''}` : undefined}>
       {/* The same ladder as the set tiles, so a strip header and its tile never disagree. Falls
           back to NEW SET once a release is old enough that the ladder says nothing. */}

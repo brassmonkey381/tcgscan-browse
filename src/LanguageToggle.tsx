@@ -48,8 +48,8 @@ export function LanguageToggle({
           <Pressable
             key={code}
             onPress={() => toggle(code)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
+            role="button"
+            aria-selected={active}
             accessibilityLabel={`Show ${languageLabel(code)} cards`}
             style={({ pressed }) => [
               styles.btn,

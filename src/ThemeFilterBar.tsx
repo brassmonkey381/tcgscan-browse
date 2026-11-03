@@ -109,8 +109,8 @@ export function ThemeFilterBar({
         key={g.key}
         onPress={() => onToggleType(g.key)}
         style={inSheet ? [styles.menuItem, on && styles.menuItemOn] : [styles.chip, on && styles.chipOn]}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: on }}
+        role="checkbox"
+        aria-checked={on}
         accessibilityLabel={n == null ? g.label : `${g.label}, ${n} matches`}>
         <View style={[styles.dot, { backgroundColor: g.color || theme.faint }]} />
         <Text
@@ -128,7 +128,7 @@ export function ThemeFilterBar({
     return (
       <View style={styles.bar}>
         <View style={styles.row}>
-          <View style={styles.segment} accessibilityRole="radiogroup">
+          <View style={styles.segment} role="radiogroup">
             {FRAME_OPTIONS.map((o, i) => {
               const on = o.frame === frame;
               const n = frameCount(o.frame);
@@ -137,8 +137,8 @@ export function ThemeFilterBar({
                   key={o.frame}
                   onPress={() => onPickFrame(o.frame)}
                   style={[styles.segmentItem, i > 0 && styles.segmentDivider, on && styles.segmentItemOn]}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: on }}
+                  role="radio"
+                  aria-checked={on}
                   accessibilityLabel={n == null ? o.label : `${o.label}, ${n} matches`}>
                   <Text style={[styles.segmentText, on && styles.segmentTextOn]} numberOfLines={1}>
                     {o.label}
@@ -155,7 +155,7 @@ export function ThemeFilterBar({
             <Pressable
               onPress={() => setSheetOpen(true)}
               style={[styles.toggle, types.length > 0 && styles.toggleOn]}
-              accessibilityRole="button"
+              role="button"
               accessibilityLabel={`${labelCap}${pickedSummary ? `: ${pickedSummary}` : ''}`}>
               <Text style={[styles.toggleText, types.length > 0 && styles.toggleTextOn]} numberOfLines={1}>
                 {labelCap}
@@ -166,8 +166,8 @@ export function ThemeFilterBar({
             <Pressable
               onPress={onToggleGroup}
               style={[styles.toggle, group && styles.toggleOn]}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: group }}
+              role="switch"
+              aria-checked={group}
               accessibilityLabel={`Group by ${label}`}>
               <Text style={[styles.toggleText, group && styles.toggleTextOn]} numberOfLines={1}>
                 {group ? '☑' : '☐'} Group
@@ -183,7 +183,7 @@ export function ThemeFilterBar({
                 <View style={styles.menuHead}>
                   <Text style={styles.menuTitle}>{labelCap}</Text>
                   {types.length > 0 ? (
-                    <Pressable onPress={onClearTypes} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Clear ${label} chips`}>
+                    <Pressable onPress={onClearTypes} hitSlop={8} role="button" accessibilityLabel={`Clear ${label} chips`}>
                       <Text style={styles.clear}>Clear</Text>
                     </Pressable>
                   ) : null}
@@ -191,7 +191,7 @@ export function ThemeFilterBar({
                 <ScrollView style={styles.menuList} keyboardShouldPersistTaps="handled">
                   {visibleGroups.map((g) => typeRow(g, true))}
                 </ScrollView>
-                <Pressable onPress={() => setSheetOpen(false)} style={styles.menuDone} accessibilityRole="button">
+                <Pressable onPress={() => setSheetOpen(false)} style={styles.menuDone} role="button">
                   <Text style={styles.menuDoneText}>Done</Text>
                 </Pressable>
               </Pressable>
@@ -205,7 +205,7 @@ export function ThemeFilterBar({
   return (
     <View style={styles.bar}>
       <View style={styles.row}>
-        <View style={styles.segment} accessibilityRole="radiogroup">
+        <View style={styles.segment} role="radiogroup">
           {FRAME_OPTIONS.map((o, i) => {
             const on = o.frame === frame;
             const n = frameCount(o.frame);
@@ -214,8 +214,8 @@ export function ThemeFilterBar({
                 key={o.frame}
                 onPress={() => onPickFrame(o.frame)}
                 style={[styles.segmentItem, i > 0 && styles.segmentDivider, on && styles.segmentItemOn]}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: on }}
+                role="radio"
+                aria-checked={on}
                 accessibilityLabel={n == null ? o.label : `${o.label}, ${n} matches`}>
                 <Text style={[styles.segmentText, on && styles.segmentTextOn]} numberOfLines={1}>
                   {o.label}
@@ -229,8 +229,8 @@ export function ThemeFilterBar({
           <Pressable
             onPress={onToggleGroup}
             style={[styles.toggle, group && styles.toggleOn]}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: group }}
+            role="switch"
+            aria-checked={group}
             accessibilityLabel={`Group by ${label}`}>
             <Text style={[styles.toggleText, group && styles.toggleTextOn]} numberOfLines={1}>
               {group ? '☑' : '☐'} Group by {label.toLowerCase()}
@@ -238,7 +238,7 @@ export function ThemeFilterBar({
           </Pressable>
         ) : null}
         {types.length > 0 ? (
-          <Pressable onPress={onClearTypes} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Clear ${label} chips`}>
+          <Pressable onPress={onClearTypes} hitSlop={8} role="button" accessibilityLabel={`Clear ${label} chips`}>
             <Text style={styles.clear}>Clear</Text>
           </Pressable>
         ) : null}

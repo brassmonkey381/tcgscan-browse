@@ -29,7 +29,7 @@ export function LanguageToggle({ value, onChange, theme, }) {
     };
     return (_jsx(View, { style: styles.row, children: LANGUAGE_ORDER.map((code) => {
             const active = langs.includes(code);
-            return (_jsx(Pressable, { onPress: () => toggle(code), accessibilityRole: "button", accessibilityState: { selected: active }, accessibilityLabel: `Show ${languageLabel(code)} cards`, style: ({ pressed }) => [
+            return (_jsx(Pressable, { onPress: () => toggle(code), role: "button", "aria-selected": active, accessibilityLabel: `Show ${languageLabel(code)} cards`, style: ({ pressed }) => [
                     styles.btn,
                     { backgroundColor: active ? t.accent : t.panel, borderColor: t.border },
                     // A host's lip under each pill (theme `lip`), like every chip in the kit.

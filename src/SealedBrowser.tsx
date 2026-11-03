@@ -188,8 +188,8 @@ export function SealedBrowser({
                     <Pressable
                       key={s}
                       onPress={() => setSize(s)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: on }}
+                      role="button"
+                      aria-selected={on}
                       accessibilityLabel={`Tile size ${s}`}
                       style={[styles.sizeChip, on && styles.chipOn]}>
                       <Text style={[styles.chipText, on && styles.chipTextOn]}>{s}</Text>
@@ -213,8 +213,8 @@ export function SealedBrowser({
                 <Pressable
                   key={g.key}
                   onPress={() => setGroup(g.key)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
+                  role="button"
+                  aria-selected={on}
                   accessibilityLabel={g.label}
                   style={[styles.chip, on && styles.chipOn]}>
                   <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>
@@ -244,7 +244,7 @@ export function SealedBrowser({
           return (
             <Pressable
               style={[styles.tile, tileW > 0 ? { width: tileW } : null]}
-              accessibilityRole={onOpen ? 'button' : undefined}
+              role={onOpen ? 'button' : undefined}
               accessibilityLabel={p.name}
               disabled={!onOpen}
               onPress={onOpen ? () => onOpen(p) : undefined}>
@@ -261,7 +261,7 @@ export function SealedBrowser({
                 {onAdd ? (
                   // Nested Pressable captures its own tap, so the tile's own press does not fire.
                   //
-                  // NO `accessibilityRole="button"` HERE, which is what the card grid's quick
+                  // NO `role="button"` HERE, which is what the card grid's quick
                   // action already does (CatalogBrowser's cardQuick) and what this one wrongly did
                   // not. react-native-web maps that role onto a real <button>, and this sits inside
                   // the tile's own button, so declaring it emitted `<button> cannot contain a

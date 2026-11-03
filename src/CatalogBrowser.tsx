@@ -2361,7 +2361,7 @@ export function CatalogBrowser({
           <Pressable
             disabled={selectedIds.length < 2}
             onPress={() => setMultiOpen(true)}
-            accessibilityRole="button"
+            role="button"
             style={[styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff]}>
             <Text style={styles.selectBtnText} numberOfLines={1}>
               {selectedIds.length < 2
@@ -2375,14 +2375,14 @@ export function CatalogBrowser({
               clearSelection();
             }}
             hitSlop={8}
-            accessibilityRole="button">
+            role="button">
             <Text style={styles.clear}>Cancel</Text>
           </Pressable>
         </>
       ) : (
         <Pressable
           onPress={() => setMultiSelectMode(true)}
-          accessibilityRole="button"
+          role="button"
           accessibilityLabel="Select multiple cards"
           style={styles.selectBtn}>
           <Text style={styles.selectBtnText}>☑ Select</Text>
@@ -2597,7 +2597,7 @@ export function CatalogBrowser({
               {/* While selecting, the row's other links step aside: the count and Continue need
                   the width, and the query's echo is what the user is picking from. */}
               {foldable && !selecting ? (
-                <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: !folded }}>
+                <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} role="button" aria-expanded={!folded}>
                   <Text style={styles.clear}>{folded ? 'Sort & filter' : 'Hide sort & filter'}</Text>
                 </Pressable>
               ) : null}
@@ -2684,7 +2684,7 @@ export function CatalogBrowser({
               <View style={styles.metaEnd}>
                 {selectControl}
                 {foldable && !selecting ? (
-                  <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: !folded }}>
+                  <Pressable onPress={() => setToolsOpen((v) => !v)} hitSlop={8} role="button" aria-expanded={!folded}>
                     <Text style={styles.clear}>{folded ? 'Sort & filter' : 'Hide sort & filter'}</Text>
                   </Pressable>
                 ) : null}
@@ -2835,7 +2835,7 @@ export function CatalogBrowser({
               <Pressable
                 onPress={themeServerActive ? () => setThemeAttempt((n) => n + 1) : () => fetchServerPage(0, true)}
                 hitSlop={8}
-                accessibilityRole="button"
+                role="button"
                 accessibilityLabel="Retry the search">
                 <Text style={[styles.clear, { textAlign: 'center' }]}>Retry</Text>
               </Pressable>
@@ -2884,7 +2884,7 @@ export function CatalogBrowser({
               ) : (
                 <Pressable
                   style={styles.meterRow}
-                  accessibilityRole="button"
+                  role="button"
                   accessibilityLabel={`${meter.total - meter.shown} more matches, unlock every match`}
                   onPress={() => onLockedFeature?.('themeSearch')}>
                   <Text style={styles.meterCount}>+{meter.total - meter.shown} more matches</Text>
@@ -2902,7 +2902,7 @@ export function CatalogBrowser({
                 onPress={() => onEndReachedRef.current()}
                 disabled={loadingMore}
                 style={styles.loadMore}
-                accessibilityRole="button"
+                role="button"
                 accessibilityLabel="Show more results"
                 testID="browse-load-more">
                 <Text style={styles.loadMoreText}>
@@ -3251,13 +3251,13 @@ function SearchManual({ styles, onClose }: { styles: Styles; onClose: () => void
           <Text style={styles.clear}>Close</Text>
         </Pressable>
       </View>
-      <View style={styles.manualTabs} accessibilityRole="tablist">
+      <View style={styles.manualTabs} role="tablist">
         {MANUAL_TABS.map((t) => (
           <Pressable
             key={t.id}
             onPress={() => pick(t.id)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: t.id === tab }}
+            role="tab"
+            aria-selected={t.id === tab}
             style={[styles.manualTab, t.id === tab && styles.manualTabOn]}>
             <Text style={[styles.manualTabText, t.id === tab && styles.manualTabTextOn]}>{t.label}</Text>
           </Pressable>
@@ -3373,7 +3373,7 @@ function SortControls({
                 key={o.field}
                 onPress={() => onPick(o.field)}
                 style={[styles.chip, on && styles.chipOn, lock && styles.chipLocked]}
-                accessibilityState={{ disabled: lock }}
+                aria-disabled={lock}
                 accessibilityLabel={lock ? `${o.label} (not included on your plan)` : o.label}>
                 <Text style={[styles.chipText, on && styles.chipTextOn, lock && styles.chipTextLocked]} numberOfLines={1}>
                   {lock ? `${o.label} ⋯` : o.label}
@@ -3431,7 +3431,7 @@ function PickerMenu({
       <Pressable
         onPress={() => setOpen(true)}
         style={[styles.facetToggle, active && styles.facetToggleOn]}
-        accessibilityRole="button"
+        role="button"
         accessibilityLabel={`${label}${text ? `: ${text}` : ''}`}>
         <Text style={[styles.facetToggleText, active && styles.facetToggleTextOn]} numberOfLines={1}>
           {label}
@@ -3462,8 +3462,8 @@ function PickerMenu({
                         if (closeOnPick) setOpen(false);
                       }}
                       style={[styles.menuItem, on && styles.menuItemOn]}
-                      accessibilityRole={closeOnPick ? 'radio' : 'checkbox'}
-                      accessibilityState={{ checked: on, disabled: it.locked }}>
+                      role={closeOnPick ? 'radio' : 'checkbox'}
+                      aria-checked={on} aria-disabled={it.locked}>
                       <Text style={[styles.menuItemText, on && styles.menuItemTextOn, it.locked && styles.chipTextLocked]} numberOfLines={1}>
                         {it.locked ? `${it.label} ⋯` : it.label}
                       </Text>
@@ -4099,7 +4099,9 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     cardTile: { marginBottom: ROW_GAP },
     cardTileSelected: { backgroundColor: t.selected, borderRadius: 6 },
     // Keyboard-focus ring (web arrow keys) — outline, not layout: row geometry stays fixed.
-    cardTileFocused: { borderRadius: 6, borderWidth: 2, borderColor: t.link },
+    // The arrow-key cursor: the same 3px deep-cyan outline, 2px off the tile, as Tab focus
+    // (tcgscan-app's focus pick), so the two never look different. Outline needs no border box.
+    cardTileFocused: { borderRadius: 6, outlineWidth: 3, outlineStyle: 'solid', outlineColor: t.link, outlineOffset: 2 } as object,
     cardImageWrap: {
       width: '100%',
       aspectRatio: 63 / 88,
