@@ -66,6 +66,9 @@ export interface BrowseTheme {
      * no lift). Omitted = today's soft tile shadow, which michi-maker keeps.
      */
     flatTiles?: boolean;
+    /** Leave out the 'Cards · 1×1' section label above the search (tcgscan-app, 2026-11-03: it takes
+     *  room and names nothing a BiBo user needs). Omitted = drawn, as michi-maker's picker wants. */
+    hideSectionLabel?: boolean;
     lip?: string;
     lipOn?: string;
     searchFill?: string;

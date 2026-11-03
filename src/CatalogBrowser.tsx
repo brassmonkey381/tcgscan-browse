@@ -2437,7 +2437,7 @@ export function CatalogBrowser({
           </View>
         ) : featureRowLead ? (
           <View style={styles.triColorRow}>{featureRowLead}</View>
-        ) : (
+        ) : theme.hideSectionLabel ? null : (
           <Text style={styles.sectionLabel}>Cards · 1×1</Text>
         )}
         {/*
