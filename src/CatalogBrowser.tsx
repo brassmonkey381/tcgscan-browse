@@ -2551,7 +2551,7 @@ export function CatalogBrowser({
   // compact one). `pinned` keeps the Filters panel open: in the sheet it is the whole point.
   // Sort, which a wide screen puts at the end of the filter strip and the phone's sheet puts at
   // its foot beside Done: sort is what people settle last, just before they close it.
-  const shelfSort = (
+  const shelfSort = (fill = false) => (
               <PickerMenu
                 styles={styles}
                 label="Sort"
@@ -2565,9 +2565,10 @@ export function CatalogBrowser({
                 selected={[effSort.field]}
                 onToggle={(key) => pickSort(key as QuerySort)}
                 closeOnPick
+                fill={fill}
               />
   );
-  const cardSort = (
+  const cardSort = (fill = false) => (
               <SortControls
                 styles={styles}
                 compact={compactBar}
@@ -2576,6 +2577,7 @@ export function CatalogBrowser({
                 onPick={pickSort}
                 onToggleDir={toggleSortDir}
                 lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
+                fill={fill}
               />
   );
   const shelfBar = (pinned: boolean) => (
@@ -2593,7 +2595,7 @@ export function CatalogBrowser({
             onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
             ownedState={parsed.owned}
             alwaysToggle
-            trailing={pinned ? undefined : shelfSort}
+            trailing={pinned ? undefined : shelfSort()}
           />
   );
   const cardBar = (pinned: boolean) => (
@@ -2616,7 +2618,7 @@ export function CatalogBrowser({
             // injecting the have: token so it composes with the rest of the filters.
             onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
             ownedState={parsed.owned}
-            trailing={pinned ? undefined : cardSort}
+            trailing={pinned ? undefined : cardSort()}
           />
   );
   const themeBar = toolbarActive ? (
@@ -3112,7 +3114,7 @@ export function CatalogBrowser({
           topInset={overlayTopInset}
           onClose={() => setToolsOpen(false)}
           renderDone={renderSheetDone}
-          sort={isCardLevel ? cardSort : shelfLevel ? shelfSort : null}>
+          sort={isCardLevel ? cardSort(true) : shelfLevel ? shelfSort(true) : null}>
           {isCardLevel ? (
             <>
               {themeBar}
@@ -3558,9 +3560,12 @@ function SortControls({
   onPick,
   onToggleDir,
   lockedSorts,
+  fill,
 }: {
   styles: Styles;
   compact: boolean;
+  /** Fill its cell, as wide as a filter dropdown (the foot of the phone's sheet). */
+  fill?: boolean;
   field: QuerySort;
   dir: SortDir;
   /** Sort fields the host has locked — rendered visibly locked, routed to the upsell on tap. */
@@ -3570,22 +3575,26 @@ function SortControls({
 }) {
   const current = SORT_OPTIONS.find((o) => o.field === field)?.label ?? 'Relevance';
   return (
-    <View style={styles.controlsEnd}>
+    <View style={[styles.controlsEnd, fill && styles.sortFill]}>
       {compact ? (
-        <PickerMenu
-          styles={styles}
-          label="Sort"
-          title="Sort by"
-          summary={current}
-          items={SORT_OPTIONS.map((o) => ({
-            key: o.field,
-            label: o.label,
-            locked: lockedSorts?.includes(o.field),
-          }))}
-          selected={[field]}
-          onToggle={(key) => onPick(key as QuerySort)}
-          closeOnPick
-        />
+        // A column wrapper, so a filled pill stretches across its cell beside the direction arrow.
+        <View style={fill ? styles.sortFillCell : undefined}>
+          <PickerMenu
+            styles={styles}
+            label="Sort"
+            title="Sort by"
+            summary={current}
+            fill={fill}
+            items={SORT_OPTIONS.map((o) => ({
+              key: o.field,
+              label: o.label,
+              locked: lockedSorts?.includes(o.field),
+            }))}
+            selected={[field]}
+            onToggle={(key) => onPick(key as QuerySort)}
+            closeOnPick
+          />
+        </View>
       ) : (
         <View style={styles.chipRowInline}>
           {SORT_OPTIONS.map((o) => {
@@ -4008,16 +4017,18 @@ function FilterSheet({
         <ScrollView style={styles.sheetBody} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
-        <View style={styles.sheetFoot}>
-          {sort}
-          <View style={styles.controlsSpacer} />
-          {renderDone ? (
-            renderDone(onClose)
-          ) : (
-            <Pressable onPress={onClose} hitSlop={8} role="button" style={[styles.selectBtn, styles.sheetDone]}>
-              <Text style={styles.selectBtnText}>Done</Text>
-            </Pressable>
-          )}
+        {/* Two cells, the filter grid's columns: Sort exactly as wide as a dropdown above it. */}
+        <View style={styles.facetGrid}>
+          <View style={[styles.facetCell, styles.sheetFootCell]}>{sort}</View>
+          <View style={[styles.facetCell, styles.sheetFootCell, styles.sheetFootEnd]}>
+            {renderDone ? (
+              renderDone(onClose)
+            ) : (
+              <Pressable onPress={onClose} hitSlop={8} role="button" style={[styles.selectBtn, styles.sheetDone]}>
+                <Text style={styles.selectBtnText}>Done</Text>
+              </Pressable>
+            )}
+          </View>
         </View>
       </Animated.View>
     </Modal>
@@ -4139,7 +4150,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       gap: 8,
       ...baseTileShadow,
     },
-    sheetFoot: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    sheetFootCell: { flexDirection: 'row', alignItems: 'center' },
+    sheetFootEnd: { justifyContent: 'flex-end' },
     // Done stands as tall as the Sort pill beside it, so the foot reads as one row of buttons.
     sheetDone: { paddingVertical: 6, paddingHorizontal: 18 },
     sheetBody: { flexGrow: 0, flexShrink: 1 },
@@ -4270,6 +4282,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     facetCell: { flexBasis: '45%', flexGrow: 1, minWidth: 0 },
     facetFill: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4 },
     facetFillText: { flexShrink: 1 },
+    sortFill: { flex: 1, minWidth: 0 },
+    sortFillCell: { flex: 1, minWidth: 0 },
     facetFlow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, rowGap: 6 },
     facetInline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingRight: 8 },
     facetRows: { gap: 4 },
