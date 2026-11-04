@@ -106,6 +106,8 @@ export {
 
 export {
   formatUsd,
+  moneyFigure,
+  setCompactMoney,
   getCardPrices,
   getPriceSummary,
   getValueSeries,

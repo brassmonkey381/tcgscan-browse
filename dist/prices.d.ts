@@ -33,7 +33,15 @@ export declare function _resetPrices(): void;
 export declare function priceSnapshot(): PriceSummary | null;
 /** The summary map, or null while loading. Never throws — {} on failure. */
 export declare function usePriceSummary(): PriceSummary | null;
-/** "$1,234.56" (en-US), or '' for a zero/absent value. */
+/** Turn compact money on or off for every figure the kit writes (formatUsd, moneyFigure). */
+export declare function setCompactMoney(on: boolean): void;
+/**
+ * The figure of a dollar amount, without the sign or the $: '1,234.50' or, compact, '1,235',
+ * '101.2k', '30.79M'. `compact` defaults to the kit-wide switch. Each step's upper bound is where
+ * its rounding would reach the next step, so 999,960 reads 1M, never 1000k.
+ */
+export declare function moneyFigure(abs: number, compact?: boolean): string;
+/** "$1,234.56" (en-US), or '' for a zero/absent value; compact when the host turned it on. */
 export declare function formatUsd(value: number): string;
 /** One observation. m = market price, a = avg sales price, q = listing quantity. */
 export interface PricePoint {

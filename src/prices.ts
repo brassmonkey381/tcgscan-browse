@@ -128,10 +128,54 @@ export function usePriceSummary(): PriceSummary | null {
   return summary;
 }
 
-/** "$1,234.56" (en-US), or '' for a zero/absent value. */
+/*
+  COMPACT MONEY (tcgscan-app owner, 2026-11-03: "no money values ever get too big and move UI
+  around"). With it on, a dollar figure is never wider than seven characters, so a price tag or a
+  column keeps its width whatever the amount:
+
+    999.99    -> 999.99      cents under $1,000
+    1,234.5   -> 1,235       whole dollars to $99,999
+    101,201   -> 101.2k      thousands, one decimal, to $999.9k
+    1,234,567 -> 1.23M       millions, two decimals to $99.99M, then one
+    30,789,123 -> 30.79M
+    the same steps for B and T; trailing zeros dropped (100k, 1M, 30.7M)
+
+  A host turns it on with setCompactMoney (tcgscan-app does, from its settings); off, every figure
+  keeps its cents, as before. Off by default so a host that never asks (michi-maker) is unchanged.
+*/
+let compactMoney = false;
+
+/** Turn compact money on or off for every figure the kit writes (formatUsd, moneyFigure). */
+export function setCompactMoney(on: boolean): void {
+  compactMoney = on;
+}
+
+const cents = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const wholeDollars = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+const scaled = (n: number, unit: string, decimals: number) =>
+  `${n.toFixed(decimals).replace(/\.?0+$/, '')}${unit}`;
+
+/**
+ * The figure of a dollar amount, without the sign or the $: '1,234.50' or, compact, '1,235',
+ * '101.2k', '30.79M'. `compact` defaults to the kit-wide switch. Each step's upper bound is where
+ * its rounding would reach the next step, so 999,960 reads 1M, never 1000k.
+ */
+export function moneyFigure(abs: number, compact = compactMoney): string {
+  const n = Math.abs(abs);
+  if (!compact || n < 999.995) return cents.format(n);
+  if (n < 99_999.5) return wholeDollars.format(n);
+  if (n < 999_950) return scaled(n / 1e3, 'k', 1);
+  if (n < 99_995_000) return scaled(n / 1e6, 'M', 2);
+  if (n < 999_950_000) return scaled(n / 1e6, 'M', 1);
+  if (n < 99_995_000_000) return scaled(n / 1e9, 'B', 2);
+  if (n < 999_950_000_000) return scaled(n / 1e9, 'B', 1);
+  return scaled(n / 1e12, 'T', 2);
+}
+
+/** "$1,234.56" (en-US), or '' for a zero/absent value; compact when the host turned it on. */
 export function formatUsd(value: number): string {
   if (!value) return '';
-  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  return `${value < 0 ? '-' : ''}$${moneyFigure(value)}`;
 }
 
 // ---- per-card price history --------------------------------------------------
