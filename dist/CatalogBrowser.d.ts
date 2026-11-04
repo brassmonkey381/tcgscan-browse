@@ -163,6 +163,12 @@ interface CatalogBrowserProps {
      */
     onCardSizeChange?: (size: CardSize) => void;
     /**
+     * The screen's top safe-area inset (status bar, notch). The phone's Sort & filter sheet covers
+     * the screen from its top edge down to the group row, so its first control starts below this.
+     * The kit has no safe-area dependency of its own; omit on web.
+     */
+    overlayTopInset?: number;
+    /**
      * A control the host puts at the START of the Color / Theme row, inline with those buttons: the
      * binder picker's game dropdown (owner, 2026-10-25: the chip rows above the browser cost three
      * lines on a phone). Rendered on its own row when neither Color nor Theme is offered, so the
@@ -255,5 +261,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, featureRowLead, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, featureRowLead, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

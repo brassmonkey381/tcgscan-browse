@@ -637,6 +637,12 @@ interface CatalogBrowserProps {
    */
   onCardSizeChange?: (size: CardSize) => void;
   /**
+   * The screen's top safe-area inset (status bar, notch). The phone's Sort & filter sheet covers
+   * the screen from its top edge down to the group row, so its first control starts below this.
+   * The kit has no safe-area dependency of its own; omit on web.
+   */
+  overlayTopInset?: number;
+  /**
    * A control the host puts at the START of the Color / Theme row, inline with those buttons: the
    * binder picker's game dropdown (owner, 2026-10-25: the chip rows above the browser cost three
    * lines on a phone). Rendered on its own row when neither Color nor Theme is offered, so the
@@ -754,6 +760,7 @@ export function CatalogBrowser({
   onLockedFeature,
   cardSize: cardSizeProp,
   onCardSizeChange,
+  overlayTopInset = 0,
   featureRowLead,
   onColorSearch,
   onThemeSearch,
@@ -2402,7 +2409,16 @@ export function CatalogBrowser({
   // never pass through filteredCards, and a phone on its first visit is exactly the cold case.
   // Any card list, not only a search: a set opened from the series drill-down stacked the same
   // rows over its first card (owner's phone screenshots, 2026-10-29).
-  const foldable = compactBar && isCardLevel && !analyticsView && visibleData.length > 0;
+  /*
+    THE SHEET (owner, 2026-11-03, superseding the fold): on a compact bar, Sort & filter opens a
+    sheet over the top of the screen (header, search box, group row) and the grid under it stays in
+    sight, refiltering as each pick lands. Nothing above the grid folds or unfolds any more, so the
+    group row sits in one place, warm or cold, results or none. `folded` now only means "the sheet
+    is shut while cards are on screen", which names the active sort and filters on the count line.
+  */
+  const sheetMode = compactBar && !analyticsView;
+  const sheetOpen = sheetMode && toolsOpen;
+  const foldable = sheetMode && isCardLevel && visibleData.length > 0;
   const folded = foldable && !toolsOpen;
   const foldSummary = folded
     ? [
@@ -2507,22 +2523,124 @@ export function CatalogBrowser({
 
   // ONE WIDTH, ALWAYS: the count lives on Filters inside; here a filter in force only fills the
   // button, so it never grows and wraps off the group row (owner's screenshot, 2026-11-03).
-  const sortFilterOpen = isCardLevel ? (foldable ? !folded : filtersOpen) : toolsOpen;
+  const sortFilterOpen = sheetMode || !isCardLevel ? toolsOpen : filtersOpen;
   const sortFilterLit = sortFilterOpen || activeFilterCount > 0 || parsed.owned != null;
   const sortFilterControl = analyticsView ? null : (
     <Pressable
-      onPress={() =>
-        !isCardLevel || foldable ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v)
-      }
+      onPress={() => (sheetMode || !isCardLevel ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v))}
       role="button"
       aria-expanded={sortFilterOpen}
       accessibilityLabel={`Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`}
-      style={[styles.facetToggle, sortFilterLit && styles.facetToggleOn]}>
+      style={[styles.facetToggle, styles.sortFilterBtn, sortFilterLit && styles.facetToggleOn]}>
       <Text style={[styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn]} numberOfLines={1}>
         Sort & filter ▾
       </Text>
     </Pressable>
   );
+
+  // The filter rows, built once and placed either inline (a wide screen) or in the sheet (a
+  // compact one). `pinned` keeps the Filters panel open: in the sheet it is the whole point.
+  const shelfBar = (pinned: boolean) => (
+          <FacetBar
+            styles={styles}
+            compact={compactBar}
+            options={shelfFacetOptions}
+            selection={selection}
+            activeCount={activeFilterCount}
+            open={pinned || filtersOpen}
+            pinned={pinned}
+            onToggleOpen={() => setFiltersOpen((v) => !v)}
+            onToggleValue={toggleFacetValue}
+            onClear={clearFilters}
+            onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
+            ownedState={parsed.owned}
+            alwaysToggle
+            trailing={
+              <PickerMenu
+                styles={styles}
+                label="Sort"
+                title="Sort cards by"
+                summary={SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance'}
+                items={SORT_OPTIONS.map((o) => ({
+                  key: o.field,
+                  label: o.label,
+                  locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
+                }))}
+                selected={[effSort.field]}
+                onToggle={(key) => pickSort(key as QuerySort)}
+                closeOnPick
+              />
+            }
+          />
+  );
+  const cardBar = (pinned: boolean) => (
+          <FacetBar
+            styles={styles}
+            compact={compactBar}
+            options={facetOptions}
+            selection={selection}
+            activeCount={activeFilterCount}
+            open={pinned || filtersOpen}
+            pinned={pinned}
+            onToggleOpen={() => setFiltersOpen((v) => !v)}
+            onToggleValue={toggleFacetValue}
+            onClear={clearFilters}
+            // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
+            // up while a color result set (similarTo.injected) is what's on screen.
+            onColorSearch={onColorSearch}
+            colorActive={!!similarTo?.injected}
+            // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
+            // injecting the have: token so it composes with the rest of the filters.
+            onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
+            ownedState={parsed.owned}
+            trailing={
+              <SortControls
+                styles={styles}
+                compact={compactBar}
+                field={effSort.field}
+                dir={effSort.dir}
+                onPick={pickSort}
+                onToggleDir={toggleSortDir}
+                lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
+              />
+            }
+          />
+  );
+  const themeBar = toolbarActive ? (
+          <ThemeFilterBar
+            theme={theme}
+            frame={themeFrameEff}
+            onPickFrame={pickThemeFrame}
+            typeGroups={themeGroups}
+            typeLabel={themeTypeLabel}
+            types={themeTypesEff}
+            onToggleType={toggleThemeType}
+            onClearTypes={() => setThemeTypes([])}
+            group={themeGroupOn}
+            onToggleGroup={() => setThemeGroupSel(!themeGroupOn)}
+            counts={themeServerActive ? themeCounts : pokeCounts}
+            compact={compactBar}
+          />
+  ) : null;
+  const savedChips = savedList.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+            keyboardShouldPersistTaps="handled">
+            {savedList.map((s, i) => (
+              <Pressable
+                key={`${s.label}-${i}`}
+                onPress={() => applySaved(s)}
+                onLongPress={() => removeSavedSearch(s)}
+                style={styles.chip}>
+                <Text style={styles.chipText} numberOfLines={1}>
+                  ★ {s.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+  ) : null;
 
   // The resolved multi-selection — feeds both the batch modal's thumbs and its add-all payload.
   const selectedCards = multiOpen
@@ -2553,7 +2671,7 @@ export function CatalogBrowser({
   return (
     <View style={styles.browser} onLayout={onLayout}>
       <View style={styles.controls}>
-        {folded ? null : featureRow ? (
+        {featureRow ? (
           <View style={styles.triColorRow}>
             {featureRowLead}
             {onColorSearch ? (
@@ -2642,77 +2760,13 @@ export function CatalogBrowser({
         </View>
         {/* The shelf's Sort & filter row: the same FacetBar as the cards get, so Filters (Year,
             then the card facets) and Collection sit where they do on a set, Sort at its end. */}
-        {shelfToolsOpen && !analyticsView ? (
-          <FacetBar
-            styles={styles}
-            compact={compactBar}
-            options={shelfFacetOptions}
-            selection={selection}
-            activeCount={activeFilterCount}
-            open={filtersOpen}
-            onToggleOpen={() => setFiltersOpen((v) => !v)}
-            onToggleValue={toggleFacetValue}
-            onClear={clearFilters}
-            onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
-            ownedState={parsed.owned}
-            alwaysToggle
-            trailing={
-              <PickerMenu
-                styles={styles}
-                label="Sort"
-                title="Sort cards by"
-                summary={SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance'}
-                items={SORT_OPTIONS.map((o) => ({
-                  key: o.field,
-                  label: o.label,
-                  locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
-                }))}
-                selected={[effSort.field]}
-                onToggle={(key) => pickSort(key as QuerySort)}
-                closeOnPick
-              />
-            }
-          />
-        ) : null}
+        {shelfToolsOpen && !sheetMode ? shelfBar(false) : null}
         {/* The theme toolbar: shown while a themed query is on screen and the registry offers it
             (a secondary game's `theme_search`, or Pokemon's `search_cards` with `themeTools`).
             Its controls are server parameters. */}
-        {toolbarActive && !folded ? (
-          <ThemeFilterBar
-            theme={theme}
-            frame={themeFrameEff}
-            onPickFrame={pickThemeFrame}
-            typeGroups={themeGroups}
-            typeLabel={themeTypeLabel}
-            types={themeTypesEff}
-            onToggleType={toggleThemeType}
-            onClearTypes={() => setThemeTypes([])}
-            group={themeGroupOn}
-            onToggleGroup={() => setThemeGroupSel(!themeGroupOn)}
-            counts={themeServerActive ? themeCounts : pokeCounts}
-            compact={compactBar}
-          />
-        ) : null}
+        {sheetMode ? null : themeBar}
         {/* Saved-search chips: one tap re-runs the starred search; long-press removes it. */}
-        {savedList.length > 0 && !folded ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipRow}
-            keyboardShouldPersistTaps="handled">
-            {savedList.map((s, i) => (
-              <Pressable
-                key={`${s.label}-${i}`}
-                onPress={() => applySaved(s)}
-                onLongPress={() => removeSavedSearch(s)}
-                style={styles.chip}>
-                <Text style={styles.chipText} numberOfLines={1}>
-                  ★ {s.label}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        ) : null}
+        {sheetMode ? null : savedChips}
         {/* The load readout, only while there is nothing to search with yet. Where server search
             answers in the meantime (coldSearch) the readout said "Server search, instant", a line
             about plumbing the owner asked to remove (2026-11-03): the search simply works, and the
@@ -2748,38 +2802,7 @@ export function CatalogBrowser({
             S/M/L on the right (Select rides the results line above: see `selectControl`); a spacer between that wraps the right half onto its own line when
             the width runs out. This was five rows (badge, results, filters, sort, select), each
             mostly empty; a browse should start with cards, not chrome. */}
-        {isCardLevel && !analyticsView && !folded ? (
-          <FacetBar
-            styles={styles}
-            compact={compactBar}
-            options={facetOptions}
-            selection={selection}
-            activeCount={activeFilterCount}
-            open={filtersOpen}
-            onToggleOpen={() => setFiltersOpen((v) => !v)}
-            onToggleValue={toggleFacetValue}
-            onClear={clearFilters}
-            // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
-            // up while a color result set (similarTo.injected) is what's on screen.
-            onColorSearch={onColorSearch}
-            colorActive={!!similarTo?.injected}
-            // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
-            // injecting the have: token so it composes with the rest of the filters.
-            onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
-            ownedState={parsed.owned}
-            trailing={
-              <SortControls
-                styles={styles}
-                compact={compactBar}
-                field={effSort.field}
-                dir={effSort.dir}
-                onPick={pickSort}
-                onToggleDir={toggleSortDir}
-                lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
-              />
-            }
-          />
-        ) : null}
+        {isCardLevel && !analyticsView && !sheetMode ? cardBar(false) : null}
         {/* The series count, on the top shelf. */}
         {taxBarOn ? (
           <TaxonomyBar
@@ -3069,6 +3092,23 @@ export function CatalogBrowser({
         }
       />
       )}
+
+      {sheetOpen ? (
+        <FilterSheet
+          styles={styles}
+          topInset={overlayTopInset}
+          onClose={() => setToolsOpen(false)}>
+          {isCardLevel ? (
+            <>
+              {themeBar}
+              {cardBar(true)}
+            </>
+          ) : shelfLevel ? (
+            shelfBar(true)
+          ) : null}
+          {savedChips}
+        </FilterSheet>
+      ) : null}
 
       {actionCard ? (
         <CardActionModal
@@ -3760,6 +3800,7 @@ function FacetBar({
   onCycleOwned,
   ownedState,
   alwaysToggle,
+  pinned,
   trailing,
   children,
 }: {
@@ -3783,6 +3824,8 @@ function FacetBar({
   /** Show the Filters toggle even before any options are known (a shelf works its options out
    *  only once it opens). */
   alwaysToggle?: boolean;
+  /** Always open, the Filters toggle shown as a plain heading (the phone's Sort & filter sheet). */
+  pinned?: boolean;
   /** The right end of the strip (Sort + size). */
   trailing?: ReactNode;
   /** Extra left-side controls. */
@@ -3796,7 +3839,12 @@ function FacetBar({
   return (
     <View style={styles.facetBar}>
       <View style={styles.controlsRow}>
-        {hasFacets ? (
+        {hasFacets && pinned ? (
+          <Text style={styles.sheetHeading}>
+            Filters
+            {badge > 0 ? ` · ${badge}` : ''}
+          </Text>
+        ) : hasFacets ? (
           <Pressable onPress={onToggleOpen} style={[styles.facetToggle, badge > 0 && styles.facetToggleOn]}>
             <Text style={[styles.facetToggleText, badge > 0 && styles.facetToggleTextOn]}>
               {open ? '▾ Filters' : '▸ Filters'}
@@ -3873,6 +3921,67 @@ function FacetBar({
         </View>
       ) : null}
     </View>
+  );
+}
+
+/**
+ * THE PHONE'S SORT & FILTER SHEET (owner, 2026-11-03: "display in a pop up modal instead of
+ * expanding below... cover the top space and can still see the card grid as they are filtered").
+ * It drops from the top edge over the header and search box, as tall as its rows and never more
+ * than two thirds of the screen, and leaves the grid under it in sight and undimmed: each pick
+ * refilters the grid behind it. A tap below the sheet, Done, or the hardware back shuts it. It
+ * slides in under the state step; Reduce Motion shows it in place.
+ */
+function FilterSheet({
+  styles,
+  topInset,
+  onClose,
+  children,
+}: {
+  styles: Styles;
+  topInset: number;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const { height } = useWindowDimensions();
+  const drop = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    let live = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .catch(() => false)
+      .then((reduce) => {
+        if (!live) return;
+        if (reduce) drop.setValue(1);
+        else Animated.timing(drop, { toValue: 1, duration: 260, useNativeDriver: Platform.OS !== 'web' }).start();
+      });
+    return () => {
+      live = false;
+    };
+  }, [drop]);
+  return (
+    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close sort and filter" />
+      <Animated.View
+        style={[
+          styles.sheet,
+          {
+            maxHeight: Math.round(height * 0.66),
+            paddingTop: topInset + 10,
+            opacity: drop,
+            transform: [{ translateY: drop.interpolate({ inputRange: [0, 1], outputRange: [-40, 0] }) }],
+          },
+        ]}>
+        <View style={styles.sheetHead}>
+          <Text style={styles.sheetTitle}>Sort & filter</Text>
+          <Pressable onPress={onClose} hitSlop={8} role="button" style={styles.selectBtn}>
+            <Text style={styles.selectBtnText}>Done</Text>
+          </Pressable>
+        </View>
+        <ScrollView style={styles.sheetBody} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          {children}
+        </ScrollView>
+      </Animated.View>
+    </Modal>
   );
 }
 
@@ -3971,7 +4080,31 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     searchCompact: { fontSize: 16 },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     // Language, size, then Sort & filter at the far end; wraps rather than scrolls on a narrow embed.
-    groupRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+    // ONE LINE, ALWAYS (owner, 2026-11-03): language, size and Sort & filter never wrap; at a
+    // squeeze Sort & filter gives up width and cuts its label, so the row keeps its height.
+    groupRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    sortFilterBtn: { flexShrink: 1, minWidth: 0 },
+    // The phone's Sort & filter sheet (see FilterSheet).
+    sheet: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: t.background,
+      borderBottomLeftRadius: 18,
+      borderBottomRightRadius: 18,
+      borderBottomWidth: 1,
+      borderColor: t.border,
+      paddingHorizontal: 16,
+      paddingBottom: 12,
+      gap: 8,
+      ...baseTileShadow,
+    },
+    sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    sheetTitle: { fontSize: 16, fontWeight: '800', color: t.text },
+    sheetBody: { flexGrow: 0 },
+    sheetContent: { gap: 10, paddingBottom: 4 },
+    sheetHeading: { fontSize: 12, fontWeight: '700', color: t.subtext, textTransform: 'uppercase', letterSpacing: 0.5 },
     // minWidth 0: a TextInput's placeholder sets its minimum width on the web, so a wide hint (a
     // host's pixel face) would push the EN/JP and help buttons off the row.
     searchFlex: { flex: 1, minWidth: 0 },

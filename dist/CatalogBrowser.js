@@ -335,7 +335,7 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, featureRowLead, onColorSearch, onThemeSearch, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', themeServer, themeTools: themeToolsProp, ownedIds, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset = 0, featureRowLead, onColorSearch, onThemeSearch, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', themeServer, themeTools: themeToolsProp, ownedIds, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
     // given, else the session-sticky browseState. The toolbar toggle overrides locally; when the
@@ -1876,7 +1876,16 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // never pass through filteredCards, and a phone on its first visit is exactly the cold case.
     // Any card list, not only a search: a set opened from the series drill-down stacked the same
     // rows over its first card (owner's phone screenshots, 2026-10-29).
-    const foldable = compactBar && isCardLevel && !analyticsView && visibleData.length > 0;
+    /*
+      THE SHEET (owner, 2026-11-03, superseding the fold): on a compact bar, Sort & filter opens a
+      sheet over the top of the screen (header, search box, group row) and the grid under it stays in
+      sight, refiltering as each pick lands. Nothing above the grid folds or unfolds any more, so the
+      group row sits in one place, warm or cold, results or none. `folded` now only means "the sheet
+      is shut while cards are on screen", which names the active sort and filters on the count line.
+    */
+    const sheetMode = compactBar && !analyticsView;
+    const sheetOpen = sheetMode && toolsOpen;
+    const foldable = sheetMode && isCardLevel && visibleData.length > 0;
     const folded = foldable && !toolsOpen;
     const foldSummary = folded
         ? [
@@ -1933,9 +1942,25 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             .join(' · ');
     // ONE WIDTH, ALWAYS: the count lives on Filters inside; here a filter in force only fills the
     // button, so it never grows and wraps off the group row (owner's screenshot, 2026-11-03).
-    const sortFilterOpen = isCardLevel ? (foldable ? !folded : filtersOpen) : toolsOpen;
+    const sortFilterOpen = sheetMode || !isCardLevel ? toolsOpen : filtersOpen;
     const sortFilterLit = sortFilterOpen || activeFilterCount > 0 || parsed.owned != null;
-    const sortFilterControl = analyticsView ? null : (_jsx(Pressable, { onPress: () => !isCardLevel || foldable ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v), role: "button", "aria-expanded": sortFilterOpen, accessibilityLabel: `Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`, style: [styles.facetToggle, sortFilterLit && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn], numberOfLines: 1, children: "Sort & filter \u25BE" }) }));
+    const sortFilterControl = analyticsView ? null : (_jsx(Pressable, { onPress: () => (sheetMode || !isCardLevel ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v)), role: "button", "aria-expanded": sortFilterOpen, accessibilityLabel: `Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`, style: [styles.facetToggle, styles.sortFilterBtn, sortFilterLit && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn], numberOfLines: 1, children: "Sort & filter \u25BE" }) }));
+    // The filter rows, built once and placed either inline (a wide screen) or in the sheet (a
+    // compact one). `pinned` keeps the Filters panel open: in the sheet it is the whole point.
+    const shelfBar = (pinned) => (_jsx(FacetBar, { styles: styles, compact: compactBar, options: shelfFacetOptions, selection: selection, activeCount: activeFilterCount, open: pinned || filtersOpen, pinned: pinned, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, alwaysToggle: true, trailing: _jsx(PickerMenu, { styles: styles, label: "Sort", title: "Sort cards by", summary: SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance', items: SORT_OPTIONS.map((o) => ({
+                key: o.field,
+                label: o.label,
+                locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
+            })), selected: [effSort.field], onToggle: (key) => pickSort(key), closeOnPick: true }) }));
+    const cardBar = (pinned) => (_jsx(FacetBar, { styles: styles, compact: compactBar, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: pinned || filtersOpen, pinned: pinned, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, 
+        // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
+        // up while a color result set (similarTo.injected) is what's on screen.
+        onColorSearch: onColorSearch, colorActive: !!similarTo?.injected, 
+        // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
+        // injecting the have: token so it composes with the rest of the filters.
+        onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, trailing: _jsx(SortControls, { styles: styles, compact: compactBar, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, lockedSorts: isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined }) }));
+    const themeBar = toolbarActive ? (_jsx(ThemeFilterBar, { theme: theme, frame: themeFrameEff, onPickFrame: pickThemeFrame, typeGroups: themeGroups, typeLabel: themeTypeLabel, types: themeTypesEff, onToggleType: toggleThemeType, onClearTypes: () => setThemeTypes([]), group: themeGroupOn, onToggleGroup: () => setThemeGroupSel(!themeGroupOn), counts: themeServerActive ? themeCounts : pokeCounts, compact: compactBar })) : null;
+    const savedChips = savedList.length > 0 ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null;
     // The resolved multi-selection — feeds both the batch modal's thumbs and its add-all payload.
     const selectedCards = multiOpen
         ? selectedIds.map((id) => findCard(id)).filter((c) => Boolean(c))
@@ -1968,24 +1993,14 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 setFocusIdx(-1);
         },
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [folded ? null : featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : theme.hideSectionLabel ? null : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : theme.hideSectionLabel ? null : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
                                     ? `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards`
                                     : `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.searchPlaceholder ?? theme.faint, autoCorrect: false, clearButtonMode: "while-editing", 
                                 // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input
                                 // under 16px, and the zoom stays after the search. The compact box is the phone's.
-                                style: [styles.search, styles.searchFlex, compactSearch && styles.searchCompact] }), _jsxs(View, { style: styles.searchToolsInline, children: [canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), _jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize }), _jsx(View, { style: styles.controlsSpacer }), sortFilterControl] }), shelfToolsOpen && !analyticsView ? (_jsx(FacetBar, { styles: styles, compact: compactBar, options: shelfFacetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, alwaysToggle: true, trailing: _jsx(PickerMenu, { styles: styles, label: "Sort", title: "Sort cards by", summary: SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance', items: SORT_OPTIONS.map((o) => ({
-                                key: o.field,
-                                label: o.label,
-                                locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
-                            })), selected: [effSort.field], onToggle: (key) => pickSort(key), closeOnPick: true }) })) : null, toolbarActive && !folded ? (_jsx(ThemeFilterBar, { theme: theme, frame: themeFrameEff, onPickFrame: pickThemeFrame, typeGroups: themeGroups, typeLabel: themeTypeLabel, types: themeTypesEff, onToggleType: toggleThemeType, onClearTypes: () => setThemeTypes([]), group: themeGroupOn, onToggleGroup: () => setThemeGroupSel(!themeGroupOn), counts: themeServerActive ? themeCounts : pokeCounts, compact: compactBar })) : null, savedList.length > 0 && !folded ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, !warm && !coldSearch ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: loadLabel(catalogStatus, coldSearch) })] }), catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+                                style: [styles.search, styles.searchFlex, compactSearch && styles.searchCompact] }), _jsxs(View, { style: styles.searchToolsInline, children: [canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), _jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize }), _jsx(View, { style: styles.controlsSpacer }), sortFilterControl] }), shelfToolsOpen && !sheetMode ? shelfBar(false) : null, sheetMode ? null : themeBar, sheetMode ? null : savedChips, !warm && !coldSearch ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: loadLabel(catalogStatus, coldSearch) })] }), catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
-                        !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, isCardLevel && !analyticsView && !folded ? (_jsx(FacetBar, { styles: styles, compact: compactBar, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, 
-                        // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
-                        // up while a color result set (similarTo.injected) is what's on screen.
-                        onColorSearch: onColorSearch, colorActive: !!similarTo?.injected, 
-                        // Collection chip (only when the app supplied owned ids): cycles All / Missing / Owned,
-                        // injecting the have: token so it composes with the rest of the filters.
-                        onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, trailing: _jsx(SortControls, { styles: styles, compact: compactBar, field: effSort.field, dir: effSort.dir, onPick: pickSort, onToggleDir: toggleSortDir, lockedSorts: isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined }) })) : null, taxBarOn ? (_jsx(TaxonomyBar, { styles: styles, 
+                        !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, isCardLevel && !analyticsView && !sheetMode ? cardBar(false) : null, taxBarOn ? (_jsx(TaxonomyBar, { styles: styles, 
                         // The series count rides this bar at the top level (one row, not two: owner, 2026-10-25).
                         lead: !seriesId && !searching && !similarTo ? `${series.length} series` : undefined })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [themeServerActive
                                         ? // The theme meter: the server's count (theme + words + frame + type), with the
@@ -2046,7 +2061,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     ? !catalog && coldSetLoading
                                         ? 'Loading set…'
                                         : 'No cards in this set.'
-                                    : 'Nothing here.' })), ListFooterComponent: _jsxs(View, { style: styles.footer, children: [searching && meter.clamped && meter.total > meter.shown ? (meter.degraded ? (_jsxs(View, { style: styles.meterRow, accessibilityRole: "text", children: [_jsxs(Text, { style: styles.meterCount, children: ["+", meter.total - meter.shown, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Full artwork search is temporarily unavailable, so this shows the top ", meter.shown, ". Try again in a moment."] })] })) : (_jsxs(Pressable, { style: styles.meterRow, role: "button", accessibilityLabel: `${meter.total - meter.shown} more matches, unlock every match`, onPress: () => onLockedFeature?.('themeSearch'), children: [_jsxs(Text, { style: styles.meterCount, children: ["+", meter.total - meter.shown, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Showing the top ", count(meter.shown), ". Unlock every match"] })] }))) : null, isCardLevel && moreToLoad && !meter.clamped ? (_jsx(Pressable, { onPress: () => onEndReachedRef.current(), disabled: loadingMore, style: styles.loadMore, role: "button", accessibilityLabel: "Show more results", testID: "browse-load-more", children: _jsx(Text, { style: styles.loadMoreText, children: loadingMore ? 'Loading more…' : `Show more${data.length > visibleData.length ? ` (${count(data.length - visibleData.length)})` : ''}` }) })) : null, footer] }) }, `lvl-${level}-c${cols}`)), actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
+                                    : 'Nothing here.' })), ListFooterComponent: _jsxs(View, { style: styles.footer, children: [searching && meter.clamped && meter.total > meter.shown ? (meter.degraded ? (_jsxs(View, { style: styles.meterRow, accessibilityRole: "text", children: [_jsxs(Text, { style: styles.meterCount, children: ["+", meter.total - meter.shown, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Full artwork search is temporarily unavailable, so this shows the top ", meter.shown, ". Try again in a moment."] })] })) : (_jsxs(Pressable, { style: styles.meterRow, role: "button", accessibilityLabel: `${meter.total - meter.shown} more matches, unlock every match`, onPress: () => onLockedFeature?.('themeSearch'), children: [_jsxs(Text, { style: styles.meterCount, children: ["+", meter.total - meter.shown, " more matches"] }), _jsxs(Text, { style: styles.meterHint, children: ["Showing the top ", count(meter.shown), ". Unlock every match"] })] }))) : null, isCardLevel && moreToLoad && !meter.clamped ? (_jsx(Pressable, { onPress: () => onEndReachedRef.current(), disabled: loadingMore, style: styles.loadMore, role: "button", accessibilityLabel: "Show more results", testID: "browse-load-more", children: _jsx(Text, { style: styles.loadMoreText, children: loadingMore ? 'Loading more…' : `Show more${data.length > visibleData.length ? ` (${count(data.length - visibleData.length)})` : ''}` }) })) : null, footer] }) }, `lvl-${level}-c${cols}`)), sheetOpen ? (_jsxs(FilterSheet, { styles: styles, topInset: overlayTopInset, onClose: () => setToolsOpen(false), children: [isCardLevel ? (_jsxs(_Fragment, { children: [themeBar, cardBar(true)] })) : shelfLevel ? (shelfBar(true)) : null, savedChips] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null, multiOpen ? (_jsx(MultiCardActionModal, { cards: selectedCards, onAddAll: onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined, addAllLabel: pickCardsLabel, onFindSimilarAll: similarAvailable() ? () => openSimilarMany(selectedIds) : undefined, onMoreLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined, onLessLikeAll: similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('less', selectedIds) : undefined, onClose: () => {
                     setMultiOpen(false);
                     setMultiSelectMode(false);
                     clearSelection();
@@ -2212,13 +2227,13 @@ function TaxonomyBar({ styles, lead }) {
  * after its label, a longer one (Set, on a big series) is a dropdown chip, and on a compact screen
  * every facet is a dropdown so the panel is two rows at most. Nothing scrolls sideways any more.
  */
-function FacetBar({ styles, compact, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, onColorSearch, colorActive, onCycleOwned, ownedState, alwaysToggle, trailing, children, }) {
+function FacetBar({ styles, compact, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, onColorSearch, colorActive, onCycleOwned, ownedState, alwaysToggle, pinned, trailing, children, }) {
     // Collection is a filter like the rest, so it lives inside the Filters panel, never loose on the
     // row (owner, 2026-11-03), and its state counts toward the Filters badge.
     const ownedOn = onCycleOwned && ownedState != null ? 1 : 0;
     const hasFacets = options.length > 0 || !!onCycleOwned || !!alwaysToggle;
     const badge = activeCount + ownedOn;
-    return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.controlsRow, children: [hasFacets ? (_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, badge > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, badge > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', badge > 0 ? ` · ${badge}` : ''] }) })) : null, activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null, onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: [styles.facetToggle, colorActive && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, colorActive && styles.facetToggleTextOn], children: "Color" }) })) : null, children, _jsx(View, { style: styles.controlsSpacer }), trailing] }), open && hasFacets ? (_jsxs(View, { style: compact ? styles.facetGrid : styles.facetFlow, children: [onCycleOwned ? (_jsx(View, { style: compact ? styles.facetCell : undefined, children: _jsx(CollectionChip, { styles: styles, onCycle: onCycleOwned, state: ownedState ?? null, fill: compact }) })) : null, options.map(({ facet, values }) => {
+    return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.controlsRow, children: [hasFacets && pinned ? (_jsxs(Text, { style: styles.sheetHeading, children: ["Filters", badge > 0 ? ` · ${badge}` : ''] })) : hasFacets ? (_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, badge > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, badge > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', badge > 0 ? ` · ${badge}` : ''] }) })) : null, activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null, onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: [styles.facetToggle, colorActive && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, colorActive && styles.facetToggleTextOn], children: "Color" }) })) : null, children, _jsx(View, { style: styles.controlsSpacer }), trailing] }), open && hasFacets ? (_jsxs(View, { style: compact ? styles.facetGrid : styles.facetFlow, children: [onCycleOwned ? (_jsx(View, { style: compact ? styles.facetCell : undefined, children: _jsx(CollectionChip, { styles: styles, onCycle: onCycleOwned, state: ownedState ?? null, fill: compact }) })) : null, options.map(({ facet, values }) => {
                         const picked = selection[facet.key] ?? [];
                         if (compact || values.length > INLINE_FACET_MAX) {
                             const menu = (_jsx(PickerMenu, { styles: styles, label: facet.label, items: values.map((v) => ({ key: v, label: v })), selected: picked, onToggle: (v) => onToggleValue(facet.key, v), onClear: () => picked.forEach((v) => onToggleValue(facet.key, v)), fill: compact }, facet.key));
@@ -2229,6 +2244,43 @@ function FacetBar({ styles, compact, options, selection, activeCount, open, onTo
                                     return (_jsx(Pressable, { onPress: () => onToggleValue(facet.key, v), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: v }) }, v));
                                 })] }, facet.key));
                     })] })) : null] }));
+}
+/**
+ * THE PHONE'S SORT & FILTER SHEET (owner, 2026-11-03: "display in a pop up modal instead of
+ * expanding below... cover the top space and can still see the card grid as they are filtered").
+ * It drops from the top edge over the header and search box, as tall as its rows and never more
+ * than two thirds of the screen, and leaves the grid under it in sight and undimmed: each pick
+ * refilters the grid behind it. A tap below the sheet, Done, or the hardware back shuts it. It
+ * slides in under the state step; Reduce Motion shows it in place.
+ */
+function FilterSheet({ styles, topInset, onClose, children, }) {
+    const { height } = useWindowDimensions();
+    const drop = useRef(new Animated.Value(0)).current;
+    useEffect(() => {
+        let live = true;
+        AccessibilityInfo.isReduceMotionEnabled()
+            .catch(() => false)
+            .then((reduce) => {
+            if (!live)
+                return;
+            if (reduce)
+                drop.setValue(1);
+            else
+                Animated.timing(drop, { toValue: 1, duration: 260, useNativeDriver: Platform.OS !== 'web' }).start();
+        });
+        return () => {
+            live = false;
+        };
+    }, [drop]);
+    return (_jsxs(Modal, { visible: true, transparent: true, animationType: "none", statusBarTranslucent: true, onRequestClose: onClose, children: [_jsx(Pressable, { style: StyleSheet.absoluteFill, onPress: onClose, accessibilityLabel: "Close sort and filter" }), _jsxs(Animated.View, { style: [
+                    styles.sheet,
+                    {
+                        maxHeight: Math.round(height * 0.66),
+                        paddingTop: topInset + 10,
+                        opacity: drop,
+                        transform: [{ translateY: drop.interpolate({ inputRange: [0, 1], outputRange: [-40, 0] }) }],
+                    },
+                ], children: [_jsxs(View, { style: styles.sheetHead, children: [_jsx(Text, { style: styles.sheetTitle, children: "Sort & filter" }), _jsx(Pressable, { onPress: onClose, hitSlop: 8, role: "button", style: styles.selectBtn, children: _jsx(Text, { style: styles.selectBtnText, children: "Done" }) })] }), _jsx(ScrollView, { style: styles.sheetBody, contentContainerStyle: styles.sheetContent, keyboardShouldPersistTaps: "handled", children: children })] })] }));
 }
 /**
  * A HALO THAT SWELLS EVERY NOW AND THEN. Opacity and transform only, so it runs on the native
@@ -2314,7 +2366,31 @@ function makeStyles(t, taxTileHeight) {
         searchCompact: { fontSize: 16 },
         searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
         // Language, size, then Sort & filter at the far end; wraps rather than scrolls on a narrow embed.
-        groupRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+        // ONE LINE, ALWAYS (owner, 2026-11-03): language, size and Sort & filter never wrap; at a
+        // squeeze Sort & filter gives up width and cuts its label, so the row keeps its height.
+        groupRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        sortFilterBtn: { flexShrink: 1, minWidth: 0 },
+        // The phone's Sort & filter sheet (see FilterSheet).
+        sheet: {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: t.background,
+            borderBottomLeftRadius: 18,
+            borderBottomRightRadius: 18,
+            borderBottomWidth: 1,
+            borderColor: t.border,
+            paddingHorizontal: 16,
+            paddingBottom: 12,
+            gap: 8,
+            ...baseTileShadow,
+        },
+        sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+        sheetTitle: { fontSize: 16, fontWeight: '800', color: t.text },
+        sheetBody: { flexGrow: 0 },
+        sheetContent: { gap: 10, paddingBottom: 4 },
+        sheetHeading: { fontSize: 12, fontWeight: '700', color: t.subtext, textTransform: 'uppercase', letterSpacing: 0.5 },
         // minWidth 0: a TextInput's placeholder sets its minimum width on the web, so a wide hint (a
         // host's pixel face) would push the EN/JP and help buttons off the row.
         searchFlex: { flex: 1, minWidth: 0 },
