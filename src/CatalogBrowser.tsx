@@ -241,6 +241,10 @@ const INLINE_FACET_MAX = 6;
  *  per render feeding SortBar's props). */
 const SORT_LOCKED_BY_VALUE: QuerySort[] = ['value'];
 
+/** Filters a shelf answers itself (or that only name its scope); any other facet picked on a shelf
+ *  opens a card grid. See `shelfCardFilter`. */
+const SHELF_KEYS = new Set(['language', 'year', 'series', 'set']);
+
 /** Display order for cold-mode facet values (server returns them unordered). */
 function orderFacetValues(key: string, values: string[]): string[] {
   const uniq = [...new Set(values)];
@@ -1133,7 +1137,16 @@ export function CatalogBrowser({
   const clearFilters = () => setSelection({});
 
   const q = cardQueryDebounced.trim();
-  const searching = q.length > 0;
+  /*
+    FILTERS AT EVERY LEVEL (owner, 2026-11-03). On the series and set shelves a filter is either a
+    SHELF filter (SHELF_KEYS: Year narrows the tiles in place; series/set/language name the scope)
+    or a CARD filter (Rarity, Type, HP...), which turns the shelf into a card grid scoped to where
+    you are: every card in this series, or in the whole game at the top. That grid is a search
+    with no words, warm (runQuery over the catalog) or cold (search_cards answers facets alone).
+  */
+  const shelfCardFilter =
+    !q && !similarTo && !setId && Object.entries(selection).some(([k, v]) => !SHELF_KEYS.has(k) && v.length > 0);
+  const searching = q.length > 0 || shelfCardFilter;
   // Cold (no catalog): search + similar are server-backed, and the drill-down runs off the
   // tiny public taxonomy (per-set cards fetched on drill). 'coldidle' only while the taxonomy
   // itself is still loading / unavailable.
@@ -1157,14 +1170,26 @@ export function CatalogBrowser({
   // Series + sets are language-tagged (explicit field, else derived) — constrain the taxonomy
   // drill-down to the allowed language(s), same as the card lists, so an EN-only browser never
   // shows JP series/set tiles.
-  const series = useMemo(
+  // A Year filter narrows the tiles themselves: a set by its release year, a series by any of its
+  // sets'. The unfiltered lists feed the Year options, so a picked year never hides the others.
+  const yearKey = (selection.year ?? []).join(',');
+  const allSeries = useMemo(
     () => (tax?.listSeries() ?? []).filter((s) => !langSet || langSet.has(s.language)),
     [tax, langSet],
   );
-  const sets = useMemo(
+  const allSets = useMemo(
     () => (tax && seriesId ? tax.listSets(seriesId) : []).filter((s) => !langSet || langSet.has(s.language)),
     [tax, seriesId, langSet],
   );
+  const series = useMemo(() => {
+    const years = yearKey ? yearKey.split(',') : [];
+    if (!years.length || !tax) return allSeries;
+    return allSeries.filter((s) => tax.listSets(s.id).some((st) => years.includes(st.releaseDate.slice(0, 4))));
+  }, [allSeries, tax, yearKey]);
+  const sets = useMemo(() => {
+    const years = yearKey ? yearKey.split(',') : [];
+    return years.length ? allSets.filter((st) => years.includes(st.releaseDate.slice(0, 4))) : allSets;
+  }, [allSets, yearKey]);
 
   // Collection completion: owned-card counts per set + series, for the "X/Y · N%" tile overlays.
   // Warm-only (needs the catalog to map a card id -> its set/series); one pass over ownedIds via
@@ -1477,6 +1502,42 @@ export function CatalogBrowser({
       return { facet: f, values };
     }).filter((o) => o.values.length >= 2 || (selection[o.facet.key]?.length ?? 0) > 0);
   }, [isCardLevel, localView, coldSearch, serverFacets, viewCards, selection, hasVUnionInView]);
+
+  // THE SHELF'S FILTERS (series and set levels): Year from the tiles, then every card facet over
+  // the cards in scope, the catalog's when warm, `search_facets` with no words when cold. Worked
+  // out only while the shelf's Sort & filter row is open.
+  const shelfLevel = level === 'series' || level === 'sets';
+  const shelfToolsOpen = shelfLevel && toolsOpen;
+  const [shelfServerFacets, setShelfServerFacets] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    if (!shelfToolsOpen || catalog) return;
+    let stale = false;
+    searchFacetsWithCounts(parseQuery(''), seriesId ? { series: [seriesId] } : {}, langArg).then(({ facets }) => {
+      if (!stale) setShelfServerFacets(facets);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [shelfToolsOpen, catalog, seriesId, langArg]);
+  const shelfFacetOptions = useMemo(() => {
+    if (!shelfToolsOpen) return [];
+    const yearFacet = FACETS.find((f) => f.key === 'year')!;
+    const dates = seriesId
+      ? allSets.map((st) => st.releaseDate)
+      : allSeries.flatMap((s) => (tax?.listSets(s.id) ?? []).map((st) => st.releaseDate));
+    const years = [...new Set(dates.map((d) => d.slice(0, 4)).filter(Boolean))].sort().reverse();
+    const scoped = catalog
+      ? catalog.listAll().filter((c) => langOk(c) && (!seriesId || c.seriesId === seriesId))
+      : null;
+    const cardOptions = FACETS.filter((f) => !SHELF_KEYS.has(f.key) && f.key !== 'size').map((f) => ({
+      facet: f,
+      values: scoped ? f.available(scoped) : orderFacetValues(f.key, shelfServerFacets[f.key] ?? []),
+    }));
+    return [{ facet: yearFacet, values: years }, ...cardOptions].filter(
+      (o) => o.values.length >= 2 || (selection[o.facet.key]?.length ?? 0) > 0,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shelfToolsOpen, catalog, seriesId, allSets, allSeries, tax, shelfServerFacets, langSet, selection]);
 
   // Local views filter client-side; cold search results arrive already facet-filtered.
   const filteredCards = useMemo(
@@ -2066,15 +2127,34 @@ export function CatalogBrowser({
     const q2 = next === null ? cleaned : `${cleaned} have:${next ? 'yes' : 'no'}`.trim();
     setCardQuery(q2);
     setCardQueryDebounced(q2);
+    // On a series shelf, Owned / Missing means this series' cards.
+    if (!setId && !similarTo && seriesId) setSelection((prev) => scopeToShelf(prev, q2));
   };
 
+  /*
+    A card filter picked inside a series scopes the cards to that series: the Series facet takes the
+    series, so the scope shows as a chip (and can be dropped to widen to the whole game). When the
+    last card filter goes, so does that scope, and the shelf comes back with no phantom filter.
+  */
+  const scopeToShelf = (next: FacetSelection, query = cardQuery): FacetSelection => {
+    if (setId || similarTo || !seriesId) return next;
+    const cardFilter = Object.entries(next).some(([k, v]) => !SHELF_KEYS.has(k) && v.length > 0);
+    if (cardFilter || query.trim()) return next.series?.length ? next : { ...next, series: [seriesId] };
+    if (next.series?.length === 1 && next.series[0] === seriesId) {
+      const rest = { ...next };
+      delete rest.series;
+      return rest;
+    }
+    return next;
+  };
   const toggleFacetValue = (key: string, value: string) =>
     setSelection((prev) => {
       const current = prev[key] ?? [];
-      const next = current.includes(value)
-        ? current.filter((v) => v !== value)
-        : [...current, value];
-      return { ...prev, [key]: next };
+      const next: FacetSelection = {
+        ...prev,
+        [key]: current.includes(value) ? current.filter((v) => v !== value) : [...current, value],
+      };
+      return scopeToShelf(next);
     });
 
   // Sort chips: tap a field to sort by it; tap the active field again (or the ↑/↓ button) to
@@ -2416,23 +2496,29 @@ export function CatalogBrowser({
     On the series and set shelves it unfolds one row: the Collection filter, and the sort the next
     cards arrive in. Collection lives under Sort & filter everywhere (owner, 2026-11-03), never loose.
   */
-  const sortFilterControl = analyticsView ? null : isCardLevel ? (
+  // What the results line says the grid is: the parsed query, or, for a filter-only grid opened
+  // from a shelf, the picked values ("Scarlet & Violet · Special Illustration Rare").
+  const queryEcho =
+    describeQuery(effParsed, viewCards) ||
+    Object.entries(selection)
+      .filter(([k, v]) => k !== 'language' && v.length > 0)
+      .map(([, v]) => v.join(' / '))
+      .join(' · ');
+
+  // ONE WIDTH, ALWAYS: the count lives on Filters inside; here a filter in force only fills the
+  // button, so it never grows and wraps off the group row (owner's screenshot, 2026-11-03).
+  const sortFilterOpen = isCardLevel ? (foldable ? !folded : filtersOpen) : toolsOpen;
+  const sortFilterLit = sortFilterOpen || activeFilterCount > 0 || parsed.owned != null;
+  const sortFilterControl = analyticsView ? null : (
     <Pressable
-      onPress={() => (foldable ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v))}
+      onPress={() =>
+        !isCardLevel || foldable ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v)
+      }
       role="button"
-      aria-expanded={foldable ? !folded : filtersOpen}
-      style={[styles.facetToggle, (foldable ? !folded : filtersOpen) && styles.facetToggleOn]}>
-      <Text style={[styles.facetToggleText, (foldable ? !folded : filtersOpen) && styles.facetToggleTextOn]} numberOfLines={1}>
-        {`Sort & filter${activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''} ▾`}
-      </Text>
-    </Pressable>
-  ) : (
-    <Pressable
-      onPress={() => setToolsOpen((v) => !v)}
-      role="button"
-      aria-expanded={toolsOpen}
-      style={[styles.facetToggle, toolsOpen && styles.facetToggleOn]}>
-      <Text style={[styles.facetToggleText, toolsOpen && styles.facetToggleTextOn]} numberOfLines={1}>
+      aria-expanded={sortFilterOpen}
+      accessibilityLabel={`Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`}
+      style={[styles.facetToggle, sortFilterLit && styles.facetToggleOn]}>
+      <Text style={[styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn]} numberOfLines={1}>
         Sort & filter ▾
       </Text>
     </Pressable>
@@ -2554,26 +2640,39 @@ export function CatalogBrowser({
           <View style={styles.controlsSpacer} />
           {sortFilterControl}
         </View>
-        {!isCardLevel && !analyticsView && toolsOpen ? (
-          <View style={styles.controlsRow}>
-            {ownedIds ? (
-              <CollectionChip styles={styles} onCycle={cycleOwnedFilter} state={parsed.owned ?? null} />
-            ) : null}
-            <PickerMenu
-              styles={styles}
-              label="Sort"
-              title="Sort cards by"
-              summary={SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance'}
-              items={SORT_OPTIONS.map((o) => ({
-                key: o.field,
-                label: o.label,
-                locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
-              }))}
-              selected={[effSort.field]}
-              onToggle={(key) => pickSort(key as QuerySort)}
-              closeOnPick
-            />
-          </View>
+        {/* The shelf's Sort & filter row: the same FacetBar as the cards get, so Filters (Year,
+            then the card facets) and Collection sit where they do on a set, Sort at its end. */}
+        {shelfToolsOpen && !analyticsView ? (
+          <FacetBar
+            styles={styles}
+            compact={compactBar}
+            options={shelfFacetOptions}
+            selection={selection}
+            activeCount={activeFilterCount}
+            open={filtersOpen}
+            onToggleOpen={() => setFiltersOpen((v) => !v)}
+            onToggleValue={toggleFacetValue}
+            onClear={clearFilters}
+            onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
+            ownedState={parsed.owned}
+            alwaysToggle
+            trailing={
+              <PickerMenu
+                styles={styles}
+                label="Sort"
+                title="Sort cards by"
+                summary={SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance'}
+                items={SORT_OPTIONS.map((o) => ({
+                  key: o.field,
+                  label: o.label,
+                  locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
+                }))}
+                selected={[effSort.field]}
+                onToggle={(key) => pickSort(key as QuerySort)}
+                closeOnPick
+              />
+            }
+          />
         ) : null}
         {/* The theme toolbar: shown while a themed query is on screen and the registry offers it
             (a secondary game's `theme_search`, or Pokemon's `search_cards` with `themeTools`).
@@ -2714,8 +2813,7 @@ export function CatalogBrowser({
                 : serverClamped
                   ? `Top ${count(serverCards.length)} of ${count(serverTotal, 'match')}`
                   : `${count(serverTotal, 'result')}${serverLoading ? '…' : ''}`}
-              {' · '}
-              {describeQuery(effParsed, viewCards)}
+              {queryEcho ? ` · ${queryEcho}` : ''}
               {foldSummary ? ` · ${foldSummary}` : ''}
             </Text>
             <View style={styles.metaEnd}>
@@ -3295,38 +3393,46 @@ function SearchManual({ styles, onClose }: { styles: Styles; onClose: () => void
   // browser is mounted, so closing and reopening lands where you were.
   const [tab, setTab] = useState<ManualTab>(manualTabPref);
   const { height: windowHeight } = useWindowDimensions();
+  const maxHeight = Math.round(windowHeight * 0.5);
+  // How tall the open topic's rows are: only a topic taller than the box scrolls inside it.
+  const [contentHeight, setContentHeight] = useState(0);
+  const scrolls = contentHeight > maxHeight;
   const pick = (t: ManualTab) => {
     manualTabPref = t;
     setTab(t);
   };
   return (
     <View style={styles.manual}>
+      {/* THE TOPIC IS A DROPDOWN between the title and Close (owner, 2026-11-03), not a row of five
+          chips: one line, and the panel's room goes to the rows. */}
       <View style={styles.manualHeader}>
         <Text style={styles.manualTitle}>Search syntax</Text>
+        <PickerMenu
+          styles={styles}
+          label="Topic"
+          title="Search syntax topic"
+          summary={MANUAL_TABS.find((t) => t.id === tab)?.label ?? ''}
+          items={MANUAL_TABS.map((t) => ({ key: t.id, label: t.label }))}
+          selected={[tab]}
+          onToggle={(key) => pick(key as ManualTab)}
+          closeOnPick
+        />
         <Pressable onPress={onClose} hitSlop={8}>
           <Text style={styles.clear}>Close</Text>
         </Pressable>
       </View>
-      <View style={styles.manualTabs} role="tablist">
-        {MANUAL_TABS.map((t) => (
-          <Pressable
-            key={t.id}
-            onPress={() => pick(t.id)}
-            role="tab"
-            aria-selected={t.id === tab}
-            style={[styles.manualTab, t.id === tab && styles.manualTabOn]}>
-            <Text style={[styles.manualTabText, t.id === tab && styles.manualTabTextOn]}>{t.label}</Text>
-          </Pressable>
-        ))}
-      </View>
       {/* SCROLLS IN PLACE: the manual sits above the results, outside the list's scroll, so a
-          long tab used to run off the screen with no way to reach its end. Half the window at
-          most, then it scrolls on its own. */}
+          long topic used to run off the screen with no way to reach its end. Half the window at
+          most, then it scrolls on its own. A topic that FITS does not scroll here at all, so a drag
+          on it moves the page instead: an inner scroller with nothing to scroll still caught the
+          drag, and only Basics, the one long topic, could be scrolled (owner, 2026-11-03). */}
       <ScrollView
-        // overscrollBehavior: the web's own bounce and scroll chaining stop here too (react-native-web).
-        style={[{ maxHeight: Math.round(windowHeight * 0.5) }, { overscrollBehavior: 'contain' } as object]}
+        // overscrollBehavior: the web's own bounce and scroll chaining stop here too, while it scrolls.
+        style={[{ maxHeight }, scrolls ? ({ overscrollBehavior: 'contain' } as object) : null]}
         contentContainerStyle={{ gap: 8 }}
-        nestedScrollEnabled
+        onContentSizeChange={(_, h) => setContentHeight(h)}
+        scrollEnabled={scrolls}
+        nestedScrollEnabled={scrolls}
         // A plain stop at either end: no rubber band, no glow, no snap back (owner's ask).
         bounces={false}
         alwaysBounceVertical={false}
@@ -3461,6 +3567,7 @@ function PickerMenu({
   onToggle,
   closeOnPick,
   onClear,
+  fill,
 }: {
   styles: Styles;
   label: string;
@@ -3472,6 +3579,8 @@ function PickerMenu({
   onToggle: (key: string) => void;
   closeOnPick?: boolean;
   onClear?: () => void;
+  /** Fill its grid cell, the value cut to fit and the ▾ always showing (the phone's filter grid). */
+  fill?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const n = selected.length;
@@ -3481,14 +3590,26 @@ function PickerMenu({
     <>
       <Pressable
         onPress={() => setOpen(true)}
-        style={[styles.facetToggle, active && styles.facetToggleOn]}
+        style={[styles.facetToggle, fill && styles.facetFill, active && styles.facetToggleOn]}
         role="button"
         accessibilityLabel={`${label}${text ? `: ${text}` : ''}`}>
-        <Text style={[styles.facetToggleText, active && styles.facetToggleTextOn]} numberOfLines={1}>
-          {label}
-          {text ? ` · ${text}` : ''}
-          {' ▾'}
-        </Text>
+        {fill ? (
+          <>
+            <Text
+              style={[styles.facetToggleText, styles.facetFillText, active && styles.facetToggleTextOn]}
+              numberOfLines={1}>
+              {label}
+              {text ? ` · ${text}` : ''}
+            </Text>
+            <Text style={[styles.facetToggleText, active && styles.facetToggleTextOn]}>▾</Text>
+          </>
+        ) : (
+          <Text style={[styles.facetToggleText, active && styles.facetToggleTextOn]} numberOfLines={1}>
+            {label}
+            {text ? ` · ${text}` : ''}
+            {' ▾'}
+          </Text>
+        )}
       </Pressable>
       {open ? (
         <Modal visible transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -3569,20 +3690,23 @@ function CollectionChip({
   styles,
   onCycle,
   state,
+  fill,
 }: {
   styles: Styles;
   onCycle: () => void;
   /** true = owned only, false = missing only, null = everything. */
   state: boolean | null;
+  /** Fill its grid cell (the phone's filter grid). */
+  fill?: boolean;
 }) {
   return (
     <Pressable
       onPress={onCycle}
-      style={[styles.facetToggle, state != null && styles.facetToggleOn]}
+      style={[styles.facetToggle, fill && styles.facetFill, state != null && styles.facetToggleOn]}
       accessibilityLabel={
         state === true ? 'Showing cards you own' : state === false ? 'Showing cards you are missing' : 'Collection filter'
       }>
-      <Text style={[styles.facetToggleText, state != null && styles.facetToggleTextOn]}>
+      <Text style={[styles.facetToggleText, state != null && styles.facetToggleTextOn]} numberOfLines={1}>
         {state === true ? '✓ Owned' : state === false ? '◇ Missing' : 'Collection'}
       </Text>
     </Pressable>
@@ -3635,6 +3759,7 @@ function FacetBar({
   colorActive,
   onCycleOwned,
   ownedState,
+  alwaysToggle,
   trailing,
   children,
 }: {
@@ -3655,20 +3780,27 @@ function FacetBar({
   onCycleOwned?: () => void;
   /** Current collection filter: true=owned, false=missing, null=all (drives the chip label). */
   ownedState?: boolean | null;
+  /** Show the Filters toggle even before any options are known (a shelf works its options out
+   *  only once it opens). */
+  alwaysToggle?: boolean;
   /** The right end of the strip (Sort + size). */
   trailing?: ReactNode;
   /** Extra left-side controls. */
   children?: ReactNode;
 }) {
-  const hasFacets = options.length > 0;
+  // Collection is a filter like the rest, so it lives inside the Filters panel, never loose on the
+  // row (owner, 2026-11-03), and its state counts toward the Filters badge.
+  const ownedOn = onCycleOwned && ownedState != null ? 1 : 0;
+  const hasFacets = options.length > 0 || !!onCycleOwned || !!alwaysToggle;
+  const badge = activeCount + ownedOn;
   return (
     <View style={styles.facetBar}>
       <View style={styles.controlsRow}>
         {hasFacets ? (
-          <Pressable onPress={onToggleOpen} style={[styles.facetToggle, activeCount > 0 && styles.facetToggleOn]}>
-            <Text style={[styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn]}>
+          <Pressable onPress={onToggleOpen} style={[styles.facetToggle, badge > 0 && styles.facetToggleOn]}>
+            <Text style={[styles.facetToggleText, badge > 0 && styles.facetToggleTextOn]}>
               {open ? '▾ Filters' : '▸ Filters'}
-              {activeCount > 0 ? ` · ${activeCount}` : ''}
+              {badge > 0 ? ` · ${badge}` : ''}
             </Text>
           </Pressable>
         ) : null}
@@ -3682,19 +3814,24 @@ function FacetBar({
             <Text style={[styles.facetToggleText, colorActive && styles.facetToggleTextOn]}>Color</Text>
           </Pressable>
         ) : null}
-        {onCycleOwned ? (
-          <CollectionChip styles={styles} onCycle={onCycleOwned} state={ownedState ?? null} />
-        ) : null}
         {children}
         <View style={styles.controlsSpacer} />
         {trailing}
       </View>
       {open && hasFacets ? (
-        <View style={styles.facetFlow}>
+        // ON A PHONE, AN EVEN GRID: two dropdowns a row, each the same width, a picked value cut to
+        // fit with an ellipsis. Picking one never reflows the rest (owner's screenshot, 2026-11-03:
+        // "Type · Pokemon" grew and pushed Evolution onto a line of its own).
+        <View style={compact ? styles.facetGrid : styles.facetFlow}>
+          {onCycleOwned ? (
+            <View style={compact ? styles.facetCell : undefined}>
+              <CollectionChip styles={styles} onCycle={onCycleOwned} state={ownedState ?? null} fill={compact} />
+            </View>
+          ) : null}
           {options.map(({ facet, values }) => {
             const picked = selection[facet.key] ?? [];
             if (compact || values.length > INLINE_FACET_MAX) {
-              return (
+              const menu = (
                 <PickerMenu
                   key={facet.key}
                   styles={styles}
@@ -3703,7 +3840,15 @@ function FacetBar({
                   selected={picked}
                   onToggle={(v) => onToggleValue(facet.key, v)}
                   onClear={() => picked.forEach((v) => onToggleValue(facet.key, v))}
+                  fill={compact}
                 />
+              );
+              return compact ? (
+                <View key={facet.key} style={styles.facetCell}>
+                  {menu}
+                </View>
+              ) : (
+                menu
               );
             }
             return (
@@ -3899,20 +4044,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       gap: 8,
       backgroundColor: t.panel,
     },
-    manualHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    manualHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
     manualTitle: { fontSize: 13, fontWeight: '700', color: t.text },
-    manualTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    manualTab: {
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: t.border,
-      ...lipEdge(t),
-    },
-    manualTabOn: { backgroundColor: t.accent, borderColor: t.accent, ...lipEdge(t, true) },
-    manualTabText: { fontSize: 12, fontWeight: '600', color: t.subtext },
-    manualTabTextOn: { color: '#fff' },
     manualSection: { gap: 3 },
     manualSectionTitle: {
       fontSize: 11,
@@ -3959,6 +4092,11 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     controlsEnd: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     chipRowInline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
     // The open filter panel: facet groups flow and wrap; each inline group is its label + chips.
+    // The phone's filter grid: two equal cells a row (see FacetBar).
+    facetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    facetCell: { flexBasis: '45%', flexGrow: 1, minWidth: 0 },
+    facetFill: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4 },
+    facetFillText: { flexShrink: 1 },
     facetFlow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, rowGap: 6 },
     facetInline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingRight: 8 },
     facetRows: { gap: 4 },

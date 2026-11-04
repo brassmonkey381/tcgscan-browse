@@ -131,6 +131,9 @@ const INLINE_FACET_MAX = 6;
 /** Stable array identity for the one sort the `sortByValue` lock covers (avoids a new array
  *  per render feeding SortBar's props). */
 const SORT_LOCKED_BY_VALUE = ['value'];
+/** Filters a shelf answers itself (or that only name its scope); any other facet picked on a shelf
+ *  opens a card grid. See `shelfCardFilter`. */
+const SHELF_KEYS = new Set(['language', 'year', 'series', 'set']);
 /** Display order for cold-mode facet values (server returns them unordered). */
 function orderFacetValues(key, values) {
     const uniq = [...new Set(values)];
@@ -679,7 +682,15 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const compactBar = containerWidth > 0 && containerWidth < COMPACT_BAR_W;
     const clearFilters = () => setSelection({});
     const q = cardQueryDebounced.trim();
-    const searching = q.length > 0;
+    /*
+      FILTERS AT EVERY LEVEL (owner, 2026-11-03). On the series and set shelves a filter is either a
+      SHELF filter (SHELF_KEYS: Year narrows the tiles in place; series/set/language name the scope)
+      or a CARD filter (Rarity, Type, HP...), which turns the shelf into a card grid scoped to where
+      you are: every card in this series, or in the whole game at the top. That grid is a search
+      with no words, warm (runQuery over the catalog) or cold (search_cards answers facets alone).
+    */
+    const shelfCardFilter = !q && !similarTo && !setId && Object.entries(selection).some(([k, v]) => !SHELF_KEYS.has(k) && v.length > 0);
+    const searching = q.length > 0 || shelfCardFilter;
     // Cold (no catalog): search + similar are server-backed, and the drill-down runs off the
     // tiny public taxonomy (per-set cards fetched on drill). 'coldidle' only while the taxonomy
     // itself is still loading / unavailable.
@@ -702,8 +713,21 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // Series + sets are language-tagged (explicit field, else derived) — constrain the taxonomy
     // drill-down to the allowed language(s), same as the card lists, so an EN-only browser never
     // shows JP series/set tiles.
-    const series = useMemo(() => (tax?.listSeries() ?? []).filter((s) => !langSet || langSet.has(s.language)), [tax, langSet]);
-    const sets = useMemo(() => (tax && seriesId ? tax.listSets(seriesId) : []).filter((s) => !langSet || langSet.has(s.language)), [tax, seriesId, langSet]);
+    // A Year filter narrows the tiles themselves: a set by its release year, a series by any of its
+    // sets'. The unfiltered lists feed the Year options, so a picked year never hides the others.
+    const yearKey = (selection.year ?? []).join(',');
+    const allSeries = useMemo(() => (tax?.listSeries() ?? []).filter((s) => !langSet || langSet.has(s.language)), [tax, langSet]);
+    const allSets = useMemo(() => (tax && seriesId ? tax.listSets(seriesId) : []).filter((s) => !langSet || langSet.has(s.language)), [tax, seriesId, langSet]);
+    const series = useMemo(() => {
+        const years = yearKey ? yearKey.split(',') : [];
+        if (!years.length || !tax)
+            return allSeries;
+        return allSeries.filter((s) => tax.listSets(s.id).some((st) => years.includes(st.releaseDate.slice(0, 4))));
+    }, [allSeries, tax, yearKey]);
+    const sets = useMemo(() => {
+        const years = yearKey ? yearKey.split(',') : [];
+        return years.length ? allSets.filter((st) => years.includes(st.releaseDate.slice(0, 4))) : allSets;
+    }, [allSets, yearKey]);
     // Collection completion: owned-card counts per set + series, for the "X/Y · N%" tile overlays.
     // Warm-only (needs the catalog to map a card id -> its set/series); one pass over ownedIds via
     // the catalog, memoized so it only recomputes when the inventory or catalog changes. setId is
@@ -997,6 +1021,42 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             return { facet: f, values };
         }).filter((o) => o.values.length >= 2 || (selection[o.facet.key]?.length ?? 0) > 0);
     }, [isCardLevel, localView, coldSearch, serverFacets, viewCards, selection, hasVUnionInView]);
+    // THE SHELF'S FILTERS (series and set levels): Year from the tiles, then every card facet over
+    // the cards in scope, the catalog's when warm, `search_facets` with no words when cold. Worked
+    // out only while the shelf's Sort & filter row is open.
+    const shelfLevel = level === 'series' || level === 'sets';
+    const shelfToolsOpen = shelfLevel && toolsOpen;
+    const [shelfServerFacets, setShelfServerFacets] = useState({});
+    useEffect(() => {
+        if (!shelfToolsOpen || catalog)
+            return;
+        let stale = false;
+        searchFacetsWithCounts(parseQuery(''), seriesId ? { series: [seriesId] } : {}, langArg).then(({ facets }) => {
+            if (!stale)
+                setShelfServerFacets(facets);
+        });
+        return () => {
+            stale = true;
+        };
+    }, [shelfToolsOpen, catalog, seriesId, langArg]);
+    const shelfFacetOptions = useMemo(() => {
+        if (!shelfToolsOpen)
+            return [];
+        const yearFacet = FACETS.find((f) => f.key === 'year');
+        const dates = seriesId
+            ? allSets.map((st) => st.releaseDate)
+            : allSeries.flatMap((s) => (tax?.listSets(s.id) ?? []).map((st) => st.releaseDate));
+        const years = [...new Set(dates.map((d) => d.slice(0, 4)).filter(Boolean))].sort().reverse();
+        const scoped = catalog
+            ? catalog.listAll().filter((c) => langOk(c) && (!seriesId || c.seriesId === seriesId))
+            : null;
+        const cardOptions = FACETS.filter((f) => !SHELF_KEYS.has(f.key) && f.key !== 'size').map((f) => ({
+            facet: f,
+            values: scoped ? f.available(scoped) : orderFacetValues(f.key, shelfServerFacets[f.key] ?? []),
+        }));
+        return [{ facet: yearFacet, values: years }, ...cardOptions].filter((o) => o.values.length >= 2 || (selection[o.facet.key]?.length ?? 0) > 0);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [shelfToolsOpen, catalog, seriesId, allSets, allSeries, tax, shelfServerFacets, langSet, selection]);
     // Local views filter client-side; cold search results arrive already facet-filtered.
     const filteredCards = useMemo(() => (localView ? applyFacets(viewCards, selection) : viewCards), [localView, viewCards, selection]);
     const activeFilterCount = useMemo(() => Object.values(selection).reduce((n, vals) => n + vals.length, 0), [selection]);
@@ -1581,13 +1641,35 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         const q2 = next === null ? cleaned : `${cleaned} have:${next ? 'yes' : 'no'}`.trim();
         setCardQuery(q2);
         setCardQueryDebounced(q2);
+        // On a series shelf, Owned / Missing means this series' cards.
+        if (!setId && !similarTo && seriesId)
+            setSelection((prev) => scopeToShelf(prev, q2));
+    };
+    /*
+      A card filter picked inside a series scopes the cards to that series: the Series facet takes the
+      series, so the scope shows as a chip (and can be dropped to widen to the whole game). When the
+      last card filter goes, so does that scope, and the shelf comes back with no phantom filter.
+    */
+    const scopeToShelf = (next, query = cardQuery) => {
+        if (setId || similarTo || !seriesId)
+            return next;
+        const cardFilter = Object.entries(next).some(([k, v]) => !SHELF_KEYS.has(k) && v.length > 0);
+        if (cardFilter || query.trim())
+            return next.series?.length ? next : { ...next, series: [seriesId] };
+        if (next.series?.length === 1 && next.series[0] === seriesId) {
+            const rest = { ...next };
+            delete rest.series;
+            return rest;
+        }
+        return next;
     };
     const toggleFacetValue = (key, value) => setSelection((prev) => {
         const current = prev[key] ?? [];
-        const next = current.includes(value)
-            ? current.filter((v) => v !== value)
-            : [...current, value];
-        return { ...prev, [key]: next };
+        const next = {
+            ...prev,
+            [key]: current.includes(value) ? current.filter((v) => v !== value) : [...current, value],
+        };
+        return scopeToShelf(next);
     });
     // Sort chips: tap a field to sort by it; tap the active field again (or the ↑/↓ button) to
     // flip its direction. Relevance has no direction.
@@ -1842,7 +1924,18 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
       On the series and set shelves it unfolds one row: the Collection filter, and the sort the next
       cards arrive in. Collection lives under Sort & filter everywhere (owner, 2026-11-03), never loose.
     */
-    const sortFilterControl = analyticsView ? null : isCardLevel ? (_jsx(Pressable, { onPress: () => (foldable ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v)), role: "button", "aria-expanded": foldable ? !folded : filtersOpen, style: [styles.facetToggle, (foldable ? !folded : filtersOpen) && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, (foldable ? !folded : filtersOpen) && styles.facetToggleTextOn], numberOfLines: 1, children: `Sort & filter${activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''} ▾` }) })) : (_jsx(Pressable, { onPress: () => setToolsOpen((v) => !v), role: "button", "aria-expanded": toolsOpen, style: [styles.facetToggle, toolsOpen && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, toolsOpen && styles.facetToggleTextOn], numberOfLines: 1, children: "Sort & filter \u25BE" }) }));
+    // What the results line says the grid is: the parsed query, or, for a filter-only grid opened
+    // from a shelf, the picked values ("Scarlet & Violet · Special Illustration Rare").
+    const queryEcho = describeQuery(effParsed, viewCards) ||
+        Object.entries(selection)
+            .filter(([k, v]) => k !== 'language' && v.length > 0)
+            .map(([, v]) => v.join(' / '))
+            .join(' · ');
+    // ONE WIDTH, ALWAYS: the count lives on Filters inside; here a filter in force only fills the
+    // button, so it never grows and wraps off the group row (owner's screenshot, 2026-11-03).
+    const sortFilterOpen = isCardLevel ? (foldable ? !folded : filtersOpen) : toolsOpen;
+    const sortFilterLit = sortFilterOpen || activeFilterCount > 0 || parsed.owned != null;
+    const sortFilterControl = analyticsView ? null : (_jsx(Pressable, { onPress: () => !isCardLevel || foldable ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v), role: "button", "aria-expanded": sortFilterOpen, accessibilityLabel: `Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`, style: [styles.facetToggle, sortFilterLit && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn], numberOfLines: 1, children: "Sort & filter \u25BE" }) }));
     // The resolved multi-selection — feeds both the batch modal's thumbs and its add-all payload.
     const selectedCards = multiOpen
         ? selectedIds.map((id) => findCard(id)).filter((c) => Boolean(c))
@@ -1880,11 +1973,11 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     : `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.searchPlaceholder ?? theme.faint, autoCorrect: false, clearButtonMode: "while-editing", 
                                 // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input
                                 // under 16px, and the zoom stays after the search. The compact box is the phone's.
-                                style: [styles.search, styles.searchFlex, compactSearch && styles.searchCompact] }), _jsxs(View, { style: styles.searchToolsInline, children: [canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), _jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize }), _jsx(View, { style: styles.controlsSpacer }), sortFilterControl] }), !isCardLevel && !analyticsView && toolsOpen ? (_jsxs(View, { style: styles.controlsRow, children: [ownedIds ? (_jsx(CollectionChip, { styles: styles, onCycle: cycleOwnedFilter, state: parsed.owned ?? null })) : null, _jsx(PickerMenu, { styles: styles, label: "Sort", title: "Sort cards by", summary: SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance', items: SORT_OPTIONS.map((o) => ({
-                                    key: o.field,
-                                    label: o.label,
-                                    locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
-                                })), selected: [effSort.field], onToggle: (key) => pickSort(key), closeOnPick: true })] })) : null, toolbarActive && !folded ? (_jsx(ThemeFilterBar, { theme: theme, frame: themeFrameEff, onPickFrame: pickThemeFrame, typeGroups: themeGroups, typeLabel: themeTypeLabel, types: themeTypesEff, onToggleType: toggleThemeType, onClearTypes: () => setThemeTypes([]), group: themeGroupOn, onToggleGroup: () => setThemeGroupSel(!themeGroupOn), counts: themeServerActive ? themeCounts : pokeCounts, compact: compactBar })) : null, savedList.length > 0 && !folded ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, !warm && !coldSearch ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: loadLabel(catalogStatus, coldSearch) })] }), catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+                                style: [styles.search, styles.searchFlex, compactSearch && styles.searchCompact] }), _jsxs(View, { style: styles.searchToolsInline, children: [canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), _jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize }), _jsx(View, { style: styles.controlsSpacer }), sortFilterControl] }), shelfToolsOpen && !analyticsView ? (_jsx(FacetBar, { styles: styles, compact: compactBar, options: shelfFacetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, onCycleOwned: ownedIds ? cycleOwnedFilter : undefined, ownedState: parsed.owned, alwaysToggle: true, trailing: _jsx(PickerMenu, { styles: styles, label: "Sort", title: "Sort cards by", summary: SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance', items: SORT_OPTIONS.map((o) => ({
+                                key: o.field,
+                                label: o.label,
+                                locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
+                            })), selected: [effSort.field], onToggle: (key) => pickSort(key), closeOnPick: true }) })) : null, toolbarActive && !folded ? (_jsx(ThemeFilterBar, { theme: theme, frame: themeFrameEff, onPickFrame: pickThemeFrame, typeGroups: themeGroups, typeLabel: themeTypeLabel, types: themeTypesEff, onToggleType: toggleThemeType, onClearTypes: () => setThemeTypes([]), group: themeGroupOn, onToggleGroup: () => setThemeGroupSel(!themeGroupOn), counts: themeServerActive ? themeCounts : pokeCounts, compact: compactBar })) : null, savedList.length > 0 && !folded ? (_jsx(ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.chipRow, keyboardShouldPersistTaps: "handled", children: savedList.map((s, i) => (_jsx(Pressable, { onPress: () => applySaved(s), onLongPress: () => removeSavedSearch(s), style: styles.chip, children: _jsxs(Text, { style: styles.chipText, numberOfLines: 1, children: ["\u2605 ", s.label] }) }, `${s.label}-${i}`))) })) : null, !warm && !coldSearch ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: loadLabel(catalogStatus, coldSearch) })] }), catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
                         !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, isCardLevel && !analyticsView && !folded ? (_jsx(FacetBar, { styles: styles, compact: compactBar, options: facetOptions, selection: selection, activeCount: activeFilterCount, open: filtersOpen, onToggleOpen: () => setFiltersOpen((v) => !v), onToggleValue: toggleFacetValue, onClear: clearFilters, 
                         // Color rides the filter bar as a first-class chip: tap opens the picker; it lights
@@ -1908,7 +2001,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                                 : `${filteredCards.length} of ${viewCards.length}`
                                             : serverClamped
                                                 ? `Top ${count(serverCards.length)} of ${count(serverTotal, 'match')}`
-                                                : `${count(serverTotal, 'result')}${serverLoading ? '…' : ''}`, ' · ', describeQuery(effParsed, viewCards), foldSummary ? ` · ${foldSummary}` : ''] }), _jsxs(View, { style: styles.metaEnd, children: [selectControl, !selecting ? (_jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarTo.injected
+                                                : `${count(serverTotal, 'result')}${serverLoading ? '…' : ''}`, queryEcho ? ` · ${queryEcho}` : '', foldSummary ? ` · ${foldSummary}` : ''] }), _jsxs(View, { style: styles.metaEnd, children: [selectControl, !selecting ? (_jsx(Pressable, { onPress: () => onChangeQuery(''), hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] })] })) : similarTo ? (_jsxs(View, { style: styles.similarBar, children: [_jsxs(View, { style: styles.metaRow, children: [_jsx(Text, { style: styles.meta, numberOfLines: 1, children: similarTo.injected
                                             ? similarCards.length > 0
                                                 ? `${filteredCards.length} cards · ${similarTo.name}`
                                                 : similarBusy
@@ -2020,15 +2113,19 @@ function SearchManual({ styles, onClose }) {
     // browser is mounted, so closing and reopening lands where you were.
     const [tab, setTab] = useState(manualTabPref);
     const { height: windowHeight } = useWindowDimensions();
+    const maxHeight = Math.round(windowHeight * 0.5);
+    // How tall the open topic's rows are: only a topic taller than the box scrolls inside it.
+    const [contentHeight, setContentHeight] = useState(0);
+    const scrolls = contentHeight > maxHeight;
     const pick = (t) => {
         manualTabPref = t;
         setTab(t);
     };
-    return (_jsxs(View, { style: styles.manual, children: [_jsxs(View, { style: styles.manualHeader, children: [_jsx(Text, { style: styles.manualTitle, children: "Search syntax" }), _jsx(Pressable, { onPress: onClose, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Close" }) })] }), _jsx(View, { style: styles.manualTabs, role: "tablist", children: MANUAL_TABS.map((t) => (_jsx(Pressable, { onPress: () => pick(t.id), role: "tab", "aria-selected": t.id === tab, style: [styles.manualTab, t.id === tab && styles.manualTabOn], children: _jsx(Text, { style: [styles.manualTabText, t.id === tab && styles.manualTabTextOn], children: t.label }) }, t.id))) }), _jsx(ScrollView
-            // overscrollBehavior: the web's own bounce and scroll chaining stop here too (react-native-web).
+    return (_jsxs(View, { style: styles.manual, children: [_jsxs(View, { style: styles.manualHeader, children: [_jsx(Text, { style: styles.manualTitle, children: "Search syntax" }), _jsx(PickerMenu, { styles: styles, label: "Topic", title: "Search syntax topic", summary: MANUAL_TABS.find((t) => t.id === tab)?.label ?? '', items: MANUAL_TABS.map((t) => ({ key: t.id, label: t.label })), selected: [tab], onToggle: (key) => pick(key), closeOnPick: true }), _jsx(Pressable, { onPress: onClose, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Close" }) })] }), _jsx(ScrollView
+            // overscrollBehavior: the web's own bounce and scroll chaining stop here too, while it scrolls.
             , { 
-                // overscrollBehavior: the web's own bounce and scroll chaining stop here too (react-native-web).
-                style: [{ maxHeight: Math.round(windowHeight * 0.5) }, { overscrollBehavior: 'contain' }], contentContainerStyle: { gap: 8 }, nestedScrollEnabled: true, 
+                // overscrollBehavior: the web's own bounce and scroll chaining stop here too, while it scrolls.
+                style: [{ maxHeight }, scrolls ? { overscrollBehavior: 'contain' } : null], contentContainerStyle: { gap: 8 }, onContentSizeChange: (_, h) => setContentHeight(h), scrollEnabled: scrolls, nestedScrollEnabled: scrolls, 
                 // A plain stop at either end: no rubber band, no glow, no snap back (owner's ask).
                 bounces: false, alwaysBounceVertical: false, overScrollMode: "never", children: QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (_jsxs(View, { style: styles.manualSection, children: [_jsx(Text, { style: styles.manualSectionTitle, children: section.title }), section.rows.map(([code, description]) => (_jsxs(View, { style: styles.manualRow, children: [_jsx(Text, { style: styles.manualCode, children: code }), _jsx(Text, { style: styles.manualDesc, children: description })] }, code)))] }, section.title))) })] }));
 }
@@ -2063,12 +2160,12 @@ function SortControls({ styles, compact, field, dir, onPick, onToggleDir, locked
  * Sort when compact. A Modal rather than a popover because RN has no popover and the sheet is the
  * same on all three platforms; it is dismissed by the backdrop, Done, or the hardware back.
  */
-function PickerMenu({ styles, label, title, summary, items, selected, onToggle, closeOnPick, onClear, }) {
+function PickerMenu({ styles, label, title, summary, items, selected, onToggle, closeOnPick, onClear, fill, }) {
     const [open, setOpen] = useState(false);
     const n = selected.length;
     const active = closeOnPick ? false : n > 0;
     const text = summary ?? (n === 0 ? '' : n === 1 ? items.find((i) => i.key === selected[0])?.label ?? selected[0] : `${n}`);
-    return (_jsxs(_Fragment, { children: [_jsx(Pressable, { onPress: () => setOpen(true), style: [styles.facetToggle, active && styles.facetToggleOn], role: "button", accessibilityLabel: `${label}${text ? `: ${text}` : ''}`, children: _jsxs(Text, { style: [styles.facetToggleText, active && styles.facetToggleTextOn], numberOfLines: 1, children: [label, text ? ` · ${text}` : '', ' ▾'] }) }), open ? (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: () => setOpen(false), children: _jsx(Pressable, { style: styles.menuBackdrop, onPress: () => setOpen(false), children: _jsxs(Pressable, { style: styles.menuSheet, onPress: () => { }, children: [_jsxs(View, { style: styles.menuHead, children: [_jsx(Text, { style: styles.menuTitle, children: title ?? label }), onClear && n > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] }), _jsx(ScrollView, { style: styles.menuList, keyboardShouldPersistTaps: "handled", children: items.map((it) => {
+    return (_jsxs(_Fragment, { children: [_jsx(Pressable, { onPress: () => setOpen(true), style: [styles.facetToggle, fill && styles.facetFill, active && styles.facetToggleOn], role: "button", accessibilityLabel: `${label}${text ? `: ${text}` : ''}`, children: fill ? (_jsxs(_Fragment, { children: [_jsxs(Text, { style: [styles.facetToggleText, styles.facetFillText, active && styles.facetToggleTextOn], numberOfLines: 1, children: [label, text ? ` · ${text}` : ''] }), _jsx(Text, { style: [styles.facetToggleText, active && styles.facetToggleTextOn], children: "\u25BE" })] })) : (_jsxs(Text, { style: [styles.facetToggleText, active && styles.facetToggleTextOn], numberOfLines: 1, children: [label, text ? ` · ${text}` : '', ' ▾'] })) }), open ? (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: () => setOpen(false), children: _jsx(Pressable, { style: styles.menuBackdrop, onPress: () => setOpen(false), children: _jsxs(Pressable, { style: styles.menuSheet, onPress: () => { }, children: [_jsxs(View, { style: styles.menuHead, children: [_jsx(Text, { style: styles.menuTitle, children: title ?? label }), onClear && n > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null] }), _jsx(ScrollView, { style: styles.menuList, keyboardShouldPersistTaps: "handled", children: items.map((it) => {
                                     const on = selected.includes(it.key);
                                     return (_jsxs(Pressable, { onPress: () => {
                                             onToggle(it.key);
@@ -2089,8 +2186,8 @@ function SizeChips({ theme, size, onPickSize, }) {
  * The Collection chip — one tap cycles All → Owned → Missing → All. Shared by the card-level
  * filter bar and the taxonomy bar, so the label and the cycle can never disagree between them.
  */
-function CollectionChip({ styles, onCycle, state, }) {
-    return (_jsx(Pressable, { onPress: onCycle, style: [styles.facetToggle, state != null && styles.facetToggleOn], accessibilityLabel: state === true ? 'Showing cards you own' : state === false ? 'Showing cards you are missing' : 'Collection filter', children: _jsx(Text, { style: [styles.facetToggleText, state != null && styles.facetToggleTextOn], children: state === true ? '✓ Owned' : state === false ? '◇ Missing' : 'Collection' }) }));
+function CollectionChip({ styles, onCycle, state, fill, }) {
+    return (_jsx(Pressable, { onPress: onCycle, style: [styles.facetToggle, fill && styles.facetFill, state != null && styles.facetToggleOn], accessibilityLabel: state === true ? 'Showing cards you own' : state === false ? 'Showing cards you are missing' : 'Collection filter', children: _jsx(Text, { style: [styles.facetToggleText, state != null && styles.facetToggleTextOn], numberOfLines: 1, children: state === true ? '✓ Owned' : state === false ? '◇ Missing' : 'Collection' }) }));
 }
 /**
  * The top shelf's one line of context ("33 series"). It used to be a bar holding Collection and
@@ -2115,18 +2212,23 @@ function TaxonomyBar({ styles, lead }) {
  * after its label, a longer one (Set, on a big series) is a dropdown chip, and on a compact screen
  * every facet is a dropdown so the panel is two rows at most. Nothing scrolls sideways any more.
  */
-function FacetBar({ styles, compact, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, onColorSearch, colorActive, onCycleOwned, ownedState, trailing, children, }) {
-    const hasFacets = options.length > 0;
-    return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.controlsRow, children: [hasFacets ? (_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, activeCount > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, activeCount > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', activeCount > 0 ? ` · ${activeCount}` : ''] }) })) : null, activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null, onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: [styles.facetToggle, colorActive && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, colorActive && styles.facetToggleTextOn], children: "Color" }) })) : null, onCycleOwned ? (_jsx(CollectionChip, { styles: styles, onCycle: onCycleOwned, state: ownedState ?? null })) : null, children, _jsx(View, { style: styles.controlsSpacer }), trailing] }), open && hasFacets ? (_jsx(View, { style: styles.facetFlow, children: options.map(({ facet, values }) => {
-                    const picked = selection[facet.key] ?? [];
-                    if (compact || values.length > INLINE_FACET_MAX) {
-                        return (_jsx(PickerMenu, { styles: styles, label: facet.label, items: values.map((v) => ({ key: v, label: v })), selected: picked, onToggle: (v) => onToggleValue(facet.key, v), onClear: () => picked.forEach((v) => onToggleValue(facet.key, v)) }, facet.key));
-                    }
-                    return (_jsxs(View, { style: styles.facetInline, children: [_jsx(Text, { style: styles.facetLabel, children: facet.label }), values.map((v) => {
-                                const on = picked.includes(v);
-                                return (_jsx(Pressable, { onPress: () => onToggleValue(facet.key, v), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: v }) }, v));
-                            })] }, facet.key));
-                }) })) : null] }));
+function FacetBar({ styles, compact, options, selection, activeCount, open, onToggleOpen, onToggleValue, onClear, onColorSearch, colorActive, onCycleOwned, ownedState, alwaysToggle, trailing, children, }) {
+    // Collection is a filter like the rest, so it lives inside the Filters panel, never loose on the
+    // row (owner, 2026-11-03), and its state counts toward the Filters badge.
+    const ownedOn = onCycleOwned && ownedState != null ? 1 : 0;
+    const hasFacets = options.length > 0 || !!onCycleOwned || !!alwaysToggle;
+    const badge = activeCount + ownedOn;
+    return (_jsxs(View, { style: styles.facetBar, children: [_jsxs(View, { style: styles.controlsRow, children: [hasFacets ? (_jsx(Pressable, { onPress: onToggleOpen, style: [styles.facetToggle, badge > 0 && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, badge > 0 && styles.facetToggleTextOn], children: [open ? '▾ Filters' : '▸ Filters', badge > 0 ? ` · ${badge}` : ''] }) })) : null, activeCount > 0 ? (_jsx(Pressable, { onPress: onClear, hitSlop: 8, children: _jsx(Text, { style: styles.clear, children: "Clear" }) })) : null, onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: [styles.facetToggle, colorActive && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, colorActive && styles.facetToggleTextOn], children: "Color" }) })) : null, children, _jsx(View, { style: styles.controlsSpacer }), trailing] }), open && hasFacets ? (_jsxs(View, { style: compact ? styles.facetGrid : styles.facetFlow, children: [onCycleOwned ? (_jsx(View, { style: compact ? styles.facetCell : undefined, children: _jsx(CollectionChip, { styles: styles, onCycle: onCycleOwned, state: ownedState ?? null, fill: compact }) })) : null, options.map(({ facet, values }) => {
+                        const picked = selection[facet.key] ?? [];
+                        if (compact || values.length > INLINE_FACET_MAX) {
+                            const menu = (_jsx(PickerMenu, { styles: styles, label: facet.label, items: values.map((v) => ({ key: v, label: v })), selected: picked, onToggle: (v) => onToggleValue(facet.key, v), onClear: () => picked.forEach((v) => onToggleValue(facet.key, v)), fill: compact }, facet.key));
+                            return compact ? (_jsx(View, { style: styles.facetCell, children: menu }, facet.key)) : (menu);
+                        }
+                        return (_jsxs(View, { style: styles.facetInline, children: [_jsx(Text, { style: styles.facetLabel, children: facet.label }), values.map((v) => {
+                                    const on = picked.includes(v);
+                                    return (_jsx(Pressable, { onPress: () => onToggleValue(facet.key, v), style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: v }) }, v));
+                                })] }, facet.key));
+                    })] })) : null] }));
 }
 /**
  * A HALO THAT SWELLS EVERY NOW AND THEN. Opacity and transform only, so it runs on the native
@@ -2285,20 +2387,8 @@ function makeStyles(t, taxTileHeight) {
             gap: 8,
             backgroundColor: t.panel,
         },
-        manualHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+        manualHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
         manualTitle: { fontSize: 13, fontWeight: '700', color: t.text },
-        manualTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-        manualTab: {
-            paddingHorizontal: 10,
-            paddingVertical: 5,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: t.border,
-            ...lipEdge(t),
-        },
-        manualTabOn: { backgroundColor: t.accent, borderColor: t.accent, ...lipEdge(t, true) },
-        manualTabText: { fontSize: 12, fontWeight: '600', color: t.subtext },
-        manualTabTextOn: { color: '#fff' },
         manualSection: { gap: 3 },
         manualSectionTitle: {
             fontSize: 11,
@@ -2345,6 +2435,11 @@ function makeStyles(t, taxTileHeight) {
         controlsEnd: { flexDirection: 'row', alignItems: 'center', gap: 6 },
         chipRowInline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
         // The open filter panel: facet groups flow and wrap; each inline group is its label + chips.
+        // The phone's filter grid: two equal cells a row (see FacetBar).
+        facetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+        facetCell: { flexBasis: '45%', flexGrow: 1, minWidth: 0 },
+        facetFill: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4 },
+        facetFillText: { flexShrink: 1 },
         facetFlow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, rowGap: 6 },
         facetInline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingRight: 8 },
         facetRows: { gap: 4 },
