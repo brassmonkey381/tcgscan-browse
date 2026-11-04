@@ -126,6 +126,7 @@ import {
 import { useTaxonomy, type TaxonomySource } from './taxonomy';
 import { resolveTheme, tileShadow as baseTileShadow, type BrowseTheme } from './theme';
 import { ThemeFilterBar, type ThemeTypeGroup } from './ThemeFilterBar';
+import { PixelGlyph, QuickScreen, isPlusLabel } from './QuickGlyph';
 import { count } from './counts';
 import { SORT_DEFAULT_DIR } from './query';
 
@@ -2379,6 +2380,7 @@ export function CatalogBrowser({
         priceTag={showValue ? undefined : value}
         // app-injected inline quick action (＋add / quick-place), if any
         quickAction={quickAction?.(c)}
+        quickPixel={theme.quickScreen ? (theme.quickText ?? theme.accentText) : undefined}
         // collection-aware: a green check when the user owns this card
         owned={ownedIds?.has(c.id)}
         // a grouped theme result: the first tile of each type group names it
@@ -2540,6 +2542,35 @@ export function CatalogBrowser({
 
   // The filter rows, built once and placed either inline (a wide screen) or in the sheet (a
   // compact one). `pinned` keeps the Filters panel open: in the sheet it is the whole point.
+  // Sort, which a wide screen puts at the end of the filter strip and the phone's sheet puts at
+  // its foot beside Done: sort is what people settle last, just before they close it.
+  const shelfSort = (
+              <PickerMenu
+                styles={styles}
+                label="Sort"
+                title="Sort cards by"
+                summary={SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance'}
+                items={SORT_OPTIONS.map((o) => ({
+                  key: o.field,
+                  label: o.label,
+                  locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
+                }))}
+                selected={[effSort.field]}
+                onToggle={(key) => pickSort(key as QuerySort)}
+                closeOnPick
+              />
+  );
+  const cardSort = (
+              <SortControls
+                styles={styles}
+                compact={compactBar}
+                field={effSort.field}
+                dir={effSort.dir}
+                onPick={pickSort}
+                onToggleDir={toggleSortDir}
+                lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
+              />
+  );
   const shelfBar = (pinned: boolean) => (
           <FacetBar
             styles={styles}
@@ -2555,22 +2586,7 @@ export function CatalogBrowser({
             onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
             ownedState={parsed.owned}
             alwaysToggle
-            trailing={
-              <PickerMenu
-                styles={styles}
-                label="Sort"
-                title="Sort cards by"
-                summary={SORT_OPTIONS.find((o) => o.field === effSort.field)?.label ?? 'Relevance'}
-                items={SORT_OPTIONS.map((o) => ({
-                  key: o.field,
-                  label: o.label,
-                  locked: o.field === 'value' && isLocked(lockedFeatures, 'sortByValue'),
-                }))}
-                selected={[effSort.field]}
-                onToggle={(key) => pickSort(key as QuerySort)}
-                closeOnPick
-              />
-            }
+            trailing={pinned ? undefined : shelfSort}
           />
   );
   const cardBar = (pinned: boolean) => (
@@ -2593,17 +2609,7 @@ export function CatalogBrowser({
             // injecting the have: token so it composes with the rest of the filters.
             onCycleOwned={ownedIds ? cycleOwnedFilter : undefined}
             ownedState={parsed.owned}
-            trailing={
-              <SortControls
-                styles={styles}
-                compact={compactBar}
-                field={effSort.field}
-                dir={effSort.dir}
-                onPick={pickSort}
-                onToggleDir={toggleSortDir}
-                lockedSorts={isLocked(lockedFeatures, 'sortByValue') ? SORT_LOCKED_BY_VALUE : undefined}
-              />
-            }
+            trailing={pinned ? undefined : cardSort}
           />
   );
   const themeBar = toolbarActive ? (
@@ -3097,7 +3103,8 @@ export function CatalogBrowser({
         <FilterSheet
           styles={styles}
           topInset={overlayTopInset}
-          onClose={() => setToolsOpen(false)}>
+          onClose={() => setToolsOpen(false)}
+          sort={isCardLevel ? cardSort : shelfLevel ? shelfSort : null}>
           {isCardLevel ? (
             <>
               {themeBar}
@@ -3241,6 +3248,7 @@ function CardTile({
   value,
   priceTag,
   quickAction,
+  quickPixel,
   owned,
   groupStart,
 }: {
@@ -3267,6 +3275,8 @@ function CardTile({
   priceTag?: number;
   /** Inline quick action pill (app-injected); its onPress fires without opening the sheet. */
   quickAction?: CardAction;
+  /** The quick pill as a little screen, its glyphs in pixels of this colour (theme.quickScreen). */
+  quickPixel?: string;
   /** In the user's collection (own ≥ 1) — shows a corner check (an overlay; row geometry fixed). */
   owned?: boolean;
   /** The first tile of a type group in a grouped theme result: a band across the top of the thumb
@@ -3360,9 +3370,18 @@ function CardTile({
               setDoneId(card.id);
             }}
             accessibilityLabel={typeof quickAction.label === 'string' ? quickAction.label : 'Quick action'}>
-            <Text style={[styles.cardQuickText, quickTextSize(width)]} numberOfLines={1}>
-              {quickDone ? '✓' : typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label}
-            </Text>
+            {quickPixel && !quickDone ? <QuickScreen color={quickPixel} /> : null}
+            {quickPixel && (quickDone || isPlusLabel(quickAction.label)) ? (
+              <PixelGlyph
+                kind={quickDone ? 'check' : 'plus'}
+                color={quickDone ? '#ffffff' : quickPixel}
+                d={quickPillSize(width).height}
+              />
+            ) : (
+              <Text style={[styles.cardQuickText, quickTextSize(width)]} numberOfLines={1}>
+                {quickDone ? '✓' : typeof quickAction.label === 'function' ? quickAction.label(card) : quickAction.label}
+              </Text>
+            )}
           </Pressable>
         ) : null}
       </View>
@@ -3936,11 +3955,14 @@ function FilterSheet({
   styles,
   topInset,
   onClose,
+  sort,
   children,
 }: {
   styles: Styles;
   topInset: number;
   onClose: () => void;
+  /** The sort control, at the foot beside Done (owner, 2026-11-03: sort is the last thing set). */
+  sort?: ReactNode;
   children: ReactNode;
 }) {
   const { height } = useWindowDimensions();
@@ -3966,20 +3988,23 @@ function FilterSheet({
           styles.sheet,
           {
             maxHeight: Math.round(height * 0.66),
-            paddingTop: topInset + 10,
+            paddingTop: topInset + 12,
             opacity: drop,
             transform: [{ translateY: drop.interpolate({ inputRange: [0, 1], outputRange: [-40, 0] }) }],
           },
         ]}>
-        <View style={styles.sheetHead}>
-          <Text style={styles.sheetTitle}>Sort & filter</Text>
-          <Pressable onPress={onClose} hitSlop={8} role="button" style={styles.selectBtn}>
-            <Text style={styles.selectBtnText}>Done</Text>
-          </Pressable>
-        </View>
+        {/* No title: the Filters heading inside names the sheet, and the button that opened it
+            already said Sort & filter. */}
         <ScrollView style={styles.sheetBody} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
+        <View style={styles.sheetFoot}>
+          {sort}
+          <View style={styles.controlsSpacer} />
+          <Pressable onPress={onClose} hitSlop={8} role="button" style={[styles.selectBtn, styles.sheetDone]}>
+            <Text style={styles.selectBtnText}>Done</Text>
+          </Pressable>
+        </View>
       </Animated.View>
     </Modal>
   );
@@ -4100,10 +4125,11 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       gap: 8,
       ...baseTileShadow,
     },
-    sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-    sheetTitle: { fontSize: 16, fontWeight: '800', color: t.text },
-    sheetBody: { flexGrow: 0 },
-    sheetContent: { gap: 10, paddingBottom: 4 },
+    sheetFoot: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    // Done stands as tall as the Sort pill beside it, so the foot reads as one row of buttons.
+    sheetDone: { paddingVertical: 6, paddingHorizontal: 18 },
+    sheetBody: { flexGrow: 0, flexShrink: 1 },
+    sheetContent: { gap: 8 },
     sheetHeading: { fontSize: 12, fontWeight: '700', color: t.subtext, textTransform: 'uppercase', letterSpacing: 0.5 },
     // minWidth 0: a TextInput's placeholder sets its minimum width on the web, so a wide hint (a
     // host's pixel face) would push the EN/JP and help buttons off the row.
@@ -4392,6 +4418,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       backgroundColor: t.quickFill ?? t.accent,
       alignItems: 'center',
       justifyContent: 'center',
+      // A screen's pixels stay inside its round edge, and a cyan rim keeps it off dark card art.
+      ...(t.quickScreen ? { overflow: 'hidden' as const, borderWidth: 1, borderColor: t.quickText ?? t.accentText } : null),
     },
     // The same green as the owned badge: "done" reads one way across the tile.
     cardQuickDone: { backgroundColor: '#2e9e5b' },

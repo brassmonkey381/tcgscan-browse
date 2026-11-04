@@ -51,6 +51,7 @@ import { SEALED_GROUPS, sealedGroupOf, type SealedGroup } from './sealed-groups'
 import { sealedLanguageOf, useSealed, type SealedProduct } from './sealed';
 import type { CardSize } from './state';
 import { resolveTheme, type BrowseTheme } from './theme';
+import { PixelGlyph, QuickScreen, isPlusLabel } from './QuickGlyph';
 
 /**
  * Columns per Size step, by how wide the grid actually is.
@@ -258,7 +259,12 @@ export function SealedBrowser({
                     accessibilityLabel={`Add ${p.name}`}
                     onPress={() => onAdd(p)}
                     style={[styles.quick, quickPillSize(tileW)]}>
-                    <Text style={[styles.quickText, quickTextSize(tileW)]}>{addLabel}</Text>
+                    {theme.quickScreen ? <QuickScreen color={theme.quickText ?? theme.accentText} /> : null}
+                    {theme.quickScreen && isPlusLabel(addLabel) ? (
+                      <PixelGlyph kind="plus" color={theme.quickText ?? theme.accentText} d={quickPillSize(tileW).height} />
+                    ) : (
+                      <Text style={[styles.quickText, quickTextSize(tileW)]}>{addLabel}</Text>
+                    )}
                   </Pressable>
                 ) : null}
                 {/* Sealed carries a release date and never showed it, so a box shipping next week
@@ -355,6 +361,7 @@ function makeStyles(t: BrowseTheme) {
       backgroundColor: t.quickFill ?? t.accent,
       alignItems: 'center',
       justifyContent: 'center',
+      ...(t.quickScreen ? { overflow: 'hidden' as const, borderWidth: 1, borderColor: t.quickText ?? t.accentText } : null),
     },
     quickText: { color: t.quickText ?? t.accentText, fontWeight: '800' },
     // Bottom-left, so it never collides with the add button top-right.

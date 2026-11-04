@@ -71,6 +71,10 @@ export interface BrowseTheme {
    *  `accentText`, as before (tcgscan-app tries BiBo's cyber cyan here, owner 2026-11-03). */
   quickFill?: string;
   quickText?: string;
+  /** Draw the quick-add as a little screen: `quickFill` under a faint grid of `quickText` pixels,
+   *  and the add sign (and the done check) in square pixels (tcgscan-app, owner 2026-11-03: "a navy
+   *  screen texture background, and cyan pixel '+' sign"). Omitted = the font glyph on a flat fill. */
+  quickScreen?: boolean;
   lip?: string;
   lipOn?: string;
   searchFill?: string;
