@@ -644,6 +644,12 @@ interface CatalogBrowserProps {
    */
   overlayTopInset?: number;
   /**
+   * The Done button at the foot of the phone's Sort & filter sheet, drawn by the host so it is the
+   * host's own button (tcgscan-app passes its tcgscan-ui primary Button; owner, 2026-11-03: Done
+   * must look like the app's buttons). Omit for the kit's accent pill.
+   */
+  renderSheetDone?: (close: () => void) => ReactNode;
+  /**
    * A control the host puts at the START of the Color / Theme row, inline with those buttons: the
    * binder picker's game dropdown (owner, 2026-10-25: the chip rows above the browser cost three
    * lines on a phone). Rendered on its own row when neither Color nor Theme is offered, so the
@@ -762,6 +768,7 @@ export function CatalogBrowser({
   cardSize: cardSizeProp,
   onCardSizeChange,
   overlayTopInset = 0,
+  renderSheetDone,
   featureRowLead,
   onColorSearch,
   onThemeSearch,
@@ -3104,6 +3111,7 @@ export function CatalogBrowser({
           styles={styles}
           topInset={overlayTopInset}
           onClose={() => setToolsOpen(false)}
+          renderDone={renderSheetDone}
           sort={isCardLevel ? cardSort : shelfLevel ? shelfSort : null}>
           {isCardLevel ? (
             <>
@@ -3955,12 +3963,14 @@ function FilterSheet({
   styles,
   topInset,
   onClose,
+  renderDone,
   sort,
   children,
 }: {
   styles: Styles;
   topInset: number;
   onClose: () => void;
+  renderDone?: (close: () => void) => ReactNode;
   /** The sort control, at the foot beside Done (owner, 2026-11-03: sort is the last thing set). */
   sort?: ReactNode;
   children: ReactNode;
@@ -4001,9 +4011,13 @@ function FilterSheet({
         <View style={styles.sheetFoot}>
           {sort}
           <View style={styles.controlsSpacer} />
-          <Pressable onPress={onClose} hitSlop={8} role="button" style={[styles.selectBtn, styles.sheetDone]}>
-            <Text style={styles.selectBtnText}>Done</Text>
-          </Pressable>
+          {renderDone ? (
+            renderDone(onClose)
+          ) : (
+            <Pressable onPress={onClose} hitSlop={8} role="button" style={[styles.selectBtn, styles.sheetDone]}>
+              <Text style={styles.selectBtnText}>Done</Text>
+            </Pressable>
+          )}
         </View>
       </Animated.View>
     </Modal>
