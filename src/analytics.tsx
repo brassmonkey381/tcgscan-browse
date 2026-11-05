@@ -12,11 +12,14 @@
  * INJECTED, not imported: the package never pulls a router or an app theme. Colors
  * come from a `BrowseTheme` (default light); cards open via `onOpenCard(cardId)`.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import Svg, { Defs, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 
 import type { Catalog, CatalogCard } from './catalog';
+import { cardThumbUrl } from './config';
+import { imageManifestRevision, subscribeImageManifest } from './images';
 import {
   getCardPrices,
   getValueSeries,
@@ -118,6 +121,8 @@ function ValueAnalytics({
   }, [priced]);
 
   const [k, setK] = useState<number>(20);
+  // Thumbs resolve through the image manifest; repaint when it lands (CatalogBrowser does the same).
+  useSyncExternalStore(subscribeImageManifest, imageManifestRevision, imageManifestRevision);
 
   if (!ready) return <ActivityIndicator style={{ marginTop: 24 }} />;
   if (!priced.length) return <Text style={styles.empty}>No price data here yet.</Text>;
@@ -127,6 +132,7 @@ function ValueAnalytics({
   const avg = total / priced.length;
   const shown = k === 0 ? priced : priced.slice(0, k);
   const maxVal = top.value;
+  const shownTotal = shown.reduce((s, p) => s + p.value, 0);
 
   return (
     <View style={styles.wrap}>
@@ -143,7 +149,21 @@ function ValueAnalytics({
       </Pressable>
 
       <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>Top cards by value</Text>
+        <View style={styles.sectionTitleCol}>
+          <Text style={styles.sectionTitle}>Top cards by value</Text>
+          {/* HOW CONCENTRATED THE VALUE IS (owner's pick, 2026-11-04): what the bars below add up to,
+              as a share of everything priced here. */}
+          {shown.length < priced.length ? (
+            <Text style={styles.share}>
+              The top {shown.length} hold <Text style={styles.shareFig}>{Math.round((shownTotal / total) * 100)}%</Text> of the{' '}
+              {scope.kind === 'series' ? "series'" : "set's"} <Text style={styles.shareFig}>{money(total)}</Text>.
+            </Text>
+          ) : (
+            <Text style={styles.share}>
+              All {priced.length} priced cards, <Text style={styles.shareFig}>{money(total)}</Text> in all.
+            </Text>
+          )}
+        </View>
         <View style={styles.kRow}>
           {TOP_K.map((opt) => {
             const on = opt === k;
@@ -157,14 +177,20 @@ function ValueAnalytics({
       </View>
 
       <View style={styles.bars}>
-        {shown.map((p, i) => (
-          <Pressable key={p.card.id} style={styles.barRow} onPress={() => onOpenCard(p.card.id)}>
-            <Text style={styles.barName} numberOfLines={1}>{i + 1}. {p.card.name}</Text>
-            {/* THE BAR GETS ITS OWN LANE. It used to be a percentage of the whole row with the price
-                beside it, so the top card's 100% bar plus its price ran past the screen edge. The
-                lane takes what the price leaves (flex 1, minWidth 0) and the bar is a share of it. */}
-            <View style={styles.barTrack}>
+        {/* CARDS WITH SLIM BARS (owner's pick C, 2026-11-04): each row leads with the card's own
+            art, the name over a slim bar in its rarity's colour (the legend below still reads),
+            and the price on a tag in its own column, so nothing runs off a phone. */}
+        {shown.map((p, i) => {
+          const uri = cardThumbUrl(p.card.id, 245);
+          return (
+            <Pressable key={p.card.id} style={styles.barRow} onPress={() => onOpenCard(p.card.id)}>
+              {uri ? (
+                <Image source={{ uri }} style={styles.barThumb} contentFit="cover" cachePolicy="memory-disk" recyclingKey={p.card.id} transition={100} />
+              ) : (
+                <View style={[styles.barThumb, styles.barThumbEmpty]} />
+              )}
               <View style={styles.barLane}>
+                <Text style={styles.barName} numberOfLines={1}>{i + 1}. {p.card.name}</Text>
                 <View
                   style={[
                     styles.barFill,
@@ -172,10 +198,12 @@ function ValueAnalytics({
                   ]}
                 />
               </View>
-              <Text style={styles.barVal} numberOfLines={1}>{money(p.value)}</Text>
-            </View>
-          </Pressable>
-        ))}
+              <View style={styles.barTag}>
+                <Text style={styles.barVal} numberOfLines={1}>{money(p.value)}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
       </View>
 
       <View style={styles.legend}>
@@ -438,20 +466,32 @@ function makeStyles(t: BrowseTheme) {
     topLabel: { fontSize: 11, fontWeight: '600', color: t.subtext },
     topName: { fontSize: 15, fontWeight: '700', color: t.text },
     topVal: { fontSize: 16, fontWeight: '800', color: t.link },
-    sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+    sectionHead: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
     sectionTitle: { fontSize: 15, fontWeight: '700', color: t.text },
+    sectionTitleCol: { flexShrink: 1, gap: 2 },
+    share: { fontSize: 12, color: t.subtext },
+    shareFig: { fontWeight: '700', color: t.text, ...(t.searchFont ? { fontFamily: t.searchFont, fontWeight: '400' as const } : null) },
     kRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
     kChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7 },
     kChipOn: { backgroundColor: t.selected },
     kChipText: { fontSize: 12, fontWeight: '700', color: t.subtext },
     kChipTextOn: { color: t.text },
-    bars: { gap: 6 },
-    barRow: { gap: 2 },
-    barName: { fontSize: 12, fontWeight: '500', color: t.text },
-    barTrack: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    barLane: { flex: 1, minWidth: 0 },
-    barFill: { height: 14, borderRadius: 3, minWidth: 3 },
-    barVal: { fontSize: 11, fontWeight: '600', color: t.subtext, flexShrink: 0, minWidth: 56, textAlign: 'right' },
+    bars: { gap: 8 },
+    barRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    barThumb: { width: 28, height: 39, borderRadius: 3, borderWidth: 1, borderColor: t.border, backgroundColor: t.imagePlaceholder },
+    barThumbEmpty: { borderStyle: 'dashed' },
+    barName: { fontSize: 12.5, fontWeight: '600', color: t.text },
+    barLane: { flex: 1, minWidth: 0, gap: 5 },
+    // Slim, with a darker step under it: the hardware lip, in the bar's own colour.
+    barFill: { height: 8, borderRadius: 4, minWidth: 3, borderBottomWidth: 2, borderBottomColor: 'rgba(0,0,0,0.22)' },
+    barTag: { flexShrink: 0, minWidth: 56, alignItems: 'flex-end' },
+    barVal: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: t.quickText ?? t.subtext,
+      ...(t.quickFill ? { backgroundColor: t.quickFill, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, overflow: 'hidden' as const } : null),
+      ...(t.searchFont ? { fontFamily: t.searchFont, fontWeight: '400' as const } : null),
+    },
     legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
     legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     swatch: { width: 10, height: 10, borderRadius: 2 },

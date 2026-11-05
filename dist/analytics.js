@@ -13,9 +13,12 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  * INJECTED, not imported: the package never pulls a router or an app theme. Colors
  * come from a `BrowseTheme` (default light); cards open via `onOpenCard(cardId)`.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import Svg, { Defs, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
+import { cardThumbUrl } from './config';
+import { imageManifestRevision, subscribeImageManifest } from './images';
 import { getCardPrices, getValueSeries, orderedVariants, rangeCutoff, TIME_RANGES, usePriceSummary, } from './prices';
 import { lightTheme, RARITY_PALETTE } from './theme';
 const TOP_K = [10, 20, 30, 50, 0]; // 0 = All
@@ -61,6 +64,8 @@ function ValueAnalytics({ priced, ready, scope, onOpenCard, theme, }) {
         return map;
     }, [priced]);
     const [k, setK] = useState(20);
+    // Thumbs resolve through the image manifest; repaint when it lands (CatalogBrowser does the same).
+    useSyncExternalStore(subscribeImageManifest, imageManifestRevision, imageManifestRevision);
     if (!ready)
         return _jsx(ActivityIndicator, { style: { marginTop: 24 } });
     if (!priced.length)
@@ -70,13 +75,17 @@ function ValueAnalytics({ priced, ready, scope, onOpenCard, theme, }) {
     const avg = total / priced.length;
     const shown = k === 0 ? priced : priced.slice(0, k);
     const maxVal = top.value;
-    return (_jsxs(View, { style: styles.wrap, children: [_jsxs(View, { style: styles.tiles, children: [_jsx(Tile, { styles: styles, label: "Total value", value: money(total) }), _jsx(Tile, { styles: styles, label: "Priced cards", value: `${priced.length}` }), _jsx(Tile, { styles: styles, label: "Avg card", value: money(avg) })] }), _jsxs(Pressable, { style: styles.topCard, onPress: () => onOpenCard(top.card.id), children: [_jsx(Text, { style: styles.topLabel, children: "Most valuable" }), _jsx(Text, { style: styles.topName, numberOfLines: 1, children: top.card.name }), _jsx(Text, { style: styles.topVal, children: money(top.value) })] }), _jsxs(View, { style: styles.sectionHead, children: [_jsx(Text, { style: styles.sectionTitle, children: "Top cards by value" }), _jsx(View, { style: styles.kRow, children: TOP_K.map((opt) => {
+    const shownTotal = shown.reduce((s, p) => s + p.value, 0);
+    return (_jsxs(View, { style: styles.wrap, children: [_jsxs(View, { style: styles.tiles, children: [_jsx(Tile, { styles: styles, label: "Total value", value: money(total) }), _jsx(Tile, { styles: styles, label: "Priced cards", value: `${priced.length}` }), _jsx(Tile, { styles: styles, label: "Avg card", value: money(avg) })] }), _jsxs(Pressable, { style: styles.topCard, onPress: () => onOpenCard(top.card.id), children: [_jsx(Text, { style: styles.topLabel, children: "Most valuable" }), _jsx(Text, { style: styles.topName, numberOfLines: 1, children: top.card.name }), _jsx(Text, { style: styles.topVal, children: money(top.value) })] }), _jsxs(View, { style: styles.sectionHead, children: [_jsxs(View, { style: styles.sectionTitleCol, children: [_jsx(Text, { style: styles.sectionTitle, children: "Top cards by value" }), shown.length < priced.length ? (_jsxs(Text, { style: styles.share, children: ["The top ", shown.length, " hold ", _jsxs(Text, { style: styles.shareFig, children: [Math.round((shownTotal / total) * 100), "%"] }), " of the", ' ', scope.kind === 'series' ? "series'" : "set's", " ", _jsx(Text, { style: styles.shareFig, children: money(total) }), "."] })) : (_jsxs(Text, { style: styles.share, children: ["All ", priced.length, " priced cards, ", _jsx(Text, { style: styles.shareFig, children: money(total) }), " in all."] }))] }), _jsx(View, { style: styles.kRow, children: TOP_K.map((opt) => {
                             const on = opt === k;
                             return (_jsx(Pressable, { onPress: () => setK(opt), style: [styles.kChip, on && styles.kChipOn], children: _jsx(Text, { style: [styles.kChipText, on && styles.kChipTextOn], children: opt === 0 ? 'All' : opt }) }, opt));
-                        }) })] }), _jsx(View, { style: styles.bars, children: shown.map((p, i) => (_jsxs(Pressable, { style: styles.barRow, onPress: () => onOpenCard(p.card.id), children: [_jsxs(Text, { style: styles.barName, numberOfLines: 1, children: [i + 1, ". ", p.card.name] }), _jsxs(View, { style: styles.barTrack, children: [_jsx(View, { style: styles.barLane, children: _jsx(View, { style: [
+                        }) })] }), _jsx(View, { style: styles.bars, children: shown.map((p, i) => {
+                    const uri = cardThumbUrl(p.card.id, 245);
+                    return (_jsxs(Pressable, { style: styles.barRow, onPress: () => onOpenCard(p.card.id), children: [uri ? (_jsx(Image, { source: { uri }, style: styles.barThumb, contentFit: "cover", cachePolicy: "memory-disk", recyclingKey: p.card.id, transition: 100 })) : (_jsx(View, { style: [styles.barThumb, styles.barThumbEmpty] })), _jsxs(View, { style: styles.barLane, children: [_jsxs(Text, { style: styles.barName, numberOfLines: 1, children: [i + 1, ". ", p.card.name] }), _jsx(View, { style: [
                                             styles.barFill,
                                             { width: `${Math.max(2, (p.value / maxVal) * 100)}%`, backgroundColor: rarityColor.get(p.card.rarity || 'Unknown') },
-                                        ] }) }), _jsx(Text, { style: styles.barVal, numberOfLines: 1, children: money(p.value) })] })] }, p.card.id))) }), _jsx(View, { style: styles.legend, children: [...rarityColor.entries()].map(([r, c]) => (_jsxs(View, { style: styles.legendItem, children: [_jsx(View, { style: [styles.swatch, { backgroundColor: c }] }), _jsx(Text, { style: styles.legendText, children: r })] }, r))) }), _jsx(ValueOverTime, { scope: scope, priced: priced, theme: theme })] }));
+                                        ] })] }), _jsx(View, { style: styles.barTag, children: _jsx(Text, { style: styles.barVal, numberOfLines: 1, children: money(p.value) }) })] }, p.card.id));
+                }) }), _jsx(View, { style: styles.legend, children: [...rarityColor.entries()].map(([r, c]) => (_jsxs(View, { style: styles.legendItem, children: [_jsx(View, { style: [styles.swatch, { backgroundColor: c }] }), _jsx(Text, { style: styles.legendText, children: r })] }, r))) }), _jsx(ValueOverTime, { scope: scope, priced: priced, theme: theme })] }));
 }
 function Tile({ styles, label, value }) {
     return (_jsxs(View, { style: styles.tile, children: [_jsx(Text, { style: styles.tileValue, children: value }), _jsx(Text, { style: styles.tileLabel, children: label })] }));
@@ -228,20 +237,32 @@ function makeStyles(t) {
         topLabel: { fontSize: 11, fontWeight: '600', color: t.subtext },
         topName: { fontSize: 15, fontWeight: '700', color: t.text },
         topVal: { fontSize: 16, fontWeight: '800', color: t.link },
-        sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+        sectionHead: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
         sectionTitle: { fontSize: 15, fontWeight: '700', color: t.text },
+        sectionTitleCol: { flexShrink: 1, gap: 2 },
+        share: { fontSize: 12, color: t.subtext },
+        shareFig: { fontWeight: '700', color: t.text, ...(t.searchFont ? { fontFamily: t.searchFont, fontWeight: '400' } : null) },
         kRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
         kChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7 },
         kChipOn: { backgroundColor: t.selected },
         kChipText: { fontSize: 12, fontWeight: '700', color: t.subtext },
         kChipTextOn: { color: t.text },
-        bars: { gap: 6 },
-        barRow: { gap: 2 },
-        barName: { fontSize: 12, fontWeight: '500', color: t.text },
-        barTrack: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-        barLane: { flex: 1, minWidth: 0 },
-        barFill: { height: 14, borderRadius: 3, minWidth: 3 },
-        barVal: { fontSize: 11, fontWeight: '600', color: t.subtext, flexShrink: 0, minWidth: 56, textAlign: 'right' },
+        bars: { gap: 8 },
+        barRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+        barThumb: { width: 28, height: 39, borderRadius: 3, borderWidth: 1, borderColor: t.border, backgroundColor: t.imagePlaceholder },
+        barThumbEmpty: { borderStyle: 'dashed' },
+        barName: { fontSize: 12.5, fontWeight: '600', color: t.text },
+        barLane: { flex: 1, minWidth: 0, gap: 5 },
+        // Slim, with a darker step under it: the hardware lip, in the bar's own colour.
+        barFill: { height: 8, borderRadius: 4, minWidth: 3, borderBottomWidth: 2, borderBottomColor: 'rgba(0,0,0,0.22)' },
+        barTag: { flexShrink: 0, minWidth: 56, alignItems: 'flex-end' },
+        barVal: {
+            fontSize: 12,
+            fontWeight: '600',
+            color: t.quickText ?? t.subtext,
+            ...(t.quickFill ? { backgroundColor: t.quickFill, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, overflow: 'hidden' } : null),
+            ...(t.searchFont ? { fontFamily: t.searchFont, fontWeight: '400' } : null),
+        },
         legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
         legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
         swatch: { width: 10, height: 10, borderRadius: 2 },
