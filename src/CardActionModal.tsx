@@ -87,9 +87,13 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        {/* stopPropagation wrapper so taps inside the sheet don't dismiss */}
-        <Pressable style={[styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }]} onPress={() => {}}>
+      <View style={styles.backdrop}>
+        {/* THE BACKDROP IS A SIBLING BEHIND THE SHEET, not a parent of it. A Pressable around the
+            sheet (to swallow its taps) became the touch responder for any drag that started on the
+            image or the facts, so the sheet only scrolled from the buttons down. A plain View sheet
+            hands every drag to its ScrollView; taps outside it land on this layer and dismiss. */}
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+        <View style={[styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }]}>
           {/* SCROLLS WHEN IT DOES NOT FIT: a tall card on a short phone (or a long action list)
               used to push Cancel off the screen with no way to reach it. */}
           <ScrollView style={{ overscrollBehavior: 'contain' } as object} contentContainerStyle={styles.sheetBody} bounces={false} alwaysBounceVertical={false} overScrollMode="never" nestedScrollEnabled>
@@ -163,8 +167,8 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
             </Pressable>
           </View>
           </ScrollView>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -205,8 +209,10 @@ export function MultiCardActionModal({
   const imageMaxHeight = Math.min(IMAGE_MAX_HEIGHT, Math.round(windowHeight * IMAGE_VIEWPORT_FRACTION));
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }]} onPress={() => {}}>
+      <View style={styles.backdrop}>
+        {/* Backdrop behind the sheet, as in CardActionModal, so a drag anywhere scrolls. */}
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+        <View style={[styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }]}>
           {/* SCROLLS WHEN IT DOES NOT FIT: a tall card on a short phone (or a long action list)
               used to push Cancel off the screen with no way to reach it. */}
           <ScrollView style={{ overscrollBehavior: 'contain' } as object} contentContainerStyle={styles.sheetBody} bounces={false} alwaysBounceVertical={false} overScrollMode="never" nestedScrollEnabled>
@@ -286,8 +292,8 @@ export function MultiCardActionModal({
             </Pressable>
           </View>
           </ScrollView>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }

@@ -70,23 +70,23 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
         .join('   ');
     // Primary first, then the rest — order within each group preserved.
     const ordered = [...actions].sort((a, b) => Number(b.kind === 'primary') - Number(a.kind === 'primary'));
-    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsx(Pressable, { style: [styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }], onPress: () => { }, children: _jsxs(ScrollView, { style: { overscrollBehavior: 'contain' }, contentContainerStyle: styles.sheetBody, bounces: false, alwaysBounceVertical: false, overScrollMode: "never", nestedScrollEnabled: true, children: [_jsx(View, { style: [styles.imageWrap, { maxHeight: imageMaxHeight }], children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 120 })) : theme.comingSoonImage ? (_jsx(Image, { source: theme.comingSoonImage, style: styles.image, contentFit: "contain", transition: 120, accessibilityLabel: "Image coming soon" })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "no image" }) })) }), _jsx(Text, { style: styles.name, numberOfLines: 2, children: card.name }), facts.map((f) => (_jsx(Text, { style: styles.fact, numberOfLines: 1, children: f }, f))), evoLine ? (_jsx(Text, { style: styles.evo, numberOfLines: 1, children: evoLine })) : null, card.imageSubstituted ? (_jsx(Text, { style: styles.caveat, children: "This image may differ slightly from the real card, it could carry a stamp, overlay, or signature we missed." })) : null, _jsxs(View, { style: styles.actions, children: [ordered.map((action) => {
-                                    const primary = action.kind === 'primary';
-                                    const destructive = action.kind === 'destructive';
-                                    return (_jsx(Pressable, { style: [styles.action, primary && styles.actionPrimary], 
-                                        // Dismiss the sheet on any choice, THEN run the action — so
-                                        // "View details" doesn't leave the sheet over the card screen
-                                        // and "Add to collection" doesn't stack under it. (Built-ins
-                                        // also self-close; the extra close is idempotent.)
-                                        onPress: () => {
-                                            onClose();
-                                            action.onPress(card);
-                                        }, children: _jsx(Text, { style: [
-                                                styles.actionText,
-                                                primary && styles.actionPrimaryText,
-                                                destructive && styles.actionDestructiveText,
-                                            ], numberOfLines: 1, children: resolveLabel(action, card) }) }, action.key));
-                                }), _jsx(Pressable, { style: styles.action, onPress: onClose, children: _jsx(Text, { style: styles.actionCancelText, children: "Cancel" }) })] })] }) }) }) }));
+    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsxs(View, { style: styles.backdrop, children: [_jsx(Pressable, { style: StyleSheet.absoluteFill, onPress: onClose, accessibilityLabel: "Close" }), _jsx(View, { style: [styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }], children: _jsxs(ScrollView, { style: { overscrollBehavior: 'contain' }, contentContainerStyle: styles.sheetBody, bounces: false, alwaysBounceVertical: false, overScrollMode: "never", nestedScrollEnabled: true, children: [_jsx(View, { style: [styles.imageWrap, { maxHeight: imageMaxHeight }], children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 120 })) : theme.comingSoonImage ? (_jsx(Image, { source: theme.comingSoonImage, style: styles.image, contentFit: "contain", transition: 120, accessibilityLabel: "Image coming soon" })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "no image" }) })) }), _jsx(Text, { style: styles.name, numberOfLines: 2, children: card.name }), facts.map((f) => (_jsx(Text, { style: styles.fact, numberOfLines: 1, children: f }, f))), evoLine ? (_jsx(Text, { style: styles.evo, numberOfLines: 1, children: evoLine })) : null, card.imageSubstituted ? (_jsx(Text, { style: styles.caveat, children: "This image may differ slightly from the real card, it could carry a stamp, overlay, or signature we missed." })) : null, _jsxs(View, { style: styles.actions, children: [ordered.map((action) => {
+                                        const primary = action.kind === 'primary';
+                                        const destructive = action.kind === 'destructive';
+                                        return (_jsx(Pressable, { style: [styles.action, primary && styles.actionPrimary], 
+                                            // Dismiss the sheet on any choice, THEN run the action — so
+                                            // "View details" doesn't leave the sheet over the card screen
+                                            // and "Add to collection" doesn't stack under it. (Built-ins
+                                            // also self-close; the extra close is idempotent.)
+                                            onPress: () => {
+                                                onClose();
+                                                action.onPress(card);
+                                            }, children: _jsx(Text, { style: [
+                                                    styles.actionText,
+                                                    primary && styles.actionPrimaryText,
+                                                    destructive && styles.actionDestructiveText,
+                                                ], numberOfLines: 1, children: resolveLabel(action, card) }) }, action.key));
+                                    }), _jsx(Pressable, { style: styles.action, onPress: onClose, children: _jsx(Text, { style: styles.actionCancelText, children: "Cancel" }) })] })] }) })] }) }));
 }
 /**
  * Multi-select action sheet — shown when 2+ cards are selected (Ctrl/Shift-click on web).
@@ -98,22 +98,22 @@ export function MultiCardActionModal({ cards, onAddAll, addAllLabel = 'Add all t
     const styles = makeStyles(theme);
     const { height: windowHeight } = useWindowDimensions();
     const imageMaxHeight = Math.min(IMAGE_MAX_HEIGHT, Math.round(windowHeight * IMAGE_VIEWPORT_FRACTION));
-    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsx(Pressable, { style: styles.backdrop, onPress: onClose, children: _jsx(Pressable, { style: [styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }], onPress: () => { }, children: _jsxs(ScrollView, { style: { overscrollBehavior: 'contain' }, contentContainerStyle: styles.sheetBody, bounces: false, alwaysBounceVertical: false, overScrollMode: "never", nestedScrollEnabled: true, children: [_jsx(View, { style: [styles.imageWrap, { maxHeight: imageMaxHeight }], children: _jsx(ScrollView, { contentContainerStyle: styles.multiGrid, children: cards.map((c) => {
-                                    const uri = cardThumbUrl(c.id, 245);
-                                    return (_jsx(View, { style: styles.multiThumb, children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 80 })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "\u2014" }) })) }, c.id));
-                                }) }) }), _jsxs(Text, { style: styles.name, numberOfLines: 1, children: [cards.length, " cards selected"] }), _jsxs(View, { style: styles.actions, children: [onAddAll ? (_jsx(Pressable, { style: [styles.action, styles.actionPrimary], onPress: () => {
-                                        onClose();
-                                        onAddAll();
-                                    }, children: _jsx(Text, { style: [styles.actionText, styles.actionPrimaryText], numberOfLines: 1, children: addAllLabel }) })) : null, onMoreLikeAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
-                                        onClose();
-                                        onMoreLikeAll();
-                                    }, children: _jsx(Text, { style: styles.actionText, numberOfLines: 1, children: "\u2295 More like these" }) })) : null, onLessLikeAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
-                                        onClose();
-                                        onLessLikeAll();
-                                    }, children: _jsx(Text, { style: styles.actionText, numberOfLines: 1, children: "\u2296 Less like these" }) })) : null, onFindSimilarAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
-                                        onClose();
-                                        onFindSimilarAll();
-                                    }, children: _jsx(Text, { style: styles.actionText, numberOfLines: 1, children: "\u2248 Find similar to all" }) })) : null, _jsx(Pressable, { style: styles.action, onPress: onClose, children: _jsx(Text, { style: styles.actionCancelText, children: "Cancel" }) })] })] }) }) }) }));
+    return (_jsx(Modal, { visible: true, transparent: true, animationType: "fade", onRequestClose: onClose, children: _jsxs(View, { style: styles.backdrop, children: [_jsx(Pressable, { style: StyleSheet.absoluteFill, onPress: onClose, accessibilityLabel: "Close" }), _jsx(View, { style: [styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }], children: _jsxs(ScrollView, { style: { overscrollBehavior: 'contain' }, contentContainerStyle: styles.sheetBody, bounces: false, alwaysBounceVertical: false, overScrollMode: "never", nestedScrollEnabled: true, children: [_jsx(View, { style: [styles.imageWrap, { maxHeight: imageMaxHeight }], children: _jsx(ScrollView, { contentContainerStyle: styles.multiGrid, children: cards.map((c) => {
+                                        const uri = cardThumbUrl(c.id, 245);
+                                        return (_jsx(View, { style: styles.multiThumb, children: uri ? (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 80 })) : (_jsx(View, { style: styles.imageFallback, children: _jsx(Text, { style: styles.imageFallbackText, children: "\u2014" }) })) }, c.id));
+                                    }) }) }), _jsxs(Text, { style: styles.name, numberOfLines: 1, children: [cards.length, " cards selected"] }), _jsxs(View, { style: styles.actions, children: [onAddAll ? (_jsx(Pressable, { style: [styles.action, styles.actionPrimary], onPress: () => {
+                                            onClose();
+                                            onAddAll();
+                                        }, children: _jsx(Text, { style: [styles.actionText, styles.actionPrimaryText], numberOfLines: 1, children: addAllLabel }) })) : null, onMoreLikeAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
+                                            onClose();
+                                            onMoreLikeAll();
+                                        }, children: _jsx(Text, { style: styles.actionText, numberOfLines: 1, children: "\u2295 More like these" }) })) : null, onLessLikeAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
+                                            onClose();
+                                            onLessLikeAll();
+                                        }, children: _jsx(Text, { style: styles.actionText, numberOfLines: 1, children: "\u2296 Less like these" }) })) : null, onFindSimilarAll ? (_jsx(Pressable, { style: styles.action, onPress: () => {
+                                            onClose();
+                                            onFindSimilarAll();
+                                        }, children: _jsx(Text, { style: styles.actionText, numberOfLines: 1, children: "\u2248 Find similar to all" }) })) : null, _jsx(Pressable, { style: styles.action, onPress: onClose, children: _jsx(Text, { style: styles.actionCancelText, children: "Cancel" }) })] })] }) })] }) }));
 }
 function makeStyles(t) {
     return StyleSheet.create({
