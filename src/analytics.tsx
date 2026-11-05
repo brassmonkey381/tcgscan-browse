@@ -160,14 +160,19 @@ function ValueAnalytics({
         {shown.map((p, i) => (
           <Pressable key={p.card.id} style={styles.barRow} onPress={() => onOpenCard(p.card.id)}>
             <Text style={styles.barName} numberOfLines={1}>{i + 1}. {p.card.name}</Text>
+            {/* THE BAR GETS ITS OWN LANE. It used to be a percentage of the whole row with the price
+                beside it, so the top card's 100% bar plus its price ran past the screen edge. The
+                lane takes what the price leaves (flex 1, minWidth 0) and the bar is a share of it. */}
             <View style={styles.barTrack}>
-              <View
-                style={[
-                  styles.barFill,
-                  { width: `${Math.max(2, (p.value / maxVal) * 100)}%`, backgroundColor: rarityColor.get(p.card.rarity || 'Unknown') },
-                ]}
-              />
-              <Text style={styles.barVal}>{money(p.value)}</Text>
+              <View style={styles.barLane}>
+                <View
+                  style={[
+                    styles.barFill,
+                    { width: `${Math.max(2, (p.value / maxVal) * 100)}%`, backgroundColor: rarityColor.get(p.card.rarity || 'Unknown') },
+                  ]}
+                />
+              </View>
+              <Text style={styles.barVal} numberOfLines={1}>{money(p.value)}</Text>
             </View>
           </Pressable>
         ))}
@@ -444,8 +449,9 @@ function makeStyles(t: BrowseTheme) {
     barRow: { gap: 2 },
     barName: { fontSize: 12, fontWeight: '500', color: t.text },
     barTrack: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    barLane: { flex: 1, minWidth: 0 },
     barFill: { height: 14, borderRadius: 3, minWidth: 3 },
-    barVal: { fontSize: 11, fontWeight: '600', color: t.subtext },
+    barVal: { fontSize: 11, fontWeight: '600', color: t.subtext, flexShrink: 0, minWidth: 56, textAlign: 'right' },
     legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
     legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     swatch: { width: 10, height: 10, borderRadius: 2 },

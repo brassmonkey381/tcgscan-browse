@@ -73,10 +73,10 @@ function ValueAnalytics({ priced, ready, scope, onOpenCard, theme, }) {
     return (_jsxs(View, { style: styles.wrap, children: [_jsxs(View, { style: styles.tiles, children: [_jsx(Tile, { styles: styles, label: "Total value", value: money(total) }), _jsx(Tile, { styles: styles, label: "Priced cards", value: `${priced.length}` }), _jsx(Tile, { styles: styles, label: "Avg card", value: money(avg) })] }), _jsxs(Pressable, { style: styles.topCard, onPress: () => onOpenCard(top.card.id), children: [_jsx(Text, { style: styles.topLabel, children: "Most valuable" }), _jsx(Text, { style: styles.topName, numberOfLines: 1, children: top.card.name }), _jsx(Text, { style: styles.topVal, children: money(top.value) })] }), _jsxs(View, { style: styles.sectionHead, children: [_jsx(Text, { style: styles.sectionTitle, children: "Top cards by value" }), _jsx(View, { style: styles.kRow, children: TOP_K.map((opt) => {
                             const on = opt === k;
                             return (_jsx(Pressable, { onPress: () => setK(opt), style: [styles.kChip, on && styles.kChipOn], children: _jsx(Text, { style: [styles.kChipText, on && styles.kChipTextOn], children: opt === 0 ? 'All' : opt }) }, opt));
-                        }) })] }), _jsx(View, { style: styles.bars, children: shown.map((p, i) => (_jsxs(Pressable, { style: styles.barRow, onPress: () => onOpenCard(p.card.id), children: [_jsxs(Text, { style: styles.barName, numberOfLines: 1, children: [i + 1, ". ", p.card.name] }), _jsxs(View, { style: styles.barTrack, children: [_jsx(View, { style: [
-                                        styles.barFill,
-                                        { width: `${Math.max(2, (p.value / maxVal) * 100)}%`, backgroundColor: rarityColor.get(p.card.rarity || 'Unknown') },
-                                    ] }), _jsx(Text, { style: styles.barVal, children: money(p.value) })] })] }, p.card.id))) }), _jsx(View, { style: styles.legend, children: [...rarityColor.entries()].map(([r, c]) => (_jsxs(View, { style: styles.legendItem, children: [_jsx(View, { style: [styles.swatch, { backgroundColor: c }] }), _jsx(Text, { style: styles.legendText, children: r })] }, r))) }), _jsx(ValueOverTime, { scope: scope, priced: priced, theme: theme })] }));
+                        }) })] }), _jsx(View, { style: styles.bars, children: shown.map((p, i) => (_jsxs(Pressable, { style: styles.barRow, onPress: () => onOpenCard(p.card.id), children: [_jsxs(Text, { style: styles.barName, numberOfLines: 1, children: [i + 1, ". ", p.card.name] }), _jsxs(View, { style: styles.barTrack, children: [_jsx(View, { style: styles.barLane, children: _jsx(View, { style: [
+                                            styles.barFill,
+                                            { width: `${Math.max(2, (p.value / maxVal) * 100)}%`, backgroundColor: rarityColor.get(p.card.rarity || 'Unknown') },
+                                        ] }) }), _jsx(Text, { style: styles.barVal, numberOfLines: 1, children: money(p.value) })] })] }, p.card.id))) }), _jsx(View, { style: styles.legend, children: [...rarityColor.entries()].map(([r, c]) => (_jsxs(View, { style: styles.legendItem, children: [_jsx(View, { style: [styles.swatch, { backgroundColor: c }] }), _jsx(Text, { style: styles.legendText, children: r })] }, r))) }), _jsx(ValueOverTime, { scope: scope, priced: priced, theme: theme })] }));
 }
 function Tile({ styles, label, value }) {
     return (_jsxs(View, { style: styles.tile, children: [_jsx(Text, { style: styles.tileValue, children: value }), _jsx(Text, { style: styles.tileLabel, children: label })] }));
@@ -239,8 +239,9 @@ function makeStyles(t) {
         barRow: { gap: 2 },
         barName: { fontSize: 12, fontWeight: '500', color: t.text },
         barTrack: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        barLane: { flex: 1, minWidth: 0 },
         barFill: { height: 14, borderRadius: 3, minWidth: 3 },
-        barVal: { fontSize: 11, fontWeight: '600', color: t.subtext },
+        barVal: { fontSize: 11, fontWeight: '600', color: t.subtext, flexShrink: 0, minWidth: 56, textAlign: 'right' },
         legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
         legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
         swatch: { width: 10, height: 10, borderRadius: 2 },
