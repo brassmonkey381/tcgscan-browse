@@ -135,7 +135,7 @@ export declare function sortCards<T extends QueryableCard>(cards: T[], q: Parsed
  */
 export declare function describeQuery(q: ParsedQuery, matched?: QueryableCard[]): string;
 /** Placeholder/help line advertising the grammar (shared by both apps' search boxes). */
-export declare const QUERY_HINT = "try: charizard hp>200 date>2023 sort:value";
+export declare const QUERY_HINT = "try: set:delta reign sort:value";
 /**
  * The search user manual — data, not UI, so every app renders the same manual
  * in its own components (the "?" help panel).

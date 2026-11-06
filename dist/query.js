@@ -654,7 +654,7 @@ export function describeQuery(q, matched = []) {
     return parts.join(' & ');
 }
 /** Placeholder/help line advertising the grammar (shared by both apps' search boxes). */
-export const QUERY_HINT = 'try: charizard hp>200 date>2023 sort:value';
+export const QUERY_HINT = 'try: set:delta reign sort:value';
 export const MANUAL_TABS = [
     { id: 'basics', label: 'Basics' },
     { id: 'fields', label: 'Fields' },
