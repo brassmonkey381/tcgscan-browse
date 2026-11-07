@@ -123,6 +123,9 @@ export function manifestUrl(id: string, field: string): string | undefined {
   if (!id) return undefined;
   const primary = manifest ? urlIn(manifest, id, field) : undefined;
   if (primary) return primary;
+  // Sharded mode: an id with no answer yet asks for its own shard (or the full list once its
+  // shard is known not to hold it). A no-op when sharding is off.
+  if (shardMode && !(manifest && manifest.cards[id])) requestShardFor(id);
   for (const m of secondaries.values()) {
     const hit = urlIn(m, id, field);
     if (hit) return hit;
@@ -130,7 +133,7 @@ export function manifestUrl(id: string, field: string): string | undefined {
   // A miss on a LOADED primary is the first evidence that a registered second source might be
   // needed, so it is what pays for fetching one. Gated on the primary being loaded: before that,
   // every id "misses" and a single-game host would pull manifests it will never read.
-  if (manifest && registered.size > started.size) {
+  if (manifest && primaryCovers(id) && registered.size > started.size) {
     for (const key of registered.keys()) void loadImageManifest(key);
   }
   return undefined;
@@ -219,6 +222,159 @@ export function secondaryManifestReady(key?: string): boolean {
   return key ? secondaries.has(key) : secondaries.size > 0;
 }
 
+
+// ---- sharded primary manifest (opt-in, v0.9.65) --------------------------------------------
+//
+// THE WHOLE LIST BEFORE ONE PICTURE (michi MIC-018, 2026-11-07): images.json is 1.77 MB and a
+// card's picture cannot be named until it lands, so a phone on slow 4G showed its first card at
+// 36.8 s for a page of nine. With `configureBrowse({ imageShards: true })` the kit reads
+// `browse/images-shards/v1/index.json` and then only the shards for the ids actually asked for
+// (FNV-1a 32 of the id's UTF-8 bytes, mod the index's count, two-digit file name). Same schema as
+// images.json; shards merge into the primary manifest, so every reader above is unchanged.
+//
+// Falls back to the full images.json (the code that shipped before) when the index is missing,
+// and when an id is absent from its own LOADED shard: the pipeline writes shards in the same step
+// as images.json but not atomically with it, so a shard may be one publish behind.
+// A merged partial manifest is never written to the persistent cache (that key holds whole lists).
+
+let shardMode = false;
+type ShardIndex = { shards: number };
+let shardIndex: ShardIndex | 'absent' | null = null;
+let shardIndexStarted = false;
+const shardsLoaded = new Set<number>();
+const shardsStarted = new Set<number>();
+const shardWaiting = new Set<string>();
+let fullStarted = false;
+
+/** Turn sharded primary loading on or off (configureBrowse). Off is the default and the old path. */
+export function setImageShards(on: boolean): void {
+  shardMode = on;
+}
+
+/** FNV-1a 32-bit over the UTF-8 bytes of `id`, as the tcgscan-data publisher computes it. */
+export function imageShardHash(id: string): number {
+  const bytes = unescape(encodeURIComponent(id));
+  let h = 2166136261;
+  for (let i = 0; i < bytes.length; i += 1) {
+    h ^= bytes.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function shardOf(id: string, index: ShardIndex): number {
+  return imageShardHash(id) % index.shards;
+}
+
+/** True when a primary miss for `id` is a real miss, not a shard that has not arrived yet. */
+function primaryCovers(id: string): boolean {
+  if (!shardMode || fullStarted || shardIndex === 'absent') return true;
+  if (shardIndex === null) return false;
+  return shardsLoaded.has(shardOf(id, shardIndex));
+}
+
+function mergeShard(part: ImageManifest): void {
+  if (!manifest) {
+    publish({ schema: part.schema, fields: part.fields, base: part.base, cards: { ...part.cards } });
+  } else {
+    publish({ ...manifest, cards: { ...manifest.cards, ...part.cards } });
+  }
+  if (!settled) settled = true;
+}
+
+function loadFullPrimary(): void {
+  if (fullStarted) return;
+  fullStarted = true;
+  const gen = browseGeneration();
+  void (async () => {
+    try {
+      const res = await fetch(`${getBrowseUrl()}/images.json`);
+      if (!res.ok || !isCurrent(gen)) return;
+      const fresh = (await res.json()) as ImageManifest;
+      if (!isCurrent(gen)) return;
+      publish(fresh);
+      if (cacheAdapter) {
+        try {
+          await cacheAdapter.setItem(CACHE_KEY, JSON.stringify(fresh));
+        } catch {
+          /* quota / write failure: the in-memory copy is still good */
+        }
+      }
+    } catch {
+      fullStarted = false; // a later miss may retry
+    } finally {
+      if (isCurrent(gen) && !settled) {
+        settled = true;
+        notify();
+      }
+    }
+  })();
+}
+
+function loadShardIndex(): void {
+  if (shardIndexStarted) return;
+  shardIndexStarted = true;
+  const gen = browseGeneration();
+  void (async () => {
+    let next: ShardIndex | 'absent' = 'absent';
+    try {
+      const res = await fetch(`${getBrowseUrl()}/images-shards/v1/index.json`);
+      if (res.ok) {
+        const body = (await res.json()) as { shards?: number };
+        if (typeof body.shards === 'number' && body.shards > 0) next = { shards: body.shards };
+      }
+    } catch {
+      /* offline or not published: the full list below */
+    }
+    if (!isCurrent(gen)) return;
+    shardIndex = next;
+    if (next === 'absent') {
+      loadFullPrimary();
+      return;
+    }
+    const waiting = [...shardWaiting];
+    shardWaiting.clear();
+    waiting.forEach(requestShardFor);
+  })();
+}
+
+function requestShardFor(id: string): void {
+  if (!shardMode || fullStarted) return;
+  if (shardIndex === null) {
+    shardWaiting.add(id);
+    loadShardIndex();
+    return;
+  }
+  if (shardIndex === 'absent') return;
+  const n = shardOf(id, shardIndex);
+  if (shardsLoaded.has(n)) {
+    // Its own shard is in and does not hold it: one publish behind, or never mirrored. The full
+    // list answers both.
+    loadFullPrimary();
+    return;
+  }
+  if (shardsStarted.has(n)) return;
+  shardsStarted.add(n);
+  const gen = browseGeneration();
+  void (async () => {
+    try {
+      const res = await fetch(`${getBrowseUrl()}/images-shards/v1/${String(n).padStart(2, '0')}.json`);
+      if (!isCurrent(gen)) return;
+      if (!res.ok) {
+        loadFullPrimary();
+        return;
+      }
+      const part = (await res.json()) as ImageManifest;
+      if (!isCurrent(gen)) return;
+      shardsLoaded.add(n);
+      mergeShard(part);
+    } catch {
+      shardsStarted.delete(n);
+      if (isCurrent(gen)) loadFullPrimary();
+    }
+  })();
+}
+
 /**
  * True once the first hydrate attempt has finished, whether or not it produced a manifest. While
  * this is false a hosted manifest is still in flight, so `cardThumbUrl` should paint a placeholder
@@ -253,7 +409,9 @@ export function hydrateImageManifest(): Promise<void> {
             /* corrupt/absent cache — fall through to the network */
           }
         }
-        // 2) background refresh (best-effort; content-hashed URLs make this safe)
+        // 2) background refresh (best-effort; content-hashed URLs make this safe). In sharded mode
+        // there is no whole-list refresh: shards arrive as ids are asked for (requestShardFor).
+        if (shardMode) return;
         try {
           const res = await fetch(`${getBrowseUrl()}/images.json`);
           if (res.ok) {
@@ -274,7 +432,9 @@ export function hydrateImageManifest(): Promise<void> {
         // Mark the attempt done and wake consumers: in static/offline mode no manifest ever
         // publishes, so this settle is what lets cardThumbUrl fall through to the flat path.
         // A hydrate from before a game switch settles nothing: the new one is in charge.
-        if (isCurrent(gen)) {
+        // Sharded mode settles on its first shard (or the full-list fallback) instead: settling
+        // with no manifest would send cardThumbUrl to the flat path, which 404s on hosted buckets.
+        if (isCurrent(gen) && (!shardMode || manifest)) {
           settled = true;
           notify();
         }
@@ -293,6 +453,12 @@ export function _resetImageManifest(): void {
   manifest = null;
   hydrating = null;
   settled = false;
+  shardIndex = null;
+  shardIndexStarted = false;
+  shardsLoaded.clear();
+  shardsStarted.clear();
+  shardWaiting.clear();
+  fullStarted = false;
   notify();
 }
 

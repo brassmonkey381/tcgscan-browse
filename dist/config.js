@@ -9,7 +9,7 @@
  */
 import { _resetCatalog } from './catalog';
 import { _bumpGeneration } from './generation';
-import { _resetImageManifest, imageManifestReady, imageManifestSettled, manifestUrl, setManifestCache, } from './images';
+import { _resetImageManifest, imageManifestReady, imageManifestSettled, manifestUrl, setImageShards, setManifestCache, } from './images';
 import { _resetPrices } from './prices';
 import { _resetSealed } from './sealed';
 import { _resetSearchCaches } from './search';
@@ -80,6 +80,7 @@ export function configureBrowse(next) {
     themedSearch = next.themedSearch ?? null;
     productLine = { ...POKEMON_LINE, ...(next.productLine ?? {}) };
     setManifestCache(next.cache ?? null);
+    setImageShards(next.imageShards === true);
     if (moved)
         resetBrowseData();
 }

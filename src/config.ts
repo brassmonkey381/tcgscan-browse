@@ -15,6 +15,7 @@ import {
   imageManifestReady,
   imageManifestSettled,
   manifestUrl,
+  setImageShards,
   setManifestCache,
   type ManifestCache,
 } from './images';
@@ -136,6 +137,12 @@ export interface BrowseConfig {
    */
   cache?: ManifestCache;
   /**
+   * Load the image manifest in shards (browse/images-shards/v1/), only the ones the ids on screen
+   * need, instead of the whole images.json first. Falls back to images.json when the shards are
+   * not published. Off by default (v0.9.65).
+   */
+  imageShards?: boolean;
+  /**
    * Gated/encrypted catalog loader (see CatalogSource / DATA-PROTECTION-PLAN.md). When set, the
    * kit uses it to obtain the catalog instead of fetching the public `catalog.json`. Omit for the
    * default public fetch.
@@ -194,7 +201,7 @@ export interface ProductLine {
 }
 
 const config: Required<
-  Omit<BrowseConfig, 'cache' | 'catalogSource' | 'languageStore' | 'savedSearchStore' | 'themedSearch' | 'productLine' | 'onOutboundClick'>
+  Omit<BrowseConfig, 'cache' | 'imageShards' | 'catalogSource' | 'languageStore' | 'savedSearchStore' | 'themedSearch' | 'productLine' | 'onOutboundClick'>
 > = {
   browseUrl: '/browse',
   imgBase: '',
@@ -266,6 +273,7 @@ export function configureBrowse(next: BrowseConfig): void {
   themedSearch = next.themedSearch ?? null;
   productLine = { ...POKEMON_LINE, ...(next.productLine ?? {}) };
   setManifestCache(next.cache ?? null);
+  setImageShards(next.imageShards === true);
   if (moved) resetBrowseData();
 }
 

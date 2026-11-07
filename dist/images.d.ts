@@ -45,6 +45,10 @@ export declare function registerImageManifest(source: SecondaryManifest): void;
 export declare function loadImageManifest(key: string): Promise<void>;
 /** True once any registered secondary has landed (for hosts that want to gate on it). */
 export declare function secondaryManifestReady(key?: string): boolean;
+/** Turn sharded primary loading on or off (configureBrowse). Off is the default and the old path. */
+export declare function setImageShards(on: boolean): void;
+/** FNV-1a 32-bit over the UTF-8 bytes of `id`, as the tcgscan-data publisher computes it. */
+export declare function imageShardHash(id: string): number;
 /**
  * True once the first hydrate attempt has finished, whether or not it produced a manifest. While
  * this is false a hosted manifest is still in flight, so `cardThumbUrl` should paint a placeholder
