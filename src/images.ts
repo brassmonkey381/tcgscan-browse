@@ -232,13 +232,17 @@ export function secondaryManifestReady(key?: string): boolean {
 // (FNV-1a 32 of the id's UTF-8 bytes, mod the index's count, two-digit file name). Same schema as
 // images.json; shards merge into the primary manifest, so every reader above is unchanged.
 //
-// Falls back to the full images.json (the code that shipped before) when the index is missing,
-// and when an id is absent from its own LOADED shard: the pipeline writes shards in the same step
-// as images.json but not atomically with it, so a shard may be one publish behind.
-// A merged partial manifest is never written to the persistent cache (that key holds whole lists).
+// Falls back to the full images.json (the code that shipped before) when the index is missing, and
+// when a shard is from a different publish than the index (the pipeline writes them in one step
+// but not atomically, so a shard may be one publish behind). Both carry `publish`; a shard or an
+// index without one is taken as current. An id absent from a CURRENT shard is a real miss
+// (unmirrored card, placeholder, another game's id): the secondaries and the placeholder answer,
+// and no 1.77 MB download is spent on it (review of 0.9.65, TCGScan-MONOREPO 2026-11-07).
+// Shard mode neither reads nor writes the persistent whole-list cache: a list cached by an
+// unsharded run would keep its hashes forever here, since a primary hit never asks for a shard.
 
 let shardMode = false;
-type ShardIndex = { shards: number };
+type ShardIndex = { shards: number; publish?: string };
 let shardIndex: ShardIndex | 'absent' | null = null;
 let shardIndexStarted = false;
 const shardsLoaded = new Set<number>();
@@ -253,10 +257,13 @@ export function setImageShards(on: boolean): void {
 
 /** FNV-1a 32-bit over the UTF-8 bytes of `id`, as the tcgscan-data publisher computes it. */
 export function imageShardHash(id: string): number {
-  const bytes = unescape(encodeURIComponent(id));
+  const bytes: ArrayLike<number> =
+    typeof TextEncoder === 'function'
+      ? new TextEncoder().encode(id)
+      : Array.from(unescape(encodeURIComponent(id)), (c) => c.charCodeAt(0));
   let h = 2166136261;
   for (let i = 0; i < bytes.length; i += 1) {
-    h ^= bytes.charCodeAt(i);
+    h ^= bytes[i];
     h = Math.imul(h, 16777619) >>> 0;
   }
   return h >>> 0;
@@ -293,7 +300,7 @@ function loadFullPrimary(): void {
       const fresh = (await res.json()) as ImageManifest;
       if (!isCurrent(gen)) return;
       publish(fresh);
-      if (cacheAdapter) {
+      if (cacheAdapter && !shardMode) {
         try {
           await cacheAdapter.setItem(CACHE_KEY, JSON.stringify(fresh));
         } catch {
@@ -320,8 +327,8 @@ function loadShardIndex(): void {
     try {
       const res = await fetch(`${getBrowseUrl()}/images-shards/v1/index.json`);
       if (res.ok) {
-        const body = (await res.json()) as { shards?: number };
-        if (typeof body.shards === 'number' && body.shards > 0) next = { shards: body.shards };
+        const body = (await res.json()) as { shards?: number; publish?: string };
+        if (typeof body.shards === 'number' && body.shards > 0) next = { shards: body.shards, publish: body.publish };
       }
     } catch {
       /* offline or not published: the full list below */
@@ -347,12 +354,9 @@ function requestShardFor(id: string): void {
   }
   if (shardIndex === 'absent') return;
   const n = shardOf(id, shardIndex);
-  if (shardsLoaded.has(n)) {
-    // Its own shard is in and does not hold it: one publish behind, or never mirrored. The full
-    // list answers both.
-    loadFullPrimary();
-    return;
-  }
+  // Its own current shard is in and does not hold it: a real miss, answered by the secondaries
+  // and the placeholder (a shard from another publish never reaches shardsLoaded, see below).
+  if (shardsLoaded.has(n)) return;
   if (shardsStarted.has(n)) return;
   shardsStarted.add(n);
   const gen = browseGeneration();
@@ -364,8 +368,14 @@ function requestShardFor(id: string): void {
         loadFullPrimary();
         return;
       }
-      const part = (await res.json()) as ImageManifest;
+      const part = (await res.json()) as ImageManifest & { publish?: string };
       if (!isCurrent(gen)) return;
+      const index = shardIndex as ShardIndex | 'absent' | null;
+      if (index && index !== 'absent' && index.publish && part.publish && part.publish !== index.publish) {
+        // One publish behind its index: this shard may lack new ids and hold superseded hashes.
+        loadFullPrimary();
+        return;
+      }
       shardsLoaded.add(n);
       mergeShard(part);
     } catch {
@@ -400,8 +410,9 @@ export function hydrateImageManifest(): Promise<void> {
     };
     hydrating = (async () => {
       try {
-        // 1) instant paint from the persisted cache (if the app injected one)
-        if (cacheAdapter) {
+        // 1) instant paint from the persisted cache (if the app injected one). Not in shard mode:
+        // a cached whole list would answer ids with whatever hashes it had, forever.
+        if (cacheAdapter && !shardMode) {
           try {
             const raw = await cacheAdapter.getItem(CACHE_KEY);
             if (raw && !manifest) publishIfCurrent(JSON.parse(raw) as ImageManifest);
