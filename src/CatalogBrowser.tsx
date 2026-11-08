@@ -2703,12 +2703,16 @@ export function CatalogBrowser({
                 </Pressable>
               </Glow>
             ) : null}
-            <Animated.View
-              style={[styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }]}
-              pointerEvents="none">
-              <Text style={styles.newArrow}>←</Text>
-              <Text style={styles.newText}>NEW!</Text>
-            </Animated.View>
+            {/* With a host touch height (theme.controlHeight) the three buttons fill a phone's row,
+                so the nudge, which ran off the edge there, is left out. */}
+            {theme.controlHeight ? null : (
+              <Animated.View
+                style={[styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }]}
+                pointerEvents="none">
+                <Text style={styles.newArrow}>←</Text>
+                <Text style={styles.newText}>NEW!</Text>
+              </Animated.View>
+            )}
           </View>
         ) : featureRowLead ? (
           <View style={styles.triColorRow}>{featureRowLead}</View>
@@ -4133,7 +4137,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     // ONE LINE, ALWAYS (owner, 2026-11-03): language, size and Sort & filter never wrap; at a
     // squeeze Sort & filter gives up width and cuts its label, so the row keeps its height.
     groupRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    sortFilterBtn: { flexShrink: 1, minWidth: 0 },
+    sortFilterBtn: { flexShrink: 1, minWidth: 0, ...(t.controlHeight ? { minHeight: t.controlHeight, justifyContent: 'center' as const } : null) },
     // The phone's Sort & filter sheet (see FilterSheet).
     sheet: {
       position: 'absolute',
@@ -4211,8 +4215,9 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       paddingHorizontal: 14,
       paddingVertical: 8,
       ...tileShadow,
+      ...(t.controlHeight ? { minHeight: t.controlHeight, justifyContent: 'center' as const, paddingVertical: 0 } : null),
     },
-    triColorBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.3, color: t.accentText },
+    triColorBtnText: { fontSize: t.controlHeight ? 15 : 14, fontWeight: '800', letterSpacing: 0.3, color: t.accentText },
     newNudge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
     // The glow: a ring the button's own colour, sitting outside it, that swells and fades every
     // so often — light coming off the button rather than the button changing size.

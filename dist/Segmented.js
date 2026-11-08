@@ -15,7 +15,13 @@ export function Segmented({ options, value, onChange, theme: t, label, }) {
             t.lip ? { borderBottomWidth: 3, borderBottomColor: t.lip } : null,
         ], children: options.map((o) => {
             const on = o.value === value;
-            return (_jsx(Pressable, { onPress: () => (on ? undefined : onChange(o.value)), role: "radio", "aria-checked": on, accessibilityLabel: o.a11y ?? o.label, hitSlop: { top: 6, bottom: 6 }, style: ({ pressed }) => [styles.seg, on && { backgroundColor: t.accent }, pressed && !on && styles.pressed], children: _jsx(Text, { selectable: false, style: [styles.text, { color: on ? t.accentText : t.subtext }], numberOfLines: 1, children: o.label }) }, o.value));
+            return (_jsx(Pressable, { onPress: () => (on ? undefined : onChange(o.value)), role: "radio", "aria-checked": on, accessibilityLabel: o.a11y ?? o.label, hitSlop: { top: 6, bottom: 6 }, style: ({ pressed }) => [
+                    styles.seg,
+                    // A host's touch height (theme.controlHeight): the tray's own padding and border come off it.
+                    t.controlHeight ? { minHeight: t.controlHeight - 6, justifyContent: 'center', paddingHorizontal: 12, minWidth: 40 } : null,
+                    on && { backgroundColor: t.accent },
+                    pressed && !on && styles.pressed,
+                ], children: _jsx(Text, { selectable: false, style: [styles.text, t.controlHeight ? styles.textTall : null, { color: on ? t.accentText : t.subtext }], numberOfLines: 1, children: o.label }) }, o.value));
         }) }));
 }
 const styles = StyleSheet.create({
@@ -24,4 +30,5 @@ const styles = StyleSheet.create({
     seg: { minWidth: 26, alignItems: 'center', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 999 },
     pressed: { opacity: 0.7 },
     text: { fontSize: 12, fontWeight: '700' },
+    textTall: { fontSize: 15 },
 });

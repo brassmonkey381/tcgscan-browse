@@ -67,6 +67,13 @@ export interface BrowseTheme {
   /** Leave out the 'Cards · 1×1' section label above the search (tcgscan-app, 2026-11-03: it takes
    *  room and names nothing a BiBo user needs). Omitted = drawn, as michi-maker's picker wants. */
   hideSectionLabel?: boolean;
+  /**
+   * The touch height of the kit's small controls, in points: the feature row's buttons, the
+   * language and size groups, and Sort & filter (michi-maker's MIC-020, 2026-11-08: 24 to 30 pt
+   * controls on a phone). Set, they take this height and 15 pt text, and the feature row's NEW!
+   * nudge is left out so the row fits a phone. Omitted = today's snug controls, unchanged.
+   */
+  controlHeight?: number;
   /** The quick-add pill on card and sealed tiles: its fill and its glyph. Omitted = `accent` and
    *  `accentText`, as before (tcgscan-app tries BiBo's cyber cyan here, owner 2026-11-03). */
   quickFill?: string;

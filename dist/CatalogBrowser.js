@@ -1998,7 +1998,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 setFocusIdx(-1);
         },
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, _jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] })] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : theme.hideSectionLabel ? null : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, theme.controlHeight ? null : (_jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] }))] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : theme.hideSectionLabel ? null : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
                                     ? `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards`
                                     : `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.searchPlaceholder ?? theme.faint, autoCorrect: false, clearButtonMode: "while-editing", 
                                 // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input
@@ -2374,7 +2374,7 @@ function makeStyles(t, taxTileHeight) {
         // ONE LINE, ALWAYS (owner, 2026-11-03): language, size and Sort & filter never wrap; at a
         // squeeze Sort & filter gives up width and cuts its label, so the row keeps its height.
         groupRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-        sortFilterBtn: { flexShrink: 1, minWidth: 0 },
+        sortFilterBtn: { flexShrink: 1, minWidth: 0, ...(t.controlHeight ? { minHeight: t.controlHeight, justifyContent: 'center' } : null) },
         // The phone's Sort & filter sheet (see FilterSheet).
         sheet: {
             position: 'absolute',
@@ -2452,8 +2452,9 @@ function makeStyles(t, taxTileHeight) {
             paddingHorizontal: 14,
             paddingVertical: 8,
             ...tileShadow,
+            ...(t.controlHeight ? { minHeight: t.controlHeight, justifyContent: 'center', paddingVertical: 0 } : null),
         },
-        triColorBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.3, color: t.accentText },
+        triColorBtnText: { fontSize: t.controlHeight ? 15 : 14, fontWeight: '800', letterSpacing: 0.3, color: t.accentText },
         newNudge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
         // The glow: a ring the button's own colour, sitting outside it, that swells and fades every
         // so often — light coming off the button rather than the button changing size.

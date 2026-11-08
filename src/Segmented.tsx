@@ -51,8 +51,14 @@ export function Segmented<T extends string>({
             aria-checked={on}
             accessibilityLabel={o.a11y ?? o.label}
             hitSlop={{ top: 6, bottom: 6 }}
-            style={({ pressed }) => [styles.seg, on && { backgroundColor: t.accent }, pressed && !on && styles.pressed]}>
-            <Text selectable={false} style={[styles.text, { color: on ? t.accentText : t.subtext }]} numberOfLines={1}>
+            style={({ pressed }) => [
+              styles.seg,
+              // A host's touch height (theme.controlHeight): the tray's own padding and border come off it.
+              t.controlHeight ? { minHeight: t.controlHeight - 6, justifyContent: 'center', paddingHorizontal: 12, minWidth: 40 } : null,
+              on && { backgroundColor: t.accent },
+              pressed && !on && styles.pressed,
+            ]}>
+            <Text selectable={false} style={[styles.text, t.controlHeight ? styles.textTall : null, { color: on ? t.accentText : t.subtext }]} numberOfLines={1}>
               {o.label}
             </Text>
           </Pressable>
@@ -68,4 +74,5 @@ const styles = StyleSheet.create({
   seg: { minWidth: 26, alignItems: 'center', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 999 },
   pressed: { opacity: 0.7 },
   text: { fontSize: 12, fontWeight: '700' },
+  textTall: { fontSize: 15 },
 });
