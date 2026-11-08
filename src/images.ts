@@ -133,8 +133,15 @@ export function manifestUrl(id: string, field: string): string | undefined {
   // A miss on a LOADED primary is the first evidence that a registered second source might be
   // needed, so it is what pays for fetching one. Gated on the primary being loaded: before that,
   // every id "misses" and a single-game host would pull manifests it will never read.
-  if (manifest && primaryCovers(id) && registered.size > started.size) {
-    for (const key of registered.keys()) void loadImageManifest(key);
+  if (manifest && primaryCovers(id)) {
+    if (shardMode) {
+      // SHARDS FOR THE OTHER GAMES TOO (v0.9.67): one id the primary does not know used to pull
+      // every registered game's whole list (michi's Discover: 3.6 MB of Magic and Yu-Gi-Oh lists
+      // for one stray id). Each game now answers from the shard that id falls in.
+      for (const key of registered.keys()) requestSecondaryShard(key, id);
+    } else if (registered.size > started.size) {
+      for (const key of registered.keys()) void loadImageManifest(key);
+    }
   }
   return undefined;
 }
@@ -191,7 +198,7 @@ export function loadImageManifest(key: string): Promise<void> {
     notify();
   };
   return (async () => {
-    if (cacheAdapter && source.cacheKey) {
+    if (cacheAdapter && source.cacheKey && !shardMode) {
       try {
         const raw = await cacheAdapter.getItem(source.cacheKey);
         if (raw && !secondaries.has(source.key)) publish(JSON.parse(raw) as ImageManifest);
@@ -204,7 +211,7 @@ export function loadImageManifest(key: string): Promise<void> {
       if (!res.ok) return;
       const fresh = (await res.json()) as ImageManifest;
       publish(fresh);
-      if (cacheAdapter && source.cacheKey) {
+      if (cacheAdapter && source.cacheKey && !shardMode) {
         try {
           await cacheAdapter.setItem(source.cacheKey, JSON.stringify(fresh));
         } catch {
@@ -213,6 +220,92 @@ export function loadImageManifest(key: string): Promise<void> {
       }
     } catch {
       started.delete(key); // let a later miss retry rather than pinning the failure
+    }
+  })();
+}
+
+type SecondaryShards = {
+  index: ShardIndex | 'absent' | null;
+  indexStarted: boolean;
+  loaded: Set<number>;
+  started: Set<number>;
+  waiting: Set<string>;
+};
+const secondaryShards = new Map<string, SecondaryShards>();
+
+function shardsFor(key: string): SecondaryShards {
+  let st = secondaryShards.get(key);
+  if (!st) {
+    st = { index: null, indexStarted: false, loaded: new Set(), started: new Set(), waiting: new Set() };
+    secondaryShards.set(key, st);
+  }
+  return st;
+}
+
+function mergeSecondary(key: string, part: ImageManifest): void {
+  const have = secondaries.get(key);
+  secondaries.set(key, have ? { ...have, cards: { ...have.cards, ...part.cards } } : { schema: part.schema, fields: part.fields, base: part.base, cards: { ...part.cards } });
+  notify();
+}
+
+/**
+ * Shard mode's answer for another game: that game's `images-shards/v1/` index, then the one shard
+ * the id falls in. The whole-list path (loadImageManifest) is the fallback when the game has no
+ * shards, or when a shard is from another publish than its index. Secondaries are keyed by their
+ * own URLs and survive a game switch, so no generation check here, as with loadImageManifest.
+ */
+function requestSecondaryShard(key: string, id: string): void {
+  const source = registered.get(key);
+  if (!source || started.has(key)) return; // its whole list is in, or on its way
+  const st = shardsFor(key);
+  if (st.index === null) {
+    st.waiting.add(id);
+    if (st.indexStarted) return;
+    st.indexStarted = true;
+    void (async () => {
+      let next: ShardIndex | 'absent' = 'absent';
+      try {
+        const res = await fetch(`${source.browseUrl}/images-shards/v1/index.json`);
+        if (res.ok) {
+          const body = (await res.json()) as { shards?: number; publish?: string };
+          if (typeof body.shards === 'number' && body.shards > 0) next = { shards: body.shards, publish: body.publish };
+        }
+      } catch {
+        /* not published, or offline: the whole list */
+      }
+      st.index = next;
+      if (next === 'absent') {
+        st.waiting.clear();
+        void loadImageManifest(key);
+        return;
+      }
+      const ids = [...st.waiting];
+      st.waiting.clear();
+      ids.forEach((w) => requestSecondaryShard(key, w));
+    })();
+    return;
+  }
+  if (st.index === 'absent') return;
+  const index = st.index;
+  const n = shardOf(id, index);
+  if (st.loaded.has(n) || st.started.has(n)) return; // a real miss for this game, or on its way
+  st.started.add(n);
+  void (async () => {
+    try {
+      const res = await fetch(`${source.browseUrl}/images-shards/v1/${String(n).padStart(2, '0')}.json`);
+      if (!res.ok) {
+        void loadImageManifest(key);
+        return;
+      }
+      const part = (await res.json()) as ImageManifest & { publish?: string };
+      if (index.publish && part.publish && part.publish !== index.publish) {
+        void loadImageManifest(key);
+        return;
+      }
+      st.loaded.add(n);
+      mergeSecondary(key, part);
+    } catch {
+      st.started.delete(n);
     }
   })();
 }
