@@ -2373,8 +2373,13 @@ function makeStyles(t, taxTileHeight) {
         // Language, size, then Sort & filter at the far end; wraps rather than scrolls on a narrow embed.
         // ONE LINE, ALWAYS (owner, 2026-11-03): language, size and Sort & filter never wrap; at a
         // squeeze Sort & filter gives up width and cuts its label, so the row keeps its height.
-        groupRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-        sortFilterBtn: { flexShrink: 1, minWidth: 0, ...(t.controlHeight ? { minHeight: t.controlHeight, justifyContent: 'center' } : null) },
+        // With a host touch height (theme.controlHeight) the taller groups no longer share a phone's line
+        // with Sort & filter, which was squeezed to a sliver: the row wraps instead, and Sort & filter keeps
+        // its whole label on the next line (michi MIC-017, 2026-11-08).
+        groupRow: { flexDirection: 'row', alignItems: 'center', gap: 6, ...(t.controlHeight ? { flexWrap: 'wrap', rowGap: 8 } : null) },
+        sortFilterBtn: t.controlHeight
+            ? { minHeight: t.controlHeight, justifyContent: 'center', flexShrink: 0 }
+            : { flexShrink: 1, minWidth: 0 },
         // The phone's Sort & filter sheet (see FilterSheet).
         sheet: {
             position: 'absolute',
