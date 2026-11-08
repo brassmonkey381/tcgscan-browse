@@ -2437,10 +2437,11 @@ function makeStyles(t, taxTileHeight) {
             paddingVertical: 6,
         },
         pocketSimilarText: { fontSize: 12, fontWeight: '600', color: t.link },
+        // With a host touch height (theme.controlHeight) the save and help buttons are that tall too.
         helpBtn: {
-            width: 30,
-            height: 30,
-            borderRadius: 15,
+            width: t.controlHeight ?? 30,
+            height: t.controlHeight ?? 30,
+            borderRadius: (t.controlHeight ?? 30) / 2,
             borderWidth: 1,
             borderColor: t.border,
             alignItems: 'center',
