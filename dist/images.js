@@ -231,7 +231,10 @@ function requestSecondaryShard(key, id) {
                 }
             }
             catch {
-                /* not published, or offline: the whole list */
+                // A network failure is not an answer: leave the game unasked, so the next miss asks for
+                // its index again rather than committing it to the whole list (review of 0.9.67).
+                st.indexStarted = false;
+                return;
             }
             st.index = next;
             if (next === 'absent') {
@@ -245,8 +248,12 @@ function requestSecondaryShard(key, id) {
         })();
         return;
     }
-    if (st.index === 'absent')
+    // No shards for this game: its whole list, which `started` keeps to one fetch at a time and lets
+    // a later miss retry after a failure, as the path before shards did.
+    if (st.index === 'absent') {
+        void loadImageManifest(key);
         return;
+    }
     const index = st.index;
     const n = shardOf(id, index);
     if (st.loaded.has(n) || st.started.has(n))
