@@ -351,7 +351,7 @@ export function describeExpansions(list, shown = 4, prefix = 'Also searching:') 
     });
     return `${prefix} ${parts.join('; ')}`;
 }
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset = 0, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', themeServer, themeTools: themeToolsProp, ownedIds, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset = 0, renderSheetDone, featureRowLead, compactHeader = false, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', themeServer, themeTools: themeToolsProp, ownedIds, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
     // given, else the session-sticky browseState. The toolbar toggle overrides locally; when the
@@ -493,6 +493,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const synonymsAvailable = hasThemeSynonyms(similarGame) && !similarWordsAlways();
     const [serverExpanded, setServerExpanded] = useState([]);
     const [themeExpanded, setThemeExpanded] = useState([]);
+    // The compact header's fold (compactHeader): folded by the handle or by scrolling the cards down.
+    const [headerFolded, setHeaderFolded] = useState(false);
+    const [viewOpen, setViewOpen] = useState(false);
+    const foldY = useRef(0);
     const similarEventRef = useRef(onSimilarWordsEvent);
     similarEventRef.current = onSimilarWordsEvent;
     const reportSearched = (game, expanded, hits) => {
@@ -1341,6 +1345,17 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const onListScroll = (e) => {
         listOffset.current = e.nativeEvent.contentOffset.y;
         listHeight.current = e.nativeEvent.layoutMeasurement.height;
+        if (compactHeader) {
+            // Fold on crossing 120 px going down, open again at the very top. Crossings only, so a tap
+            // on the handle is not undone by the next scroll event.
+            const y = e.nativeEvent.contentOffset.y;
+            const prev = foldY.current;
+            foldY.current = y;
+            if (prev <= 120 && y > 120)
+                setHeaderFolded(true);
+            else if (prev >= 8 && y < 8)
+                setHeaderFolded(false);
+        }
     };
     const onListContentSizeChange = (_w, h) => {
         const vh = listHeight.current;
@@ -1986,7 +2001,9 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // button, so it never grows and wraps off the group row (owner's screenshot, 2026-11-03).
     const sortFilterOpen = sheetMode || !isCardLevel ? toolsOpen : filtersOpen;
     const sortFilterLit = sortFilterOpen || activeFilterCount > 0 || parsed.owned != null;
-    const sortFilterControl = analyticsView ? null : (_jsx(Pressable, { onPress: () => (sheetMode || !isCardLevel ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v)), role: "button", "aria-expanded": sortFilterOpen, accessibilityLabel: `Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`, style: [styles.facetToggle, styles.sortFilterBtn, sortFilterLit && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn], numberOfLines: 1, children: "Sort & filter \u25BE" }) }));
+    const sortFilterControl = analyticsView ? null : (_jsx(Pressable, { onPress: () => (sheetMode || !isCardLevel ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v)), role: "button", "aria-expanded": sortFilterOpen, accessibilityLabel: `Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`, style: [styles.facetToggle, styles.sortFilterBtn, sortFilterLit && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn], numberOfLines: 1, children: compactHeader ? 'Filters ▾' : 'Sort & filter ▾' }) }));
+    // The compact header's two rows (compactHeader): game | Filters | View, then Color | Theme.
+    const compactRows = headerFolded ? null : (_jsxs(_Fragment, { children: [_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, sortFilterControl, _jsx(Pressable, { onPress: () => setViewOpen((v) => !v), role: "button", "aria-expanded": viewOpen, accessibilityLabel: "View: card size and printing language", testID: "header-view", style: [styles.facetToggle, styles.sortFilterBtn, viewOpen && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, viewOpen && styles.facetToggleTextOn], numberOfLines: 1, children: "View \u25BE" }) })] }), viewOpen ? (_jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize })] })) : null, featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) })) : null, onThemeSearch ? (_jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, testID: "header-theme", children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) })) : null] })) : null] }));
     // The filter rows, built once and placed either inline (a wide screen) or in the sheet (a
     // compact one). `pinned` keeps the Filters panel open: in the sheet it is the whole point.
     // Sort, which a wide screen puts at the end of the filter strip and the phone's sheet puts at
@@ -2039,7 +2056,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 setFocusIdx(-1);
         },
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, theme.controlHeight || compactSearch ? null : (_jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] }))] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : theme.hideSectionLabel ? null : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), synonymsAvailable && !isLocked(lockedFeatures, 'themeSearch') ? (_jsxs(View, { style: styles.similarRow, children: [_jsxs(Pressable, { onPress: () => {
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [compactHeader ? compactRows : featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, theme.controlHeight || compactSearch ? null : (_jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] }))] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : theme.hideSectionLabel ? null : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), synonymsAvailable && !isLocked(lockedFeatures, 'themeSearch') ? (_jsxs(View, { style: styles.similarRow, children: [_jsxs(Pressable, { onPress: () => {
                                     setSimilarOn(!similarOn);
                                     similarEventRef.current?.({ type: 'toggled', game: similarGame, on: !similarOn });
                                 }, accessibilityRole: "switch", accessibilityState: { checked: similarOn }, accessibilityLabel: "Similar words: search a theme word together with its synonyms", testID: "similar-words-switch", style: [styles.similarBtn, similarOn && styles.similarBtnOn], children: [_jsx(View, { style: [styles.similarKnob, similarOn && styles.similarKnobOn] }), _jsx(Text, { style: [styles.similarText, similarOn && styles.similarTextOn], children: "Similar words" })] }), similarOn && (themeServer ? themeExpanded : serverExpanded).length ? (_jsx(Text, { style: styles.similarAlso, numberOfLines: compactSearch ? 1 : 2, testID: "similar-words-also", children: compactSearch
@@ -2049,11 +2066,11 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     : `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.searchPlaceholder ?? theme.faint, autoCorrect: false, clearButtonMode: "while-editing", 
                                 // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input
                                 // under 16px, and the zoom stays after the search. The compact box is the phone's.
-                                style: [styles.search, styles.searchFlex, compactSearch && styles.searchCompact] }), _jsxs(View, { style: styles.searchToolsInline, children: [canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), _jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize }), _jsx(View, { style: styles.controlsSpacer }), sortFilterControl] }), shelfToolsOpen && !sheetMode ? shelfBar(false) : null, sheetMode ? null : themeBar, sheetMode ? null : savedChips, !warm && !coldSearch ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: loadLabel(catalogStatus, coldSearch) })] }), catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+                                style: [styles.search, styles.searchFlex, compactSearch && styles.searchCompact] }), _jsxs(View, { style: styles.searchToolsInline, children: [canSaveSearch ? (_jsx(Pressable, { onPress: () => toggleSavedSearch(currentSearch()), style: [styles.helpBtn, searchSaved && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: searchSaved ? 'Unsave this search' : 'Save this search', children: _jsx(Text, { style: [styles.helpBtnText, searchSaved && styles.helpBtnTextOn], children: searchSaved ? '★' : '☆' }) })) : null, _jsx(Pressable, { onPress: () => setHelpOpen((v) => !v), style: [styles.helpBtn, helpOpen && styles.helpBtnOn], hitSlop: 6, accessibilityLabel: "Search syntax help", children: _jsx(Text, { style: [styles.helpBtnText, helpOpen && styles.helpBtnTextOn], children: "?" }) })] })] }), compactHeader ? (_jsxs(Pressable, { onPress: () => setHeaderFolded((f) => !f), accessibilityRole: "button", accessibilityState: { expanded: !headerFolded }, accessibilityLabel: headerFolded ? 'Show filters and view' : 'Hide filters', testID: "header-fold", style: styles.foldHandle, children: [_jsx(Text, { style: styles.foldHandleText, children: headerFolded ? '▾ Filters & view' : '▴ Hide filters' }), headerFolded && sortFilterLit ? _jsx(View, { style: styles.foldDot }) : null] })) : (_jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize }), _jsx(View, { style: styles.controlsSpacer }), sortFilterControl] })), shelfToolsOpen && !sheetMode ? shelfBar(false) : null, sheetMode ? null : themeBar, sheetMode ? null : savedChips, !warm && !coldSearch ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: loadLabel(catalogStatus, coldSearch) })] }), catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
                         !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, isCardLevel && !analyticsView && !sheetMode ? cardBar(false) : null, taxBarOn ? (_jsx(TaxonomyBar, { styles: styles, 
                         // The series count rides this bar at the top level (one row, not two: owner, 2026-10-25).
-                        lead: !seriesId && !searching && !similarTo ? `${series.length} series` : undefined })) : null, searching ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [themeServerActive
+                        lead: !seriesId && !searching && !similarTo ? `${series.length} series` : undefined })) : null, searching && !(compactHeader && headerFolded) ? (_jsxs(View, { style: styles.metaRow, children: [_jsxs(Text, { style: styles.meta, numberOfLines: 1, children: [themeServerActive
                                         ? // The theme meter: the server's count (theme + words + frame + type), with the
                                             // device-only filters' cut shown as "N of M" once every hit is here.
                                             themeClamped
@@ -2517,6 +2534,19 @@ function makeStyles(t, taxTileHeight) {
         helpBtnTextOn: { color: t.accentText },
         // Tri-Color Search — prominent, above the search box, with an oscillating "NEW!" nudge.
         triColorRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+        foldHandle: {
+            alignSelf: 'center',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            minHeight: t.controlHeight ?? 36,
+            paddingHorizontal: 16,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: t.border,
+        },
+        foldHandleText: { fontSize: t.controlHeight ? 15 : 14, fontWeight: '700', color: t.accent },
+        foldDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.accent },
         triColorBtn: {
             backgroundColor: t.accent,
             borderRadius: 9,

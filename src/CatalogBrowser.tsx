@@ -659,6 +659,13 @@ interface CatalogBrowserProps {
    */
   featureRowLead?: ReactNode;
   /**
+   * THE COMPACT HEADER (michi MIC-017, owner 2026-11-09). Opt-in. Row 1: the lead (game picker),
+   * Filters, View (size and printing language, in a small panel); row 2: Color and Theme; then the
+   * search. A handle under the search folds everything but the search away, and scrolling the cards
+   * down folds it too; back at the top it opens again. Off, the header is as before.
+   */
+  compactHeader?: boolean;
+  /**
    * Open a color search (app-supplied UI). When set, a "Color" button appears in the search row;
    * the app opens its color picker and returns results via `sendBrowseCommand({type:'showCards'})`.
    * Omitted → no color button. Lives in the browser so every surface (browse + binder picker) has it.
@@ -802,6 +809,7 @@ export function CatalogBrowser({
   overlayTopInset = 0,
   renderSheetDone,
   featureRowLead,
+  compactHeader = false,
   onColorSearch,
   onThemeSearch,
   onSimilarWordsEvent,
@@ -968,6 +976,10 @@ export function CatalogBrowser({
   const synonymsAvailable = hasThemeSynonyms(similarGame) && !similarWordsAlways();
   const [serverExpanded, setServerExpanded] = useState<SimilarExpansion[]>([]);
   const [themeExpanded, setThemeExpanded] = useState<SimilarExpansion[]>([]);
+  // The compact header's fold (compactHeader): folded by the handle or by scrolling the cards down.
+  const [headerFolded, setHeaderFolded] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const foldY = useRef(0);
   const similarEventRef = useRef(onSimilarWordsEvent);
   similarEventRef.current = onSimilarWordsEvent;
   const reportSearched = (game: string, expanded: readonly SimilarExpansion[] | undefined, hits: number) => {
@@ -1857,6 +1869,15 @@ export function CatalogBrowser({
   const onListScroll = (e: { nativeEvent: { contentOffset: { y: number }; layoutMeasurement: { height: number } } }) => {
     listOffset.current = e.nativeEvent.contentOffset.y;
     listHeight.current = e.nativeEvent.layoutMeasurement.height;
+    if (compactHeader) {
+      // Fold on crossing 120 px going down, open again at the very top. Crossings only, so a tap
+      // on the handle is not undone by the next scroll event.
+      const y = e.nativeEvent.contentOffset.y;
+      const prev = foldY.current;
+      foldY.current = y;
+      if (prev <= 120 && y > 120) setHeaderFolded(true);
+      else if (prev >= 8 && y < 8) setHeaderFolded(false);
+    }
   };
   const onListContentSizeChange = (_w: number, h: number) => {
     const vh = listHeight.current;
@@ -2597,9 +2618,49 @@ export function CatalogBrowser({
       accessibilityLabel={`Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`}
       style={[styles.facetToggle, styles.sortFilterBtn, sortFilterLit && styles.facetToggleOn]}>
       <Text style={[styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn]} numberOfLines={1}>
-        Sort & filter ▾
+        {compactHeader ? 'Filters ▾' : 'Sort & filter ▾'}
       </Text>
     </Pressable>
+  );
+  // The compact header's two rows (compactHeader): game | Filters | View, then Color | Theme.
+  const compactRows = headerFolded ? null : (
+    <>
+      <View style={styles.triColorRow}>
+        {featureRowLead}
+        {sortFilterControl}
+        <Pressable
+          onPress={() => setViewOpen((v) => !v)}
+          role="button"
+          aria-expanded={viewOpen}
+          accessibilityLabel="View: card size and printing language"
+          testID="header-view"
+          style={[styles.facetToggle, styles.sortFilterBtn, viewOpen && styles.facetToggleOn]}>
+          <Text style={[styles.facetToggleText, viewOpen && styles.facetToggleTextOn]} numberOfLines={1}>
+            View ▾
+          </Text>
+        </Pressable>
+      </View>
+      {viewOpen ? (
+        <View style={styles.groupRow}>
+          {languageToggleVisible ? <LanguageToggle theme={themeProp} /> : null}
+          <SizeChips theme={theme} size={cardSize} onPickSize={pickCardSize} />
+        </View>
+      ) : null}
+      {featureRow ? (
+        <View style={styles.triColorRow}>
+          {onColorSearch ? (
+            <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel={colorSearchLabel}>
+              <Text style={styles.triColorBtnText}>{colorSearchLabel}</Text>
+            </Pressable>
+          ) : null}
+          {onThemeSearch ? (
+            <Pressable onPress={onThemeSearch} style={styles.triColorBtn} accessibilityLabel={themeSearchLabel} testID="header-theme">
+              <Text style={styles.triColorBtnText}>{themeSearchLabel}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </>
   );
 
   // The filter rows, built once and placed either inline (a wide screen) or in the sheet (a
@@ -2741,7 +2802,7 @@ export function CatalogBrowser({
   return (
     <View style={styles.browser} onLayout={onLayout}>
       <View style={styles.controls}>
-        {featureRow ? (
+        {compactHeader ? compactRows : featureRow ? (
           <View style={styles.triColorRow}>
             {featureRowLead}
             {onColorSearch ? (
@@ -2855,12 +2916,27 @@ export function CatalogBrowser({
           is here before a search even starts. The language rides near the search because it
           applies to the SEARCH, not the results: flipping it re-runs every call against the server.
         */}
-        <View style={styles.groupRow}>
-          {languageToggleVisible ? <LanguageToggle theme={themeProp} /> : null}
-          <SizeChips theme={theme} size={cardSize} onPickSize={pickCardSize} />
-          <View style={styles.controlsSpacer} />
-          {sortFilterControl}
-        </View>
+        {compactHeader ? (
+          // The handle (compactHeader): says what it does, and carries a dot while filters are on
+          // and folded away, so a folded header never hides that the results are filtered.
+          <Pressable
+            onPress={() => setHeaderFolded((f) => !f)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: !headerFolded }}
+            accessibilityLabel={headerFolded ? 'Show filters and view' : 'Hide filters'}
+            testID="header-fold"
+            style={styles.foldHandle}>
+            <Text style={styles.foldHandleText}>{headerFolded ? '▾ Filters & view' : '▴ Hide filters'}</Text>
+            {headerFolded && sortFilterLit ? <View style={styles.foldDot} /> : null}
+          </Pressable>
+        ) : (
+          <View style={styles.groupRow}>
+            {languageToggleVisible ? <LanguageToggle theme={themeProp} /> : null}
+            <SizeChips theme={theme} size={cardSize} onPickSize={pickCardSize} />
+            <View style={styles.controlsSpacer} />
+            {sortFilterControl}
+          </View>
+        )}
         {/* The shelf's Sort & filter row: the same FacetBar as the cards get, so Filters (Year,
             then the card facets) and Collection sit where they do on a set, Sort at its end. */}
         {shelfToolsOpen && !sheetMode ? shelfBar(false) : null}
@@ -2919,7 +2995,7 @@ export function CatalogBrowser({
           the picture grid, below the chips"): the results count, or where you are (the breadcrumb)
           with Sets | Analytics at its end. It names what the grid under it is, so it sits on it.
         */}
-        {searching ? (
+        {searching && !(compactHeader && headerFolded) ? (
           <View style={styles.metaRow}>
             {/* Echo the PARSED query, not the raw text, the user sees exactly how
                 their input was interpreted and can tweak it precisely. */}
@@ -4321,6 +4397,19 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     helpBtnTextOn: { color: t.accentText },
     // Tri-Color Search — prominent, above the search box, with an oscillating "NEW!" nudge.
     triColorRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+    foldHandle: {
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      minHeight: t.controlHeight ?? 36,
+      paddingHorizontal: 16,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    foldHandleText: { fontSize: t.controlHeight ? 15 : 14, fontWeight: '700', color: t.accent },
+    foldDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.accent },
     triColorBtn: {
       backgroundColor: t.accent,
       borderRadius: 9,

@@ -205,6 +205,13 @@ interface CatalogBrowserProps {
      */
     featureRowLead?: ReactNode;
     /**
+     * THE COMPACT HEADER (michi MIC-017, owner 2026-11-09). Opt-in. Row 1: the lead (game picker),
+     * Filters, View (size and printing language, in a small panel); row 2: Color and Theme; then the
+     * search. A handle under the search folds everything but the search away, and scrolling the cards
+     * down folds it too; back at the top it opens again. Off, the header is as before.
+     */
+    compactHeader?: boolean;
+    /**
      * Open a color search (app-supplied UI). When set, a "Color" button appears in the search row;
      * the app opens its color picker and returns results via `sendBrowseCommand({type:'showCards'})`.
      * Omitted → no color button. Lives in the browser so every surface (browse + binder picker) has it.
@@ -310,5 +317,5 @@ export type SimilarWordsEvent = {
 };
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
 export declare function describeExpansions(list: readonly SimilarExpansion[], shown?: number, prefix?: string): string;
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};
