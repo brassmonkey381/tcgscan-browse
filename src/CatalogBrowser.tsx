@@ -978,6 +978,8 @@ export function CatalogBrowser({
   const [themeExpanded, setThemeExpanded] = useState<SimilarExpansion[]>([]);
   // The compact header's fold (compactHeader): folded by the handle or by scrolling the cards down.
   const [headerFolded, setHeaderFolded] = useState(false);
+  /** Folded = only the search and the handle show; every strip under the search hides too. */
+  const headerAway = compactHeader && headerFolded;
   const [viewOpen, setViewOpen] = useState(false);
   const foldY = useRef(0);
   const similarEventRef = useRef(onSimilarWordsEvent);
@@ -2939,13 +2941,13 @@ export function CatalogBrowser({
         )}
         {/* The shelf's Sort & filter row: the same FacetBar as the cards get, so Filters (Year,
             then the card facets) and Collection sit where they do on a set, Sort at its end. */}
-        {shelfToolsOpen && !sheetMode ? shelfBar(false) : null}
+        {shelfToolsOpen && !sheetMode && !headerAway ? shelfBar(false) : null}
         {/* The theme toolbar: shown while a themed query is on screen and the registry offers it
             (a secondary game's `theme_search`, or Pokemon's `search_cards` with `themeTools`).
             Its controls are server parameters. */}
-        {sheetMode ? null : themeBar}
+        {sheetMode || headerAway ? null : themeBar}
         {/* Saved-search chips: one tap re-runs the starred search; long-press removes it. */}
-        {sheetMode ? null : savedChips}
+        {sheetMode || headerAway ? null : savedChips}
         {/* The load readout, only while there is nothing to search with yet. Where server search
             answers in the meantime (coldSearch) the readout said "Server search, instant", a line
             about plumbing the owner asked to remove (2026-11-03): the search simply works, and the
@@ -2981,9 +2983,9 @@ export function CatalogBrowser({
             S/M/L on the right (Select rides the results line above: see `selectControl`); a spacer between that wraps the right half onto its own line when
             the width runs out. This was five rows (badge, results, filters, sort, select), each
             mostly empty; a browse should start with cards, not chrome. */}
-        {isCardLevel && !analyticsView && !sheetMode ? cardBar(false) : null}
+        {isCardLevel && !analyticsView && !sheetMode && !headerAway ? cardBar(false) : null}
         {/* The series count, on the top shelf. */}
-        {taxBarOn ? (
+        {taxBarOn && !headerAway ? (
           <TaxonomyBar
             styles={styles}
             // The series count rides this bar at the top level (one row, not two: owner, 2026-10-25).
