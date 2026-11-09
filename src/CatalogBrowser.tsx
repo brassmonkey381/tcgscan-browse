@@ -672,6 +672,13 @@ interface CatalogBrowserProps {
    */
   compactHeader?: boolean;
   /**
+   * HEADLESS (MIC-017 lab, opt-in): hide every control above the results (game and feature row,
+   * search, group row, filter strips, theme toolbar, saved chips) and keep the results bar and the
+   * grid. The host draws its own header and drives this browser with sendBrowseCommand({ type:
+   * 'search', query }), which takes the full grammar (type:, set:, rarity:, sort:...).
+   */
+  headless?: boolean;
+  /**
    * LAYOUT CHOICES (michi style picker, MIC-017). Each defaults to today's width-based behaviour
    * (the phone's arrangement below COMPACT_BAR_W, the open strips above it); `true` forces the
    * phone's arrangement at every width:
@@ -827,6 +834,7 @@ export function CatalogBrowser({
   renderSheetDone,
   featureRowLead,
   compactHeader = false,
+  headless = false,
   layout,
   onColorSearch,
   onThemeSearch,
@@ -997,7 +1005,7 @@ export function CatalogBrowser({
   // The compact header's fold (compactHeader): folded by the handle or by scrolling the cards down.
   const [headerFolded, setHeaderFolded] = useState(false);
   /** Folded = only the search and the handle show; every strip under the search hides too. */
-  const headerAway = compactHeader && headerFolded;
+  const headerAway = headless || (compactHeader && headerFolded);
   const [viewOpen, setViewOpen] = useState(false);
   const foldY = useRef(0);
   /** A desk-wide compact header has no fold (owner, 2026-11-09): kept current below, read by the scroll fold. */
@@ -2844,7 +2852,7 @@ export function CatalogBrowser({
   return (
     <View style={styles.browser} onLayout={onLayout}>
       <View style={styles.controls}>
-        {compactHeader ? compactRows : featureRow ? (
+        {headless ? null : compactHeader ? compactRows : featureRow ? (
           <View style={styles.triColorRow}>
             {featureRowLead}
             {onColorSearch ? (
@@ -2881,7 +2889,7 @@ export function CatalogBrowser({
         )}
         {/* SIMILAR WORDS (MIC-024): the switch, shown only when the host gave this game synonym
             groups; and, when on and a word widened, which words came along. */}
-        {synonymsAvailable && !isLocked(lockedFeatures, 'themeSearch') ? (
+        {!headless && synonymsAvailable && !isLocked(lockedFeatures, 'themeSearch') ? (
           <View style={styles.similarRow}>
             <Pressable
               onPress={() => {
@@ -2915,6 +2923,7 @@ export function CatalogBrowser({
           tap away. `compactSearch` is derived from the MEASURED container, not the window, so a
           narrow embed (the binder card picker) gets the same treatment as a narrow phone.
         */}
+        {headless ? null : (
         <View style={styles.searchRow}>
           <TextInput
             value={cardQuery}
@@ -2952,13 +2961,14 @@ export function CatalogBrowser({
             </Pressable>
           </View>
         </View>
+        )}
         {/*
           THE GROUP ROW (owner, 2026-11-03): under the search, never folded, at every level. The
           language bound and the card size are each one button group (pick one), and Sort & filter
           is here before a search even starts. The language rides near the search because it
           applies to the SEARCH, not the results: flipping it re-runs every call against the server.
         */}
-        {compactHeader && wideHeader ? null : compactHeader ? (
+        {headless || (compactHeader && wideHeader) ? null : compactHeader ? (
           // The handle (compactHeader): says what it does, and carries a dot while filters are on
           // and folded away, so a folded header never hides that the results are filtered.
           <Pressable
