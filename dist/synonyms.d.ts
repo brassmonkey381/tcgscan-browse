@@ -19,6 +19,12 @@ export interface ThemeSynonymConfig {
     rank?: SimilarRank;
     /** Server cap on members per field (the contract says 48). */
     maxMembers?: number;
+    /**
+     * ALWAYS ON, NO SWITCH (michi, owner 2026-11-09: "this is the new theme search result set").
+     * Every grouped word searches its group; the browser shows neither the switch nor the
+     * "Also searching" line, and the store is not read.
+     */
+    always?: boolean;
 }
 /** A wire field: plain fields carry a string, `theme_any` carries its members. */
 export type WireField = {
@@ -39,6 +45,8 @@ export interface SimilarExpansion {
 }
 /** Hand the kit its groups (and optionally a store for the switch). Call once at startup. */
 export declare function configureThemeSynonyms(next: ThemeSynonymConfig | null): void;
+/** True when the host runs synonyms always on: no switch, no hint line. */
+export declare function similarWordsAlways(): boolean;
 /** True when the host gave this game any groups: the switch is only shown then. */
 export declare function hasThemeSynonyms(game?: string): boolean;
 /**

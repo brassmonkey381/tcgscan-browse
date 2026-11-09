@@ -23,6 +23,10 @@ export function configureThemeSynonyms(next) {
     indexes.clear();
     listeners.forEach((l) => l());
 }
+/** True when the host runs synonyms always on: no switch, no hint line. */
+export function similarWordsAlways() {
+    return config?.always === true;
+}
 /** True when the host gave this game any groups: the switch is only shown then. */
 export function hasThemeSynonyms(game = 'pokemon') {
     return (config?.groupsByGame[game]?.length ?? 0) > 0;
@@ -120,7 +124,7 @@ const subscribe = (l) => {
 const snapshot = () => on;
 /** The current switch. Safe outside React (the search clients read it this way). */
 export function getSimilarWords() {
-    return on;
+    return on || similarWordsAlways();
 }
 /** Flip the switch; persisted through the configured store unless `{ persist: false }`. */
 export function setSimilarWords(next, opts = {}) {
@@ -143,7 +147,7 @@ export function subscribeSimilarWords(callback) {
 }
 let hydrated = false;
 async function hydrate() {
-    if (hydrated || !config?.store?.load)
+    if (hydrated || similarWordsAlways() || !config?.store?.load)
         return;
     hydrated = true;
     try {
@@ -157,7 +161,7 @@ async function hydrate() {
 }
 /** The switch as a hook, shared by every surface. Loads the stored value on first use. */
 export function useSimilarWords() {
-    const value = useSyncExternalStore(subscribe, snapshot, snapshot);
+    const value = useSyncExternalStore(subscribe, snapshot, snapshot) || similarWordsAlways();
     void hydrate();
     const set = useCallback((v) => setSimilarWords(v), []);
     return [value, set];

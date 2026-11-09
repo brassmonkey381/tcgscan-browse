@@ -37,5 +37,5 @@ export { CardActionModal } from './CardActionModal';
 export { RecentProducts, type FeedSet } from './RecentProducts';
 export { SealedBrowser } from './SealedBrowser';
 export { count, plural } from './counts';
-export { configureThemeSynonyms, expandThemeFields, getSimilarWords, hasThemeSynonyms, setSimilarWords, subscribeSimilarWords, synonymGroupFor, useSimilarWords, wordForms, } from './synonyms';
+export { configureThemeSynonyms, expandThemeFields, getSimilarWords, hasThemeSynonyms, setSimilarWords, similarWordsAlways, subscribeSimilarWords, synonymGroupFor, useSimilarWords, wordForms, } from './synonyms';
 export type { SimilarExpansion, SimilarRank, SimilarWordsStore, ThemeSynonymConfig, ThemeSynonymGroup, WireField, } from './synonyms';

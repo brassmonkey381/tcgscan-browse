@@ -20,7 +20,7 @@
  * light), navigation is via callbacks (`onOpenCard`/`onPickCard`, no router import), and
  * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
  */
-import { hasThemeSynonyms, useSimilarWords, wordForms, type SimilarExpansion } from './synonyms';
+import { hasThemeSynonyms, similarWordsAlways, useSimilarWords, wordForms, type SimilarExpansion } from './synonyms';
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -963,7 +963,8 @@ export function CatalogBrowser({
   // search exactly; on, a theme word searches its whole group as a union. Flipping it refetches.
   const [similarOn, setSimilarOn] = useSimilarWords();
   const similarGame = themeServer ? themeServer.game : 'pokemon';
-  const synonymsAvailable = hasThemeSynonyms(similarGame);
+  // Always-on hosts get the union with no switch and no hint line (similarWordsAlways).
+  const synonymsAvailable = hasThemeSynonyms(similarGame) && !similarWordsAlways();
   const [serverExpanded, setServerExpanded] = useState<SimilarExpansion[]>([]);
   const [themeExpanded, setThemeExpanded] = useState<SimilarExpansion[]>([]);
   const similarEventRef = useRef(onSimilarWordsEvent);

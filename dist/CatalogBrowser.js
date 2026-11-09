@@ -21,7 +21,7 @@ import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-run
  * light), navigation is via callbacks (`onOpenCard`/`onPickCard`, no router import), and
  * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
  */
-import { hasThemeSynonyms, useSimilarWords, wordForms } from './synonyms';
+import { hasThemeSynonyms, similarWordsAlways, useSimilarWords, wordForms } from './synonyms';
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions, } from 'react-native';
@@ -489,7 +489,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // search exactly; on, a theme word searches its whole group as a union. Flipping it refetches.
     const [similarOn, setSimilarOn] = useSimilarWords();
     const similarGame = themeServer ? themeServer.game : 'pokemon';
-    const synonymsAvailable = hasThemeSynonyms(similarGame);
+    // Always-on hosts get the union with no switch and no hint line (similarWordsAlways).
+    const synonymsAvailable = hasThemeSynonyms(similarGame) && !similarWordsAlways();
     const [serverExpanded, setServerExpanded] = useState([]);
     const [themeExpanded, setThemeExpanded] = useState([]);
     const similarEventRef = useRef(onSimilarWordsEvent);

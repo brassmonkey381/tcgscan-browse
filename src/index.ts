@@ -309,6 +309,7 @@ export {
   getSimilarWords,
   hasThemeSynonyms,
   setSimilarWords,
+  similarWordsAlways,
   subscribeSimilarWords,
   synonymGroupFor,
   useSimilarWords,
