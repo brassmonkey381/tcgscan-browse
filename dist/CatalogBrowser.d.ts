@@ -212,6 +212,22 @@ interface CatalogBrowserProps {
      */
     compactHeader?: boolean;
     /**
+     * LAYOUT CHOICES (michi style picker, MIC-017). Each defaults to today's width-based behaviour
+     * (the phone's arrangement below COMPACT_BAR_W, the open strips above it); `true` forces the
+     * phone's arrangement at every width:
+     * - filtersSheet: Filters opens the sheet (filters, sort at its foot, Done) instead of open strips.
+     * - typesDropdown: the picture types (energy) are one dropdown, not a row of chips.
+     * - sortDropdown: sort is one dropdown, not a row of chips.
+     * - artTypeInFilters: false keeps the art type row (All / Full / Windowed, Group) under the search
+     *   even when Filters is a sheet; true moves it inside the sheet.
+     */
+    layout?: {
+        filtersSheet?: boolean;
+        typesDropdown?: boolean;
+        sortDropdown?: boolean;
+        artTypeInFilters?: boolean;
+    };
+    /**
      * Open a color search (app-supplied UI). When set, a "Color" button appears in the search row;
      * the app opens its color picker and returns results via `sendBrowseCommand({type:'showCards'})`.
      * Omitted → no color button. Lives in the browser so every surface (browse + binder picker) has it.
@@ -317,5 +333,5 @@ export type SimilarWordsEvent = {
 };
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
 export declare function describeExpansions(list: readonly SimilarExpansion[], shown?: number, prefix?: string): string;
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

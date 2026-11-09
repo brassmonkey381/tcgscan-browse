@@ -666,6 +666,17 @@ interface CatalogBrowserProps {
    */
   compactHeader?: boolean;
   /**
+   * LAYOUT CHOICES (michi style picker, MIC-017). Each defaults to today's width-based behaviour
+   * (the phone's arrangement below COMPACT_BAR_W, the open strips above it); `true` forces the
+   * phone's arrangement at every width:
+   * - filtersSheet: Filters opens the sheet (filters, sort at its foot, Done) instead of open strips.
+   * - typesDropdown: the picture types (energy) are one dropdown, not a row of chips.
+   * - sortDropdown: sort is one dropdown, not a row of chips.
+   * - artTypeInFilters: false keeps the art type row (All / Full / Windowed, Group) under the search
+   *   even when Filters is a sheet; true moves it inside the sheet.
+   */
+  layout?: { filtersSheet?: boolean; typesDropdown?: boolean; sortDropdown?: boolean; artTypeInFilters?: boolean };
+  /**
    * Open a color search (app-supplied UI). When set, a "Color" button appears in the search row;
    * the app opens its color picker and returns results via `sendBrowseCommand({type:'showCards'})`.
    * Omitted → no color button. Lives in the browser so every surface (browse + binder picker) has it.
@@ -810,6 +821,7 @@ export function CatalogBrowser({
   renderSheetDone,
   featureRowLead,
   compactHeader = false,
+  layout,
   onColorSearch,
   onThemeSearch,
   onSimilarWordsEvent,
@@ -2503,7 +2515,9 @@ export function CatalogBrowser({
     group row sits in one place, warm or cold, results or none. `folded` now only means "the sheet
     is shut while cards are on screen", which names the active sort and filters on the count line.
   */
-  const sheetMode = compactBar && !analyticsView;
+  const sheetMode = (compactBar || !!layout?.filtersSheet) && !analyticsView;
+  // Where the art-type row sits once Filters is a sheet: in it (the phone's way), or still on top.
+  const artTypeOnTop = sheetMode && layout?.artTypeInFilters === false;
   const sheetOpen = sheetMode && toolsOpen;
   const foldable = sheetMode && isCardLevel && visibleData.length > 0;
   const folded = foldable && !toolsOpen;
@@ -2689,7 +2703,7 @@ export function CatalogBrowser({
   const cardSort = (fill = false) => (
               <SortControls
                 styles={styles}
-                compact={compactBar}
+                compact={compactBar || !!layout?.sortDropdown}
                 field={effSort.field}
                 dir={effSort.dir}
                 onPick={pickSort}
@@ -2752,7 +2766,7 @@ export function CatalogBrowser({
             group={themeGroupOn}
             onToggleGroup={() => setThemeGroupSel(!themeGroupOn)}
             counts={themeServerActive ? themeCounts : pokeCounts}
-            compact={compactBar}
+            compact={compactBar || !!layout?.typesDropdown}
           />
   ) : null;
   const savedChips = savedList.length > 0 ? (
@@ -2945,7 +2959,7 @@ export function CatalogBrowser({
         {/* The theme toolbar: shown while a themed query is on screen and the registry offers it
             (a secondary game's `theme_search`, or Pokemon's `search_cards` with `themeTools`).
             Its controls are server parameters. */}
-        {sheetMode || headerAway ? null : themeBar}
+        {(sheetMode && !artTypeOnTop) || headerAway ? null : themeBar}
         {/* Saved-search chips: one tap re-runs the starred search; long-press removes it. */}
         {sheetMode || headerAway ? null : savedChips}
         {/* The load readout, only while there is nothing to search with yet. Where server search
@@ -3283,7 +3297,7 @@ export function CatalogBrowser({
           sort={isCardLevel ? cardSort(true) : shelfLevel ? shelfSort(true) : null}>
           {isCardLevel ? (
             <>
-              {themeBar}
+              {artTypeOnTop ? null : themeBar}
               {cardBar(true)}
             </>
           ) : shelfLevel ? (
