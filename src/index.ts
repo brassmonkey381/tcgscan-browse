@@ -294,6 +294,7 @@ export {
 } from './cardSize';
 
 export { CatalogBrowser } from './CatalogBrowser';
+export type { SimilarWordsEvent } from './CatalogBrowser';
 export type { ThemeTypeGroup } from './ThemeFilterBar';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts, type FeedSet } from './RecentProducts';

@@ -333,10 +333,6 @@ function applyFacets(cards, selection) {
         return f.valuesOf(card).some((v) => chosen.includes(v));
     }));
 }
-/**
- * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
- * the card-list and search-result levels only.
- */
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
 export function describeExpansions(list, shown = 4) {
     const parts = list.map((e) => {
@@ -355,7 +351,7 @@ export function describeExpansions(list, shown = 4) {
     });
     return `Also searching: ${parts.join('; ')}`;
 }
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset = 0, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', themeServer, themeTools: themeToolsProp, ownedIds, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset = 0, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', themeServer, themeTools: themeToolsProp, ownedIds, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
     // given, else the session-sticky browseState. The toolbar toggle overrides locally; when the
@@ -496,6 +492,13 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const synonymsAvailable = hasThemeSynonyms(similarGame);
     const [serverExpanded, setServerExpanded] = useState([]);
     const [themeExpanded, setThemeExpanded] = useState([]);
+    const similarEventRef = useRef(onSimilarWordsEvent);
+    similarEventRef.current = onSimilarWordsEvent;
+    const reportSearched = (game, expanded, hits) => {
+        if (!expanded?.length)
+            return;
+        similarEventRef.current?.({ type: 'searched', game, expanded: [...expanded], hits });
+    };
     // A SECONDARY GAME (`themeServer`) never takes this path: `search_cards` only knows Pokémon, so
     // its themed queries go to `theme_search` instead (see `themeServerActive`) and everything else
     // runs on its own catalog.
@@ -976,6 +979,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         setServerTotal(page.total);
         if (replace) {
             setServerExpanded(page.expanded ?? []);
+            if (offset === 0 && !page.failed)
+                reportSearched('pokemon', page.expanded, page.total);
             setServerClamped(page.clamped);
             setServerDegraded(page.degraded);
             setServerFailed(page.failed);
@@ -1222,6 +1227,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 clamped = page.clamped;
                 degraded = page.degraded;
                 setThemeExpanded(page.expanded ?? []);
+                if (fresh)
+                    reportSearched(themeServer.game, page.expanded, page.total);
             }
             if (first || page.hits.length > 0)
                 total = page.total;
@@ -2030,7 +2037,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 setFocusIdx(-1);
         },
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, theme.controlHeight ? null : (_jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] }))] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : theme.hideSectionLabel ? null : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), synonymsAvailable && !isLocked(lockedFeatures, 'themeSearch') ? (_jsxs(View, { style: styles.similarRow, children: [_jsxs(Pressable, { onPress: () => setSimilarOn(!similarOn), accessibilityRole: "switch", accessibilityState: { checked: similarOn }, accessibilityLabel: "Similar words: search a theme word together with its synonyms", testID: "similar-words-switch", style: [styles.similarBtn, similarOn && styles.similarBtnOn], children: [_jsx(View, { style: [styles.similarKnob, similarOn && styles.similarKnobOn] }), _jsx(Text, { style: [styles.similarText, similarOn && styles.similarTextOn], children: "Similar words" })] }), similarOn && (themeServer ? themeExpanded : serverExpanded).length ? (_jsx(Text, { style: styles.similarAlso, numberOfLines: 2, testID: "similar-words-also", children: describeExpansions(themeServer ? themeExpanded : serverExpanded) })) : null] })) : null, _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, theme.controlHeight ? null : (_jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] }))] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : theme.hideSectionLabel ? null : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), synonymsAvailable && !isLocked(lockedFeatures, 'themeSearch') ? (_jsxs(View, { style: styles.similarRow, children: [_jsxs(Pressable, { onPress: () => {
+                                    setSimilarOn(!similarOn);
+                                    similarEventRef.current?.({ type: 'toggled', game: similarGame, on: !similarOn });
+                                }, accessibilityRole: "switch", accessibilityState: { checked: similarOn }, accessibilityLabel: "Similar words: search a theme word together with its synonyms", testID: "similar-words-switch", style: [styles.similarBtn, similarOn && styles.similarBtnOn], children: [_jsx(View, { style: [styles.similarKnob, similarOn && styles.similarKnobOn] }), _jsx(Text, { style: [styles.similarText, similarOn && styles.similarTextOn], children: "Similar words" })] }), similarOn && (themeServer ? themeExpanded : serverExpanded).length ? (_jsx(Text, { style: styles.similarAlso, numberOfLines: 2, testID: "similar-words-also", children: describeExpansions(themeServer ? themeExpanded : serverExpanded) })) : null] })) : null, _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
                                     ? `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards`
                                     : `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.searchPlaceholder ?? theme.faint, autoCorrect: false, clearButtonMode: "while-editing", 
                                 // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input

@@ -31,6 +31,7 @@ export { hydrateSavedSearches, isSearchSaved, listSavedSearches, removeSavedSear
 export { browseState, sendBrowseCommand, subscribeBrowseCommand, type BrowseCommand, type BrowseState, type CardSize, } from './state';
 export { CARD_SIZES, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, CARD_GRID_GAP, CARD_HIRES_TILE_W, cardGridColumns, cardTileWidthFor, cardTierFor, quickPillSize, quickTextSize, } from './cardSize';
 export { CatalogBrowser } from './CatalogBrowser';
+export type { SimilarWordsEvent } from './CatalogBrowser';
 export type { ThemeTypeGroup } from './ThemeFilterBar';
 export { CardActionModal } from './CardActionModal';
 export { RecentProducts, type FeedSet } from './RecentProducts';

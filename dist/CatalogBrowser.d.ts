@@ -223,6 +223,13 @@ interface CatalogBrowserProps {
      */
     onThemeSearch?: () => void;
     /**
+     * SIMILAR WORDS EVENTS (MIC-024), for the host's analytics. `toggled` on a real flip of the
+     * switch (never on load or restore); `searched` once per theme query that ran with the switch on
+     * and widened a word, on its first page only, with that page's total. Carries group labels, never
+     * the typed text.
+     */
+    onSimilarWordsEvent?: (e: SimilarWordsEvent) => void;
+    /**
      * What that button says. "Theme Search" named the FEATURE, so a reader could not tell it from
      * the paid thing in the search box and pressed it expecting a picker; a host that runs one
      * fixed query as a demonstration should name the query instead. Default keeps the old wording.
@@ -290,7 +297,18 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
+/** What CatalogBrowser reports about the Similar words switch (MIC-024). */
+export type SimilarWordsEvent = {
+    type: 'toggled';
+    game: string;
+    on: boolean;
+} | {
+    type: 'searched';
+    game: string;
+    expanded: SimilarExpansion[];
+    hits: number;
+};
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
 export declare function describeExpansions(list: readonly SimilarExpansion[], shown?: number): string;
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

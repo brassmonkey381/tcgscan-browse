@@ -676,6 +676,13 @@ interface CatalogBrowserProps {
    */
   onThemeSearch?: () => void;
   /**
+   * SIMILAR WORDS EVENTS (MIC-024), for the host's analytics. `toggled` on a real flip of the
+   * switch (never on load or restore); `searched` once per theme query that ran with the switch on
+   * and widened a word, on its first page only, with that page's total. Carries group labels, never
+   * the typed text.
+   */
+  onSimilarWordsEvent?: (e: SimilarWordsEvent) => void;
+  /**
    * What that button says. "Theme Search" named the FEATURE, so a reader could not tell it from
    * the paid thing in the search box and pressed it expecting a picker; a host that runs one
    * fixed query as a demonstration should name the query instead. Default keeps the old wording.
@@ -744,6 +751,11 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
+/** What CatalogBrowser reports about the Similar words switch (MIC-024). */
+export type SimilarWordsEvent =
+  | { type: 'toggled'; game: string; on: boolean }
+  | { type: 'searched'; game: string; expanded: SimilarExpansion[]; hits: number };
+
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
 export function describeExpansions(list: readonly SimilarExpansion[], shown = 4): string {
   const parts = list.map((e) => {
@@ -791,6 +803,7 @@ export function CatalogBrowser({
   featureRowLead,
   onColorSearch,
   onThemeSearch,
+  onSimilarWordsEvent,
   colorSearchLabel = 'Tri-Color Search',
   themeSearchLabel = 'Theme Search',
   themeServer,
@@ -953,6 +966,12 @@ export function CatalogBrowser({
   const synonymsAvailable = hasThemeSynonyms(similarGame);
   const [serverExpanded, setServerExpanded] = useState<SimilarExpansion[]>([]);
   const [themeExpanded, setThemeExpanded] = useState<SimilarExpansion[]>([]);
+  const similarEventRef = useRef(onSimilarWordsEvent);
+  similarEventRef.current = onSimilarWordsEvent;
+  const reportSearched = (game: string, expanded: readonly SimilarExpansion[] | undefined, hits: number) => {
+    if (!expanded?.length) return;
+    similarEventRef.current?.({ type: 'searched', game, expanded: [...expanded], hits });
+  };
   // A SECONDARY GAME (`themeServer`) never takes this path: `search_cards` only knows Pokémon, so
   // its themed queries go to `theme_search` instead (see `themeServerActive`) and everything else
   // runs on its own catalog.
@@ -1467,6 +1486,7 @@ export function CatalogBrowser({
       setServerTotal(page.total);
       if (replace) {
         setServerExpanded(page.expanded ?? []);
+        if (offset === 0 && !page.failed) reportSearched('pokemon', page.expanded, page.total);
         setServerClamped(page.clamped);
         setServerDegraded(page.degraded);
         setServerFailed(page.failed);
@@ -1725,6 +1745,7 @@ export function CatalogBrowser({
         clamped = page.clamped;
         degraded = page.degraded;
         setThemeExpanded(page.expanded ?? []);
+        if (fresh) reportSearched(themeServer.game, page.expanded, page.total);
       }
       if (first || page.hits.length > 0) total = page.total;
       end = page.hits.length < limit || hits.length >= total || hits.length >= THEME_MAX_OFFSET;
@@ -2755,7 +2776,10 @@ export function CatalogBrowser({
         {synonymsAvailable && !isLocked(lockedFeatures, 'themeSearch') ? (
           <View style={styles.similarRow}>
             <Pressable
-              onPress={() => setSimilarOn(!similarOn)}
+              onPress={() => {
+                setSimilarOn(!similarOn);
+                similarEventRef.current?.({ type: 'toggled', game: similarGame, on: !similarOn });
+              }}
               accessibilityRole="switch"
               accessibilityState={{ checked: similarOn }}
               accessibilityLabel="Similar words: search a theme word together with its synonyms"
