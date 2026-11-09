@@ -309,6 +309,6 @@ export type SimilarWordsEvent = {
     hits: number;
 };
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
-export declare function describeExpansions(list: readonly SimilarExpansion[], shown?: number): string;
+export declare function describeExpansions(list: readonly SimilarExpansion[], shown?: number, prefix?: string): string;
 export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

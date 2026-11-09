@@ -757,7 +757,7 @@ export type SimilarWordsEvent =
   | { type: 'searched'; game: string; expanded: SimilarExpansion[]; hits: number };
 
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
-export function describeExpansions(list: readonly SimilarExpansion[], shown = 4): string {
+export function describeExpansions(list: readonly SimilarExpansion[], shown = 4, prefix = 'Also searching:'): string {
   const parts = list.map((e) => {
     // One entry per word, not per form: "trash can" stands for "trash cans" too (MIC-024).
     const seen = new Set<string>(wordForms(e.word));
@@ -771,7 +771,7 @@ export function describeExpansions(list: readonly SimilarExpansion[], shown = 4)
     const more = words.length - shown;
     return list.length > 1 ? `${e.word}: ${head}${more > 0 ? ` (+${more})` : ''}` : `${head}${more > 0 ? ` (+${more})` : ''}`;
   });
-  return `Also searching: ${parts.join('; ')}`;
+  return `${prefix} ${parts.join('; ')}`;
 }
 
 export function CatalogBrowser({
@@ -2757,7 +2757,9 @@ export function CatalogBrowser({
             ) : null}
             {/* With a host touch height (theme.controlHeight) the three buttons fill a phone's row,
                 so the nudge, which ran off the edge there, is left out. */}
-            {theme.controlHeight ? null : (
+            {/* Nor in a phone-narrow browser (the editor's picker sheet, MIC-024 2026-11-09): the
+                nudge ran off its right edge there too. */}
+            {theme.controlHeight || compactSearch ? null : (
               <Animated.View
                 style={[styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }]}
                 pointerEvents="none">
@@ -2789,8 +2791,11 @@ export function CatalogBrowser({
               <Text style={[styles.similarText, similarOn && styles.similarTextOn]}>Similar words</Text>
             </Pressable>
             {similarOn && (themeServer ? themeExpanded : serverExpanded).length ? (
-              <Text style={styles.similarAlso} numberOfLines={2} testID="similar-words-also">
-                {describeExpansions(themeServer ? themeExpanded : serverExpanded)}
+              // One line on a phone-narrow browser (MIC-024): "Also: trash, junk, litter (+10)".
+              <Text style={styles.similarAlso} numberOfLines={compactSearch ? 1 : 2} testID="similar-words-also">
+                {compactSearch
+                  ? describeExpansions(themeServer ? themeExpanded : serverExpanded, 3, 'Also:')
+                  : describeExpansions(themeServer ? themeExpanded : serverExpanded)}
               </Text>
             ) : null}
           </View>
