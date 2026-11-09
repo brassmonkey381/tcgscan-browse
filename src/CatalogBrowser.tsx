@@ -994,6 +994,8 @@ export function CatalogBrowser({
   const headerAway = compactHeader && headerFolded;
   const [viewOpen, setViewOpen] = useState(false);
   const foldY = useRef(0);
+  /** A desk-wide compact header has no fold (owner, 2026-11-09): kept current below, read by the scroll fold. */
+  const wideHeaderRef = useRef(false);
   const similarEventRef = useRef(onSimilarWordsEvent);
   similarEventRef.current = onSimilarWordsEvent;
   const reportSearched = (game: string, expanded: readonly SimilarExpansion[] | undefined, hits: number) => {
@@ -1221,6 +1223,14 @@ export function CatalogBrowser({
   // one-frame reflow on desktop, where the stacked form would otherwise flash first.
   const compactSearch = containerWidth > 0 && containerWidth < COMPACT_SEARCH_W;
   const compactBar = containerWidth > 0 && containerWidth < COMPACT_BAR_W;
+  // THE DESK HEADER (MIC-017, owner 2026-11-09: "on desktop we can make all the collapsed UI fit
+  // nicely on 1-2 rows, and maybe the HIDE FILTERS thing would actually not be necessary"): at
+  // desk width the compact header is one row of buttons and the search, with no fold handle.
+  const wideHeader = compactHeader && containerWidth >= COMPACT_BAR_W;
+  wideHeaderRef.current = wideHeader;
+  useEffect(() => {
+    if (wideHeader && headerFolded) setHeaderFolded(false);
+  }, [wideHeader, headerFolded]);
 
   const clearFilters = () => setSelection({});
 
@@ -1883,7 +1893,7 @@ export function CatalogBrowser({
   const onListScroll = (e: { nativeEvent: { contentOffset: { y: number }; layoutMeasurement: { height: number } } }) => {
     listOffset.current = e.nativeEvent.contentOffset.y;
     listHeight.current = e.nativeEvent.layoutMeasurement.height;
-    if (compactHeader) {
+    if (compactHeader && !wideHeaderRef.current) {
       // Fold on crossing 120 px going down, open again at the very top. Crossings only, so a tap
       // on the handle is not undone by the next scroll event.
       const y = e.nativeEvent.contentOffset.y;
@@ -2641,7 +2651,7 @@ export function CatalogBrowser({
   // The compact header's two rows (compactHeader): game | Filters | View, then Color | Theme.
   const compactRows = headerFolded ? null : (
     <>
-      <View style={styles.triColorRow}>
+      <View style={[styles.triColorRow, wideHeader && styles.wideHeaderRow]}>
         {featureRowLead}
         {sortFilterControl}
         <Pressable
@@ -2655,6 +2665,16 @@ export function CatalogBrowser({
             View ▾
           </Text>
         </Pressable>
+        {wideHeader && onColorSearch ? (
+          <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel={colorSearchLabel}>
+            <Text style={styles.triColorBtnText}>{colorSearchLabel}</Text>
+          </Pressable>
+        ) : null}
+        {wideHeader && onThemeSearch ? (
+          <Pressable onPress={onThemeSearch} style={styles.triColorBtn} accessibilityLabel={themeSearchLabel} testID="header-theme">
+            <Text style={styles.triColorBtnText}>{themeSearchLabel}</Text>
+          </Pressable>
+        ) : null}
       </View>
       {viewOpen ? (
         <View style={styles.groupRow}>
@@ -2662,7 +2682,7 @@ export function CatalogBrowser({
           <SizeChips theme={theme} size={cardSize} onPickSize={pickCardSize} />
         </View>
       ) : null}
-      {featureRow ? (
+      {featureRow && !wideHeader ? (
         <View style={styles.triColorRow}>
           {onColorSearch ? (
             <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel={colorSearchLabel}>
@@ -2932,7 +2952,7 @@ export function CatalogBrowser({
           is here before a search even starts. The language rides near the search because it
           applies to the SEARCH, not the results: flipping it re-runs every call against the server.
         */}
-        {compactHeader ? (
+        {compactHeader && wideHeader ? null : compactHeader ? (
           // The handle (compactHeader): says what it does, and carries a dot while filters are on
           // and folded away, so a folded header never hides that the results are filtered.
           <Pressable
@@ -4413,6 +4433,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     helpBtnTextOn: { color: t.accentText },
     // Tri-Color Search — prominent, above the search box, with an oscillating "NEW!" nudge.
     triColorRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+    wideHeaderRow: { flexWrap: 'wrap', rowGap: 8 },
     foldHandle: {
       alignSelf: 'center',
       flexDirection: 'row',
