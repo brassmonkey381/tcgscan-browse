@@ -356,7 +356,7 @@ export function describeExpansions(list, shown = 4, prefix = 'Also searching:') 
     });
     return `${prefix} ${parts.join('; ')}`;
 }
-export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset = 0, renderSheetDone, featureRowLead, compactHeader = false, headless = false, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', themeServer, themeTools: themeToolsProp, ownedIds, }) {
+export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset = 0, renderSheetDone, featureRowLead, compactHeader = false, headless = false, moreCardActions, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', themeServer, themeTools: themeToolsProp, ownedIds, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
     // given, else the session-sticky browseState. The toolbar toggle overrides locally; when the
@@ -1850,6 +1850,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             builtins.findSimilar,
             builtins.viewSet,
             builtins.viewIllustrator,
+            ...(moreCardActions ? moreCardActions(card, builtins) : []),
         ].filter((a) => Boolean(a));
         return resolveActions(list, card);
     };

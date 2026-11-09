@@ -219,6 +219,12 @@ interface CatalogBrowserProps {
      */
     headless?: boolean;
     /**
+     * EXTRA CARD ACTIONS (MIC-032, opt-in): appended to the DEFAULT sheet (place / replace and the
+     * built-ins) when the host passes no `cardActions`, so a host keeps the kit's own verbs and adds
+     * one of its own (michi: "Share picture"). Ignored when `cardActions` is given.
+     */
+    moreCardActions?: CardActionsFactory;
+    /**
      * LAYOUT CHOICES (michi style picker, MIC-017). Each defaults to today's width-based behaviour
      * (the phone's arrangement below COMPACT_BAR_W, the open strips above it); `true` forces the
      * phone's arrangement at every width:
@@ -340,5 +346,5 @@ export type SimilarWordsEvent = {
 };
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
 export declare function describeExpansions(list: readonly SimilarExpansion[], shown?: number, prefix?: string): string;
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, headless, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, headless, moreCardActions, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

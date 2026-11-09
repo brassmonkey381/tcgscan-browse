@@ -679,6 +679,12 @@ interface CatalogBrowserProps {
    */
   headless?: boolean;
   /**
+   * EXTRA CARD ACTIONS (MIC-032, opt-in): appended to the DEFAULT sheet (place / replace and the
+   * built-ins) when the host passes no `cardActions`, so a host keeps the kit's own verbs and adds
+   * one of its own (michi: "Share picture"). Ignored when `cardActions` is given.
+   */
+  moreCardActions?: CardActionsFactory;
+  /**
    * LAYOUT CHOICES (michi style picker, MIC-017). Each defaults to today's width-based behaviour
    * (the phone's arrangement below COMPACT_BAR_W, the open strips above it); `true` forces the
    * phone's arrangement at every width:
@@ -835,6 +841,7 @@ export function CatalogBrowser({
   featureRowLead,
   compactHeader = false,
   headless = false,
+  moreCardActions,
   layout,
   onColorSearch,
   onThemeSearch,
@@ -2395,6 +2402,7 @@ export function CatalogBrowser({
       builtins.findSimilar,
       builtins.viewSet,
       builtins.viewIllustrator,
+      ...(moreCardActions ? moreCardActions(card, builtins) : []),
     ].filter((a): a is CardAction => Boolean(a));
     return resolveActions(list, card);
   };
