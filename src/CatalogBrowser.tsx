@@ -132,6 +132,12 @@ import { PixelGlyph, QuickScreen, isPlusLabel } from './QuickGlyph';
 import { count } from './counts';
 import { SORT_DEFAULT_DIR } from './query';
 
+/** Animated.delay for a LOOP: the stock delay is a timing with isInteraction true, which on web
+ *  holds InteractionManager for the whole pause and freezes every FlatList (MIC-031). */
+function loopPause(ms: number) {
+  return Animated.timing(new Animated.Value(0), { toValue: 1, duration: ms, isInteraction: false, useNativeDriver: false });
+}
+
 /** Rows of cards revealed per "page" — the grid renders this many, then grows on scroll
  *  (infinite scroll). Full result sets aren't capped; the FlatList just virtualizes them. */
 const PAGE_SIZE = 90;
@@ -860,8 +866,8 @@ export function CatalogBrowser({
     if (!featureRow) return;
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(newWiggle, { toValue: 1, duration: 1600, useNativeDriver: false }),
-        Animated.timing(newWiggle, { toValue: 0, duration: 1600, useNativeDriver: false }),
+        Animated.timing(newWiggle, { isInteraction: false, toValue: 1, duration: 1600, useNativeDriver: false }),
+        Animated.timing(newWiggle, { isInteraction: false, toValue: 0, duration: 1600, useNativeDriver: false }),
       ]),
     );
     anim.start();
@@ -4261,13 +4267,13 @@ function Glow({ children, styles, delay = 0 }: { children: ReactNode; styles: Re
     if (reduceMotion) return;
     const one = () =>
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1500, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: true }),
+        Animated.timing(pulse, { isInteraction: false, toValue: 1, duration: 1500, useNativeDriver: true }),
+        Animated.timing(pulse, { isInteraction: false, toValue: 0, duration: 0, useNativeDriver: true }),
       ]);
     const anim = Animated.sequence([
-      Animated.delay(delay),
-      Animated.loop(Animated.sequence([one(), Animated.delay(2200)]), { iterations: 3 }),
-      Animated.loop(Animated.sequence([Animated.delay(28000), one()])),
+      loopPause(delay),
+      Animated.loop(Animated.sequence([one(), loopPause(2200)]), { iterations: 3 }),
+      Animated.loop(Animated.sequence([loopPause(28000), one()])),
     ]);
     anim.start();
     return () => {
