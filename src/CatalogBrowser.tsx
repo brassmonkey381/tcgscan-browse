@@ -46,6 +46,7 @@ import {
   QUERY_HINT,
   MANUAL_TABS,
   QUERY_MANUAL,
+  SYNONYM_MANUAL_ROWS,
   type ManualTab,
   runQuery,
   sortCards,
@@ -1346,6 +1347,7 @@ export function CatalogBrowser({
   const themeQuery = useMemo<ThemeQuery>(
     () => ({
       themes: effParsed.fields.filter((f) => f.key === 'theme').map((f) => f.value),
+      exactThemes: effParsed.fields.filter((f) => f.key === 'theme' && f.exact).map((f) => f.value),
       words: effParsed.words,
       frame: themeFrameEff,
       types: themeTypesEff,
@@ -3595,7 +3597,12 @@ function SearchManual({ styles, onClose }: { styles: Styles; onClose: () => void
         {QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (
           <View key={section.title} style={styles.manualSection}>
             <Text style={styles.manualSectionTitle}>{section.title}</Text>
-            {section.rows.map(([code, description]) => (
+            {/* With the host's synonym groups always on (MIC-024), the artwork section says how the
+                unquoted and quoted forms differ, right after its first row. */}
+            {(section.tab === 'artwork' && similarWordsAlways() && hasThemeSynonyms('pokemon')
+              ? [section.rows[0], ...SYNONYM_MANUAL_ROWS, ...section.rows.slice(1)]
+              : section.rows
+            ).map(([code, description]) => (
               <View key={code} style={styles.manualRow}>
                 <Text style={styles.manualCode}>{code}</Text>
                 <Text style={styles.manualDesc}>{description}</Text>

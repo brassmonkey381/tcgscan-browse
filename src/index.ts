@@ -230,6 +230,7 @@ export {
   MANUAL_TABS,
   QUERY_HINT,
   QUERY_MANUAL,
+  SYNONYM_MANUAL_ROWS,
   runQuery,
   scoreCard,
   sortCards,

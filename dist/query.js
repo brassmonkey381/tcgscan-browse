@@ -194,6 +194,7 @@ export function parseQuery(raw) {
         if (kv) {
             const negated = kv[1] === '-';
             const rawKey = kv[2].toLowerCase();
+            const quoted = kv[3].startsWith('"');
             const value = kv[3].replace(/^"|"$/g, '').toLowerCase().trim();
             // EXCLUSION: `-theme:beach` (the form people know from GitHub and Gmail) is what the manual
             // documents; the server's contract is a minus on the VALUE (`theme:-beach`, data project
@@ -273,7 +274,12 @@ export function parseQuery(raw) {
             if (key && value) {
                 // `lang:` resolves its synonyms to the raw code here so client and server compare the
                 // same thing; every other field keeps the typed value (they're substring matches).
-                out.fields.push({ key, value: key === 'lang' ? (LANG_ALIASES[value] ?? value) : value });
+                // A QUOTED THEME IS EXACT (MIC-024): theme:"katana" searches katana alone even where the
+                // host's synonym groups would widen the unquoted word to its group.
+                if (key === 'theme' && quoted)
+                    out.fields.push({ key, value, exact: true });
+                else
+                    out.fields.push({ key, value: key === 'lang' ? (LANG_ALIASES[value] ?? value) : value });
                 out.hasStructure = true;
                 continue;
             }
@@ -661,6 +667,14 @@ export const MANUAL_TABS = [
     { id: 'artwork', label: 'Artwork' },
     { id: 'collection', label: 'Collection' },
     { id: 'more', label: 'More' },
+];
+/**
+ * The two rows the artwork section gains when a host's synonym groups are on (MIC-024): the
+ * unquoted word searches its group, the quoted one is exact. Only shown where it is true.
+ */
+export const SYNONYM_MANUAL_ROWS = [
+    ['theme:garbage', 'also finds similar words (trash, junk, litter…) in one search'],
+    ['theme:"garbage"', 'in quotes: that exact word only, no similar words'],
 ];
 export const QUERY_MANUAL = [
     {

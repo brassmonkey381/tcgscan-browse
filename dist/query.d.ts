@@ -63,9 +63,11 @@ export interface ParsedQuery {
     /** Bare words — every one must appear in the card name. */
     words: string[];
     /** key -> value filters (already lowercased). */
+    /** `exact`: a theme typed in quotes (theme:"katana"), which a host's synonym groups never widen (MIC-024). */
     fields: {
         key: FieldKey;
         value: string;
+        exact?: boolean;
     }[];
     /** Numeric/date comparison filters (hp / evolution stage / release date). */
     comparisons: Comparison[];
@@ -152,4 +154,9 @@ export interface ManualSection {
     tab: ManualTab;
     rows: [code: string, description: string][];
 }
+/**
+ * The two rows the artwork section gains when a host's synonym groups are on (MIC-024): the
+ * unquoted word searches its group, the quoted one is exact. Only shown where it is true.
+ */
+export declare const SYNONYM_MANUAL_ROWS: [string, string][];
 export declare const QUERY_MANUAL: ManualSection[];

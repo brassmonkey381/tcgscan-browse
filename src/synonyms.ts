@@ -133,7 +133,7 @@ export function synonymGroupFor(word: string, game = 'pokemon'): ThemeSynonymGro
  * values (`scene:snow`), negations and words in no group pass through untouched.
  */
 export function expandThemeFields(
-  fields: readonly { key: string; value: string }[],
+  fields: readonly { key: string; value: string; exact?: boolean }[],
   { on, game = 'pokemon' }: { on: boolean; game?: string },
 ): { fields: WireField[]; expanded: SimilarExpansion[] } {
   const plain = fields.map((f) => ({ key: f.key, value: f.value }));
@@ -141,8 +141,9 @@ export function expandThemeFields(
   const rank = config?.rank ?? 'lift';
   const cap = config?.maxMembers ?? 48;
   const expanded: SimilarExpansion[] = [];
-  const out: WireField[] = plain.map((f) => {
+  const out: WireField[] = plain.map((f, i) => {
     if (f.key !== 'theme' || f.value.startsWith('-') || f.value.includes(':')) return f;
+    if (fields[i].exact) return f; // quoted: exact (MIC-024)
     const g = synonymGroupFor(f.value, game);
     if (!g) return f;
     const typed = norm(f.value);

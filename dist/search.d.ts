@@ -156,6 +156,8 @@ export type ThemeFrame = 'all' | 'full' | 'window';
  */
 export interface ThemeQuery {
     themes: string[];
+    /** Theme values typed in quotes: exact, never widened to a synonym group (MIC-024). */
+    exactThemes?: string[];
     words: string[];
     frame?: ThemeFrame;
     types?: string[];

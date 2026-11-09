@@ -65,6 +65,7 @@ export declare function synonymGroupFor(word: string, game?: string): ThemeSynon
 export declare function expandThemeFields(fields: readonly {
     key: string;
     value: string;
+    exact?: boolean;
 }[], { on, game }: {
     on: boolean;
     game?: string;

@@ -439,6 +439,8 @@ export type ThemeFrame = 'all' | 'full' | 'window';
  */
 export interface ThemeQuery {
   themes: string[];
+  /** Theme values typed in quotes: exact, never widened to a synonym group (MIC-024). */
+  exactThemes?: string[];
   words: string[];
   frame?: ThemeFrame;
   types?: string[];
@@ -495,7 +497,10 @@ const THEME_MAX_LIMIT = 1000;
 
 /** A secondary game's theme words as wire fields, with the Similar words switch applied (MIC-024). */
 function themeFieldsFor(game: string, q: ThemeQuery): { fields: WireField[]; expanded: SimilarExpansion[] } {
-  return expandThemeFields(q.themes.map((v) => ({ key: 'theme', value: v })), { on: getSimilarWords(), game });
+  return expandThemeFields(
+    q.themes.map((v) => ({ key: 'theme', value: v, exact: q.exactThemes?.includes(v) })),
+    { on: getSimilarWords(), game },
+  );
 }
 
 /** The parameters `theme_search` and `theme_facets` share, in that order on the wire. */

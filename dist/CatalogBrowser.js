@@ -25,7 +25,7 @@ import { hasThemeSynonyms, similarWordsAlways, useSimilarWords, wordForms } from
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions, } from 'react-native';
-import { describeQuery, filterCards, parseQuery, QUERY_HINT, MANUAL_TABS, QUERY_MANUAL, runQuery, sortCards, withoutTheme, } from './query';
+import { describeQuery, filterCards, parseQuery, QUERY_HINT, MANUAL_TABS, QUERY_MANUAL, SYNONYM_MANUAL_ROWS, runQuery, sortCards, withoutTheme, } from './query';
 import { CARD_GRID_GAP, CARD_SIZE_FRACTION, CARD_SIZE_SCALE, cardGridColumns, cardTierFor, cardTileWidthFor, quickPillSize, quickTextSize, } from './cardSize';
 import { browseState, subscribeBrowseCommand } from './state';
 import { hydrateSavedSearches, isSearchSaved, listSavedSearches, removeSavedSearch, subscribeSavedSearches, toggleSavedSearch, } from './savedSearches';
@@ -847,6 +847,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const themeGroupOn = themeTools && themeGroups.length > 0 && (themeGroupSel ?? themeFrameEff === 'window');
     const themeQuery = useMemo(() => ({
         themes: effParsed.fields.filter((f) => f.key === 'theme').map((f) => f.value),
+        exactThemes: effParsed.fields.filter((f) => f.key === 'theme' && f.exact).map((f) => f.value),
         words: effParsed.words,
         frame: themeFrameEff,
         types: themeTypesEff,
@@ -2192,7 +2193,9 @@ function SearchManual({ styles, onClose }) {
                 // overscrollBehavior: the web's own bounce and scroll chaining stop here too, while it scrolls.
                 style: [{ maxHeight }, scrolls ? { overscrollBehavior: 'contain' } : null], contentContainerStyle: { gap: 8 }, onContentSizeChange: (_, h) => setContentHeight(h), scrollEnabled: scrolls, nestedScrollEnabled: scrolls, 
                 // A plain stop at either end: no rubber band, no glow, no snap back (owner's ask).
-                bounces: false, alwaysBounceVertical: false, overScrollMode: "never", children: QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (_jsxs(View, { style: styles.manualSection, children: [_jsx(Text, { style: styles.manualSectionTitle, children: section.title }), section.rows.map(([code, description]) => (_jsxs(View, { style: styles.manualRow, children: [_jsx(Text, { style: styles.manualCode, children: code }), _jsx(Text, { style: styles.manualDesc, children: description })] }, code)))] }, section.title))) })] }));
+                bounces: false, alwaysBounceVertical: false, overScrollMode: "never", children: QUERY_MANUAL.filter((section) => section.tab === tab).map((section) => (_jsxs(View, { style: styles.manualSection, children: [_jsx(Text, { style: styles.manualSectionTitle, children: section.title }), (section.tab === 'artwork' && similarWordsAlways() && hasThemeSynonyms('pokemon')
+                            ? [section.rows[0], ...SYNONYM_MANUAL_ROWS, ...section.rows.slice(1)]
+                            : section.rows).map(([code, description]) => (_jsxs(View, { style: styles.manualRow, children: [_jsx(Text, { style: styles.manualCode, children: code }), _jsx(Text, { style: styles.manualDesc, children: description })] }, code)))] }, section.title))) })] }));
 }
 /** Series › Set path; tap an ancestor to drill up. */
 function Breadcrumb({ styles, crumbs }) {

@@ -301,7 +301,7 @@ export async function searchCards(parsedIn, { limit = 60, offset = 0, facets, la
 const THEME_MAX_LIMIT = 1000;
 /** A secondary game's theme words as wire fields, with the Similar words switch applied (MIC-024). */
 function themeFieldsFor(game, q) {
-    return expandThemeFields(q.themes.map((v) => ({ key: 'theme', value: v })), { on: getSimilarWords(), game });
+    return expandThemeFields(q.themes.map((v) => ({ key: 'theme', value: v, exact: q.exactThemes?.includes(v) })), { on: getSimilarWords(), game });
 }
 /** The parameters `theme_search` and `theme_facets` share, in that order on the wire. */
 function themeParams(game, q) {

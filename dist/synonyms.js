@@ -96,9 +96,11 @@ export function expandThemeFields(fields, { on, game = 'pokemon' }) {
     const rank = config?.rank ?? 'lift';
     const cap = config?.maxMembers ?? 48;
     const expanded = [];
-    const out = plain.map((f) => {
+    const out = plain.map((f, i) => {
         if (f.key !== 'theme' || f.value.startsWith('-') || f.value.includes(':'))
             return f;
+        if (fields[i].exact)
+            return f; // quoted: exact (MIC-024)
         const g = synonymGroupFor(f.value, game);
         if (!g)
             return f;
