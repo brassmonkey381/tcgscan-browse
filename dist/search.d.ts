@@ -19,10 +19,13 @@
  * `themeFacets` below, which answer ranked ids only. `mergeThemeHits` maps them onto the game's
  * own public catalog rows, and the rest of the query runs on the device over those.
  */
+import { type SimilarExpansion } from './synonyms';
 import { type CardLanguage, type CatalogCard } from './catalog';
 import type { ParsedQuery } from './query';
 /** One page of server results: tile-ready cards, their prices (by id), and the true total. */
 export interface SearchPage {
+    /** Words the Similar words switch widened to their group (MIC-024); absent when none. */
+    expanded?: SimilarExpansion[];
     cards: CatalogCard[];
     /** Headline value per hit id (RPC `cur`), so cold-mode tiles/sort show prices without the
      *  price summary loaded. */
@@ -183,6 +186,8 @@ export interface ThemePage {
     clamped: boolean;
     degraded: boolean;
     failed: boolean;
+    /** Words the Similar words switch widened to their group (MIC-024); absent when none. */
+    expanded?: SimilarExpansion[];
 }
 /** Chip counts for a theme query: `frame` by 'full' / 'window', `type` by type group key. */
 export interface ThemeFacetCounts {

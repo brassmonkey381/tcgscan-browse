@@ -302,3 +302,22 @@ export { RecentProducts, type FeedSet } from './RecentProducts';
 // host decides by importing, not by a flag (RecentProducts is the same story in reverse).
 export { SealedBrowser } from './SealedBrowser';
 export { count, plural } from './counts';
+export {
+  configureThemeSynonyms,
+  expandThemeFields,
+  getSimilarWords,
+  hasThemeSynonyms,
+  setSimilarWords,
+  subscribeSimilarWords,
+  synonymGroupFor,
+  useSimilarWords,
+  wordForms,
+} from './synonyms';
+export type {
+  SimilarExpansion,
+  SimilarRank,
+  SimilarWordsStore,
+  ThemeSynonymConfig,
+  ThemeSynonymGroup,
+  WireField,
+} from './synonyms';

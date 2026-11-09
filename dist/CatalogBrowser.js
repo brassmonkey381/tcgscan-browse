@@ -21,6 +21,7 @@ import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-run
  * light), navigation is via callbacks (`onOpenCard`/`onPickCard`, no router import), and
  * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
  */
+import { hasThemeSynonyms, useSimilarWords } from './synonyms';
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions, } from 'react-native';
@@ -336,6 +337,15 @@ function applyFacets(cards, selection) {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
+/** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
+export function describeExpansions(list, shown = 4) {
+    const parts = list.map((e) => {
+        const head = e.also.slice(0, shown).join(', ');
+        const more = e.also.length - shown;
+        return list.length > 1 ? `${e.word}: ${head}${more > 0 ? ` (+${more})` : ''}` : `${head}${more > 0 ? ` (+${more})` : ''}`;
+    });
+    return `Also searching: ${parts.join('; ')}`;
+}
 export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth = TARGET_TILE_W, taxTileHeight = TAX_TILE_H, initialSimilar, languages: languagesProp, showLanguageToggle = true, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset = 0, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, colorSearchLabel = 'Tri-Color Search', themeSearchLabel = 'Theme Search', themeServer, themeTools: themeToolsProp, ownedIds, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
     // Card-tile size step (scales `cardTileWidth`). Seeded from the app's global `cardSize` prop when
@@ -470,6 +480,13 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // so it stays warm.
     const themeParsedRaw = useMemo(() => parseQuery(cardQueryDebounced.trim()).fields.some((f) => f.key === 'theme'), [cardQueryDebounced]);
     const themedQuery = themeParsedRaw && !isLocked(lockedFeatures, 'themeSearch');
+    // SIMILAR WORDS (MIC-024): the host's synonym groups, behind one shared switch. Off is today's
+    // search exactly; on, a theme word searches its whole group as a union. Flipping it refetches.
+    const [similarOn, setSimilarOn] = useSimilarWords();
+    const similarGame = themeServer ? themeServer.game : 'pokemon';
+    const synonymsAvailable = hasThemeSynonyms(similarGame);
+    const [serverExpanded, setServerExpanded] = useState([]);
+    const [themeExpanded, setThemeExpanded] = useState([]);
     // A SECONDARY GAME (`themeServer`) never takes this path: `search_cards` only knows Pokémon, so
     // its themed queries go to `theme_search` instead (see `themeServerActive`) and everything else
     // runs on its own catalog.
@@ -836,10 +853,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     /** Either game's toolbar is on screen (a themed result whose toolbar the host offers). */
     const toolbarActive = themeTools && (themeServerActive || pokeToolbarActive);
     /** What one result set answers: a change refetches from page 0. '' while inactive. */
-    const themeReqKey = themeServerActive ? JSON.stringify([themeServer.game, themeQuery, langArg ?? null]) : '';
+    const themeReqKey = themeServerActive ? JSON.stringify([themeServer.game, themeQuery, langArg ?? null, similarOn]) : '';
     /** The chip counts' key: the same query minus grouping, which counts nothing. */
     const themeCountKey = themeServerActive && themeTools
-        ? JSON.stringify([themeServer.game, { ...themeQuery, group: false }, langArg ?? null])
+        ? JSON.stringify([themeServer.game, { ...themeQuery, group: false }, langArg ?? null, similarOn])
         : '';
     // WHEN EVERY HIT MUST BE HERE BEFORE ANY IS SHOWN (CP-3): an explicit sort, or a filter only the
     // device can apply (rarity:, set:, lang:, price, comparisons, have:, a facet chip). Either one
@@ -949,6 +966,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         serverOffset.current = offset + page.cards.length;
         setServerTotal(page.total);
         if (replace) {
+            setServerExpanded(page.expanded ?? []);
             setServerClamped(page.clamped);
             setServerDegraded(page.degraded);
             setServerFailed(page.failed);
@@ -956,7 +974,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         setServerPrice((prev) => (replace ? page.priceById : { ...prev, ...page.priceById }));
         setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
         setServerLoading(false);
-    }, [effParsed, selection, langArg, pokeToolbar]);
+    }, 
+    // similarOn: the switch changes the request body (expandThemeFields reads it at call time).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [effParsed, selection, langArg, pokeToolbar, similarOn]);
     useEffect(() => {
         if (!coldSearch || !searching) {
             setServerCards([]);
@@ -964,6 +985,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             setServerClamped(false);
             setServerDegraded(false);
             setServerFailed(false);
+            setServerExpanded([]);
             setServerFacets({});
             setPokeCounts(null);
             serverOffset.current = 0;
@@ -1190,6 +1212,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             if (first) {
                 clamped = page.clamped;
                 degraded = page.degraded;
+                setThemeExpanded(page.expanded ?? []);
             }
             if (first || page.hits.length > 0)
                 total = page.total;
@@ -1998,7 +2021,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                 setFocusIdx(-1);
         },
     };
-    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, theme.controlHeight ? null : (_jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] }))] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : theme.hideSectionLabel ? null : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
+    return (_jsxs(View, { style: styles.browser, onLayout: onLayout, children: [_jsxs(View, { style: styles.controls, children: [featureRow ? (_jsxs(View, { style: styles.triColorRow, children: [featureRowLead, onColorSearch ? (_jsx(Glow, { styles: styles, children: _jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) }) })) : null, onThemeSearch ? (_jsx(Glow, { styles: styles, delay: 900, children: _jsx(Pressable, { onPress: onThemeSearch, style: styles.triColorBtn, accessibilityLabel: themeSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) }) })) : null, theme.controlHeight ? null : (_jsxs(Animated.View, { style: [styles.newNudge, { transform: [{ translateX: newWiggle.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }], pointerEvents: "none", children: [_jsx(Text, { style: styles.newArrow, children: "\u2190" }), _jsx(Text, { style: styles.newText, children: "NEW!" })] }))] })) : featureRowLead ? (_jsx(View, { style: styles.triColorRow, children: featureRowLead })) : theme.hideSectionLabel ? null : (_jsx(Text, { style: styles.sectionLabel, children: "Cards \u00B7 1\u00D71" })), synonymsAvailable && !isLocked(lockedFeatures, 'themeSearch') ? (_jsxs(View, { style: styles.similarRow, children: [_jsxs(Pressable, { onPress: () => setSimilarOn(!similarOn), accessibilityRole: "switch", accessibilityState: { checked: similarOn }, accessibilityLabel: "Similar words: search a theme word together with its synonyms", testID: "similar-words-switch", style: [styles.similarBtn, similarOn && styles.similarBtnOn], children: [_jsx(View, { style: [styles.similarKnob, similarOn && styles.similarKnobOn] }), _jsx(Text, { style: [styles.similarText, similarOn && styles.similarTextOn], children: "Similar words" })] }), similarOn && (themeServer ? themeExpanded : serverExpanded).length ? (_jsx(Text, { style: styles.similarAlso, numberOfLines: 2, testID: "similar-words-also", children: describeExpansions(themeServer ? themeExpanded : serverExpanded) })) : null] })) : null, _jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
                                     ? `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards`
                                     : `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards, ${QUERY_HINT}`, placeholderTextColor: theme.searchPlaceholder ?? theme.faint, autoCorrect: false, clearButtonMode: "while-editing", 
                                 // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input
@@ -2437,6 +2460,23 @@ function makeStyles(t, taxTileHeight) {
             paddingVertical: 6,
         },
         pocketSimilarText: { fontSize: 12, fontWeight: '600', color: t.link },
+        similarRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+        similarBtn: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            minHeight: t.controlHeight ?? 32,
+            paddingHorizontal: 12,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: t.border,
+        },
+        similarBtnOn: { borderColor: t.accent, backgroundColor: t.accent },
+        similarKnob: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: t.subtext },
+        similarKnobOn: { borderColor: t.accentText, backgroundColor: t.accentText },
+        similarText: { fontSize: t.controlHeight ? 15 : 13, fontWeight: '700', color: t.subtext },
+        similarTextOn: { color: t.accentText },
+        similarAlso: { flex: 1, minWidth: 160, fontSize: 13, color: t.subtext },
         // With a host touch height (theme.controlHeight) the save and help buttons are that tall too.
         helpBtn: {
             width: t.controlHeight ?? 30,

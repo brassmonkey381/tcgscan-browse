@@ -1,3 +1,26 @@
+/**
+ * Taxonomy browse for the 1×1 "Cards" section of the CardPicker.
+ *
+ * Drives a Series → Set → Card drill-down over the ~28k-card catalog with a single
+ * virtualized FlatList as the primary scroller, so we never nest a VirtualizedList inside
+ * the picker sheet. The Series and Set levels render as COMPACT TEXT ROWS (michi has no
+ * set/series logo assets, so we never draw big blank cover squares — an optional tiny logo
+ * shows only when `coverUri` is present). The Card level renders a DENSE grid whose column
+ * count is derived from the measured container width, so tiles stay small instead of being
+ * stretched to a fixed column count.
+ *
+ * Search + filtering are built on a DATA-DRIVEN FACET FRAMEWORK (see the `FACETS` block
+ * below): a free-text box overrides the drill-down into a flat grid, and a compact,
+ * expandable facet bar filters both the card-list and the search results. Filtering is AND
+ * across facets and OR within a single facet's selected values. Adding a new attribute
+ * facet later (illustrator, Pokémon type, evolution stage, …) is a one-line change — see
+ * the EXTENSION SEAM comment on `FACETS`.
+ *
+ * App-agnostic by construction: colors come from an injected `BrowseTheme` (default
+ * light), navigation is via callbacks (`onOpenCard`/`onPickCard`, no router import), and
+ * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
+ */
+import { type SimilarExpansion } from './synonyms';
 import { type ReactNode } from 'react';
 import { type CardSize } from './state';
 import { type CardAction, type CardActionsFactory } from './actions';
@@ -267,5 +290,7 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
+/** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
+export declare function describeExpansions(list: readonly SimilarExpansion[], shown?: number): string;
 export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

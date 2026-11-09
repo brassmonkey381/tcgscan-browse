@@ -20,6 +20,7 @@
  * light), navigation is via callbacks (`onOpenCard`/`onPickCard`, no router import), and
  * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
  */
+import { hasThemeSynonyms, useSimilarWords, type SimilarExpansion } from './synonyms';
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -743,6 +744,16 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
+/** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
+export function describeExpansions(list: readonly SimilarExpansion[], shown = 4): string {
+  const parts = list.map((e) => {
+    const head = e.also.slice(0, shown).join(', ');
+    const more = e.also.length - shown;
+    return list.length > 1 ? `${e.word}: ${head}${more > 0 ? ` (+${more})` : ''}` : `${head}${more > 0 ? ` (+${more})` : ''}`;
+  });
+  return `Also searching: ${parts.join('; ')}`;
+}
+
 export function CatalogBrowser({
   catalog,
   selectedCardId,
@@ -927,6 +938,13 @@ export function CatalogBrowser({
     [cardQueryDebounced],
   );
   const themedQuery = themeParsedRaw && !isLocked(lockedFeatures, 'themeSearch');
+  // SIMILAR WORDS (MIC-024): the host's synonym groups, behind one shared switch. Off is today's
+  // search exactly; on, a theme word searches its whole group as a union. Flipping it refetches.
+  const [similarOn, setSimilarOn] = useSimilarWords();
+  const similarGame = themeServer ? themeServer.game : 'pokemon';
+  const synonymsAvailable = hasThemeSynonyms(similarGame);
+  const [serverExpanded, setServerExpanded] = useState<SimilarExpansion[]>([]);
+  const [themeExpanded, setThemeExpanded] = useState<SimilarExpansion[]>([]);
   // A SECONDARY GAME (`themeServer`) never takes this path: `search_cards` only knows Pokémon, so
   // its themed queries go to `theme_search` instead (see `themeServerActive`) and everything else
   // runs on its own catalog.
@@ -1324,11 +1342,11 @@ export function CatalogBrowser({
   /** Either game's toolbar is on screen (a themed result whose toolbar the host offers). */
   const toolbarActive = themeTools && (themeServerActive || pokeToolbarActive);
   /** What one result set answers: a change refetches from page 0. '' while inactive. */
-  const themeReqKey = themeServerActive ? JSON.stringify([themeServer!.game, themeQuery, langArg ?? null]) : '';
+  const themeReqKey = themeServerActive ? JSON.stringify([themeServer!.game, themeQuery, langArg ?? null, similarOn]) : '';
   /** The chip counts' key: the same query minus grouping, which counts nothing. */
   const themeCountKey =
     themeServerActive && themeTools
-      ? JSON.stringify([themeServer!.game, { ...themeQuery, group: false }, langArg ?? null])
+      ? JSON.stringify([themeServer!.game, { ...themeQuery, group: false }, langArg ?? null, similarOn])
       : '';
   // WHEN EVERY HIT MUST BE HERE BEFORE ANY IS SHOWN (CP-3): an explicit sort, or a filter only the
   // device can apply (rarity:, set:, lang:, price, comparisons, have:, a facet chip). Either one
@@ -1440,6 +1458,7 @@ export function CatalogBrowser({
       serverOffset.current = offset + page.cards.length;
       setServerTotal(page.total);
       if (replace) {
+        setServerExpanded(page.expanded ?? []);
         setServerClamped(page.clamped);
         setServerDegraded(page.degraded);
         setServerFailed(page.failed);
@@ -1448,7 +1467,9 @@ export function CatalogBrowser({
       setServerCards((prev) => (replace ? page.cards : [...prev, ...page.cards]));
       setServerLoading(false);
     },
-    [effParsed, selection, langArg, pokeToolbar],
+    // similarOn: the switch changes the request body (expandThemeFields reads it at call time).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [effParsed, selection, langArg, pokeToolbar, similarOn],
   );
   useEffect(() => {
     if (!coldSearch || !searching) {
@@ -1457,6 +1478,7 @@ export function CatalogBrowser({
       setServerClamped(false);
       setServerDegraded(false);
       setServerFailed(false);
+      setServerExpanded([]);
       setServerFacets({});
       setPokeCounts(null);
       serverOffset.current = 0;
@@ -1694,6 +1716,7 @@ export function CatalogBrowser({
       if (first) {
         clamped = page.clamped;
         degraded = page.degraded;
+        setThemeExpanded(page.expanded ?? []);
       }
       if (first || page.hits.length > 0) total = page.total;
       end = page.hits.length < limit || hits.length >= total || hits.length >= THEME_MAX_OFFSET;
@@ -2719,6 +2742,27 @@ export function CatalogBrowser({
         ) : theme.hideSectionLabel ? null : (
           <Text style={styles.sectionLabel}>Cards · 1×1</Text>
         )}
+        {/* SIMILAR WORDS (MIC-024): the switch, shown only when the host gave this game synonym
+            groups; and, when on and a word widened, which words came along. */}
+        {synonymsAvailable && !isLocked(lockedFeatures, 'themeSearch') ? (
+          <View style={styles.similarRow}>
+            <Pressable
+              onPress={() => setSimilarOn(!similarOn)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: similarOn }}
+              accessibilityLabel="Similar words: search a theme word together with its synonyms"
+              testID="similar-words-switch"
+              style={[styles.similarBtn, similarOn && styles.similarBtnOn]}>
+              <View style={[styles.similarKnob, similarOn && styles.similarKnobOn]} />
+              <Text style={[styles.similarText, similarOn && styles.similarTextOn]}>Similar words</Text>
+            </Pressable>
+            {similarOn && (themeServer ? themeExpanded : serverExpanded).length ? (
+              <Text style={styles.similarAlso} numberOfLines={2} testID="similar-words-also">
+                {describeExpansions(themeServer ? themeExpanded : serverExpanded)}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
         {/*
           Search row: the input with EN/JP + ★ + ? beside it, at every width. Below
           `COMPACT_SEARCH_W` the placeholder drops the grammar hint, which would otherwise be cut
@@ -4200,6 +4244,23 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       paddingVertical: 6,
     },
     pocketSimilarText: { fontSize: 12, fontWeight: '600', color: t.link },
+    similarRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+    similarBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      minHeight: t.controlHeight ?? 32,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    similarBtnOn: { borderColor: t.accent, backgroundColor: t.accent },
+    similarKnob: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: t.subtext },
+    similarKnobOn: { borderColor: t.accentText, backgroundColor: t.accentText },
+    similarText: { fontSize: t.controlHeight ? 15 : 13, fontWeight: '700', color: t.subtext },
+    similarTextOn: { color: t.accentText },
+    similarAlso: { flex: 1, minWidth: 160, fontSize: 13, color: t.subtext },
     // With a host touch height (theme.controlHeight) the save and help buttons are that tall too.
     helpBtn: {
       width: t.controlHeight ?? 30,

@@ -19,12 +19,15 @@
  * `themeFacets` below, which answer ranked ids only. `mergeThemeHits` maps them onto the game's
  * own public catalog rows, and the rest of the query runs on the device over those.
  */
+import { expandThemeFields, getSimilarWords, type SimilarExpansion, type WireField } from './synonyms';
 import { numberKey, type CardKind, type CardLanguage, type CatalogCard } from './catalog';
 import { getApiKey, getApiUrl, getThemedSearchProxy } from './config';
 import type { ParsedQuery } from './query';
 
 /** One page of server results: tile-ready cards, their prices (by id), and the true total. */
 export interface SearchPage {
+  /** Words the Similar words switch widened to their group (MIC-024); absent when none. */
+  expanded?: SimilarExpansion[];
   cards: CatalogCard[];
   /** Headline value per hit id (RPC `cur`), so cold-mode tiles/sort show prices without the
    *  price summary loaded. */
@@ -234,10 +237,18 @@ export function themeToolbarFields(t?: ThemeToolbar): { key: string; value: stri
 
 /** `p_fields` for a search_cards / search_facets body: the query's fields, then the toolbar's,
  *  which only a themed query carries. */
-function fieldsWithToolbar(parsed: ParsedQuery, toolbar?: ThemeToolbar): { key: string; value: string }[] {
-  const fields = parsed.fields.map((f) => ({ key: f.key, value: f.value }));
-  if (!toolbar || !parsed.fields.some((f) => f.key === 'theme')) return fields;
-  return [...fields, ...themeToolbarFields(toolbar)];
+function fieldsWithToolbar(parsed: ParsedQuery, toolbar?: ThemeToolbar): WireField[] {
+  return themedFields(parsed, toolbar).fields;
+}
+
+/**
+ * The same fields, with the Similar words switch applied (MIC-024): on, a bare theme word in a
+ * group becomes one `theme_any` field (a union on the server). Off, byte-identical to before.
+ */
+function themedFields(parsed: ParsedQuery, toolbar?: ThemeToolbar): { fields: WireField[]; expanded: SimilarExpansion[] } {
+  const { fields, expanded } = expandThemeFields(parsed.fields, { on: getSimilarWords(), game: 'pokemon' });
+  if (!toolbar || !parsed.fields.some((f) => f.key === 'theme')) return { fields, expanded };
+  return { fields: [...fields, ...themeToolbarFields(toolbar)], expanded };
 }
 
 const POKEMON_TRAINER_TYPES = new Set([
@@ -321,10 +332,11 @@ export async function searchCards(
   if (!(apiUrl && apiKey)) return empty;
   const { parsed, languages } = foldLanguageTerms(parsedIn, boundIn);
   if (languages?.length === 0) return empty; // contradictory bound (e.g. EN-only + lang:ja)
+  const wire = themedFields(parsed, toolbar);
   try {
     const body = JSON.stringify({
       p_words: parsed.words,
-      p_fields: fieldsWithToolbar(parsed, toolbar),
+      p_fields: wire.fields,
       p_compares: parsed.comparisons.map((c) => ({ field: c.field, op: c.op, value: c.value })),
       p_facets: packFacets(facets),
       p_min_price: parsed.minPrice,
@@ -401,7 +413,7 @@ export async function searchCards(
     const clamped =
       themed && !viaProxy && offset === 0
       && ((depth > 0 && total > depth) || cards.length < Math.min(limit, total));
-    return { cards, priceById, total, clamped, degraded: clamped && proxyBroke, failed: false };
+    return { cards, priceById, total, clamped, degraded: clamped && proxyBroke, failed: false, ...(wire.expanded.length ? { expanded: wire.expanded } : {}) };
   } catch {
     // Offline, DNS, CORS, a body that is not JSON. There is no local fallback for a cold search
     // (no catalog to run the query over), so the caller says the server did not answer.
@@ -459,6 +471,8 @@ export interface ThemePage {
   clamped: boolean;
   degraded: boolean;
   failed: boolean;
+  /** Words the Similar words switch widened to their group (MIC-024); absent when none. */
+  expanded?: SimilarExpansion[];
 }
 
 /** Chip counts for a theme query: `frame` by 'full' / 'window', `type` by type group key. */
@@ -479,11 +493,16 @@ interface ThemeRow {
 /** The RPC's own page cap: a larger `p_limit` is cut to this server-side, so it is sent cut. */
 const THEME_MAX_LIMIT = 1000;
 
+/** A secondary game's theme words as wire fields, with the Similar words switch applied (MIC-024). */
+function themeFieldsFor(game: string, q: ThemeQuery): { fields: WireField[]; expanded: SimilarExpansion[] } {
+  return expandThemeFields(q.themes.map((v) => ({ key: 'theme', value: v })), { on: getSimilarWords(), game });
+}
+
 /** The parameters `theme_search` and `theme_facets` share, in that order on the wire. */
 function themeParams(game: string, q: ThemeQuery) {
   return {
     p_game: game,
-    p_fields: q.themes.map((v) => ({ key: 'theme', value: v })),
+    p_fields: themeFieldsFor(game, q).fields,
     p_words: q.words,
     p_frame: q.frame && q.frame !== 'all' ? q.frame : null,
     p_types: q.types?.length ? q.types : null,
@@ -585,7 +604,8 @@ export async function searchThemes(
     const depth = viaProxy ? 0 : await freeThemeDepth();
     const clamped =
       !viaProxy && offset === 0 && ((depth > 0 && total > depth) || hits.length < Math.min(pageLimit, total));
-    return { hits, total, clamped, degraded: clamped && proxyBroke, failed: false };
+    const { expanded } = themeFieldsFor(game, q);
+    return { hits, total, clamped, degraded: clamped && proxyBroke, failed: false, ...(expanded.length ? { expanded } : {}) };
   } catch {
     return failed;
   }
