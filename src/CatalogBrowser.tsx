@@ -20,7 +20,7 @@
  * light), navigation is via callbacks (`onOpenCard`/`onPickCard`, no router import), and
  * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
  */
-import { hasThemeSynonyms, useSimilarWords, type SimilarExpansion } from './synonyms';
+import { hasThemeSynonyms, useSimilarWords, wordForms, type SimilarExpansion } from './synonyms';
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -747,8 +747,16 @@ interface CatalogBrowserProps {
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
 export function describeExpansions(list: readonly SimilarExpansion[], shown = 4): string {
   const parts = list.map((e) => {
-    const head = e.also.slice(0, shown).join(', ');
-    const more = e.also.length - shown;
+    // One entry per word, not per form: "trash can" stands for "trash cans" too (MIC-024).
+    const seen = new Set<string>(wordForms(e.word));
+    const words = e.also.filter((w) => {
+      const forms = wordForms(w);
+      if (forms.some((f) => seen.has(f))) return false;
+      forms.forEach((f) => seen.add(f));
+      return true;
+    });
+    const head = words.slice(0, shown).join(', ');
+    const more = words.length - shown;
     return list.length > 1 ? `${e.word}: ${head}${more > 0 ? ` (+${more})` : ''}` : `${head}${more > 0 ? ` (+${more})` : ''}`;
   });
   return `Also searching: ${parts.join('; ')}`;
