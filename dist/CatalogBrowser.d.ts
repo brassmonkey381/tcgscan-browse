@@ -226,6 +226,8 @@ interface CatalogBrowserProps {
      * results line. Wider than a phone, the compact header is unchanged.
      */
     dock?: boolean;
+    /** A host control at the end of the dock's button row (e.g. the app's menu), when docked. */
+    dockExtra?: ReactNode;
     /**
      * RESULTS AS BINDER PAGES (MIC-017 piece 5, opt-in). Card results arrive as 3x3 pages you turn
      * (arrows, or a swipe), the way they will sit in a binder, with the search's terms and filters as
@@ -367,5 +369,5 @@ export type SimilarWordsEvent = {
 };
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
 export declare function describeExpansions(list: readonly SimilarExpansion[], shown?: number, prefix?: string): string;
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, headless, dock, resultsAsPages, explainEmpty, moreCardActions, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, headless, dock, dockExtra, resultsAsPages, explainEmpty, moreCardActions, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

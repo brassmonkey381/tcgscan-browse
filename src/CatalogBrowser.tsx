@@ -686,6 +686,8 @@ interface CatalogBrowserProps {
    * results line. Wider than a phone, the compact header is unchanged.
    */
   dock?: boolean;
+  /** A host control at the end of the dock's button row (e.g. the app's menu), when docked. */
+  dockExtra?: ReactNode;
   /**
    * RESULTS AS BINDER PAGES (MIC-017 piece 5, opt-in). Card results arrive as 3x3 pages you turn
    * (arrows, or a swipe), the way they will sit in a binder, with the search's terms and filters as
@@ -863,6 +865,7 @@ export function CatalogBrowser({
   compactHeader = false,
   headless = false,
   dock = false,
+  dockExtra,
   resultsAsPages = false,
   explainEmpty = false,
   moreCardActions,
@@ -2923,9 +2926,13 @@ export function CatalogBrowser({
   }
   const TAB_COLORS = ['#f6d548', '#e6b800', '#cfd6e4', '#cfe0fb', '#f3c4d6', '#c9e8cf'];
   const swipeX = useRef<number | null>(null);
-  const tabsW = pageTabs.length ? 34 : 0;
-  const pageW = Math.max(160, Math.min(containerWidth - tabsW - 12, 520));
-  const pocketW = Math.floor((pageW - 2 * 10 - 2 * 6) / 3);
+  const [pagedH, setPagedH] = useState(0);
+  // Three pockets across, three down: as wide as the browser allows and short enough that the
+  // whole page, its line and its turn buttons fit the room without scrolling.
+  const byWidth = Math.floor((Math.min(containerWidth - 16, 560) - 2 * 10 - 2 * 6) / 3);
+  const byHeight = pagedH > 0 ? Math.floor(((pagedH - 150) / 3 - CARD_LABEL_H - ROW_GAP - 6) / CARD_ASPECT) : byWidth;
+  const pocketW = Math.max(60, Math.min(byWidth, byHeight));
+  const pageW = pocketW * 3 + 2 * 6 + 2 * 10;
 
   // The search row: under the header, or in the thumb dock (docked).
   const searchRowEl = (
@@ -3280,30 +3287,11 @@ export function CatalogBrowser({
           ) : null}
         </ScrollView>
       ) : paged ? (
-        <ScrollView style={styles.list} contentContainerStyle={styles.pagedContent} testID="results-pages">
+        <ScrollView style={styles.list} contentContainerStyle={styles.pagedContent} testID="results-pages" onLayout={(e) => setPagedH(Math.round(e.nativeEvent.layout.height))}>
           <Text style={styles.pagedLine}>
             {count(visibleData.length)}{moreToLoad ? '+' : ''} results as {pageCount}{moreToLoad ? '+' : ''} binder pages
           </Text>
-          <View style={styles.pagedRow}>
-            <View
-              style={[styles.binderPage, { width: pageW }]}
-              testID="results-page"
-              onTouchStart={(e) => {
-                swipeX.current = e.nativeEvent.pageX;
-              }}
-              onTouchEnd={(e) => {
-                const from = swipeX.current;
-                swipeX.current = null;
-                if (from == null) return;
-                const dx = e.nativeEvent.pageX - from;
-                if (Math.abs(dx) > 48) turnTo(pageN + (dx < 0 ? 1 : -1));
-              }}>
-              {visibleData.slice(pageN * PER_PAGE, pageN * PER_PAGE + PER_PAGE).map((item, i) => (
-                <View key={keyFor(item)} style={{ width: pocketW }}>
-                  {renderItem({ item, index: pageN * PER_PAGE + i }, pocketW)}
-                </View>
-              ))}
-            </View>
+          <View style={{ width: pageW }}>
             {pageTabs.length ? (
               <View style={styles.pageTabs}>
                 {pageTabs.map((t, i) => (
@@ -3321,6 +3309,32 @@ export function CatalogBrowser({
                 ))}
               </View>
             ) : null}
+            <View
+              style={[styles.binderPage, { width: pageW }]}
+              testID="results-page"
+              onTouchStart={(e) => {
+                swipeX.current = e.nativeEvent.pageX;
+              }}
+              onTouchEnd={(e) => {
+                const from = swipeX.current;
+                swipeX.current = null;
+                if (from == null) return;
+                const dx = e.nativeEvent.pageX - from;
+                if (Math.abs(dx) > 48) turnTo(pageN + (dx < 0 ? 1 : -1));
+              }}>
+              {[0, 1, 2].map((r) => {
+                const row = visibleData.slice(pageN * PER_PAGE + r * 3, pageN * PER_PAGE + r * 3 + 3);
+                return row.length ? (
+                  <View key={r} style={styles.pageRowOfThree}>
+                    {row.map((item, i) => (
+                      <View key={keyFor(item)} style={[styles.pocket, { width: pocketW }]}>
+                        {renderItem({ item, index: pageN * PER_PAGE + r * 3 + i }, pocketW)}
+                      </View>
+                    ))}
+                  </View>
+                ) : null;
+              })}
+            </View>
           </View>
           <View style={styles.pagedNav}>
             <Pressable onPress={() => turnTo(pageN - 1)} disabled={pageN === 0} role="button" accessibilityLabel="Previous page" testID="results-prev" style={[styles.pagedTurn, pageN === 0 && styles.pagedTurnOff]}>
@@ -3523,6 +3537,7 @@ export function CatalogBrowser({
                 <Text style={styles.triColorBtnText} numberOfLines={1}>{themeSearchLabel}</Text>
               </Pressable>
             ) : null}
+            {dockExtra}
           </View>
         </View>
       ) : null}
@@ -4566,10 +4581,13 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     pagedContent: { alignItems: 'center', gap: 10, paddingVertical: 10 },
     pagedLine: { fontSize: 12, color: t.faint },
     pagedRow: { flexDirection: 'row', alignItems: 'flex-start' },
-    binderPage: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: t.border, backgroundColor: t.panel, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
-    pageTabs: { gap: 6, marginTop: 18, marginLeft: -1 },
-    pageTab: { width: 34, minHeight: 70, maxHeight: 130, paddingVertical: 8, borderTopRightRadius: 8, borderBottomRightRadius: 8, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-    pageTabText: { fontSize: 11, fontWeight: '700', color: '#222', transform: [{ rotate: '90deg' }], width: 120, textAlign: 'center' },
+    pageRowOfThree: { flexDirection: 'row', gap: 6 },
+    pocket: { overflow: 'hidden' },
+    binderPage: { gap: 2, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: t.border, backgroundColor: t.panel, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
+    // Divider tabs on the page's top edge, like a binder's index tabs.
+    pageTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, paddingHorizontal: 10, marginBottom: -1 },
+    pageTab: { maxWidth: 170, paddingHorizontal: 10, paddingVertical: 5, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
+    pageTabText: { fontSize: 12, fontWeight: '700', color: '#222' },
     pagedNav: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     pagedTurn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: t.border, backgroundColor: t.panel },
     pagedTurnOff: { opacity: 0.35 },
