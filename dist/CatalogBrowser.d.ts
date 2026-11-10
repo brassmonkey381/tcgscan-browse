@@ -295,6 +295,13 @@ interface CatalogBrowserProps {
      */
     themeSearchLabel?: string;
     /**
+     * THE THEME BUTTON IS WORKING (opt-in, owner 2026-11-10: "buttons that take a little while ...
+     * should show their state changes and be disabled while processing"). While true every theme
+     * button is disabled and dimmed, so a second press cannot fire; the host says what is happening
+     * through themeSearchLabel (e.g. "Rolling...").
+     */
+    themeSearchBusy?: boolean;
+    /**
      * A SECONDARY GAME (Lorcana, One Piece): theme terms go to the data project's `theme_search`,
      * rows stay local. The game's public catalog carries no captions or tags, so a themed query
      * (`theme:`, `character:`, `scene:`, …) sends its theme terms, bare words, the toolbar's frame
@@ -369,5 +376,5 @@ export type SimilarWordsEvent = {
 };
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
 export declare function describeExpansions(list: readonly SimilarExpansion[], shown?: number, prefix?: string): string;
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, headless, dock, dockExtra, resultsAsPages, explainEmpty, moreCardActions, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, headless, dock, dockExtra, resultsAsPages, explainEmpty, moreCardActions, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeSearchBusy, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

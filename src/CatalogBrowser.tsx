@@ -750,6 +750,13 @@ interface CatalogBrowserProps {
    */
   themeSearchLabel?: string;
   /**
+   * THE THEME BUTTON IS WORKING (opt-in, owner 2026-11-10: "buttons that take a little while ...
+   * should show their state changes and be disabled while processing"). While true every theme
+   * button is disabled and dimmed, so a second press cannot fire; the host says what is happening
+   * through themeSearchLabel (e.g. "Rolling...").
+   */
+  themeSearchBusy?: boolean;
+  /**
    * A SECONDARY GAME (Lorcana, One Piece): theme terms go to the data project's `theme_search`,
    * rows stay local. The game's public catalog carries no captions or tags, so a themed query
    * (`theme:`, `character:`, `scene:`, …) sends its theme terms, bare words, the toolbar's frame
@@ -875,6 +882,7 @@ export function CatalogBrowser({
   onSimilarWordsEvent,
   colorSearchLabel = 'Tri-Color Search',
   themeSearchLabel = 'Theme Search',
+  themeSearchBusy = false,
   themeServer,
   themeTools: themeToolsProp,
   ownedIds,
@@ -2723,7 +2731,7 @@ export function CatalogBrowser({
           </Pressable>
         ) : null}
         {wideHeader && onThemeSearch ? (
-          <Pressable onPress={onThemeSearch} style={styles.triColorBtn} accessibilityLabel={themeSearchLabel} testID="header-theme">
+          <Pressable onPress={onThemeSearch} disabled={themeSearchBusy} aria-busy={themeSearchBusy} style={[styles.triColorBtn, themeSearchBusy && styles.busyBtn]} accessibilityLabel={themeSearchLabel} testID="header-theme">
             <Text style={styles.triColorBtnText}>{themeSearchLabel}</Text>
           </Pressable>
         ) : null}
@@ -2742,7 +2750,7 @@ export function CatalogBrowser({
             </Pressable>
           ) : null}
           {onThemeSearch ? (
-            <Pressable onPress={onThemeSearch} style={styles.triColorBtn} accessibilityLabel={themeSearchLabel} testID="header-theme">
+            <Pressable onPress={onThemeSearch} disabled={themeSearchBusy} aria-busy={themeSearchBusy} style={[styles.triColorBtn, themeSearchBusy && styles.busyBtn]} accessibilityLabel={themeSearchLabel} testID="header-theme">
               <Text style={styles.triColorBtnText}>{themeSearchLabel}</Text>
             </Pressable>
           ) : null}
@@ -3019,7 +3027,7 @@ export function CatalogBrowser({
             ) : null}
             {onThemeSearch ? (
               <Glow styles={styles} delay={900}>
-                <Pressable onPress={onThemeSearch} style={styles.triColorBtn} accessibilityLabel={themeSearchLabel}>
+                <Pressable onPress={onThemeSearch} disabled={themeSearchBusy} aria-busy={themeSearchBusy} style={[styles.triColorBtn, themeSearchBusy && styles.busyBtn]} accessibilityLabel={themeSearchLabel}>
                   <Text style={styles.triColorBtnText}>{themeSearchLabel}</Text>
                 </Pressable>
               </Glow>
@@ -3583,7 +3591,7 @@ export function CatalogBrowser({
               </Pressable>
             ) : null}
             {onThemeSearch ? (
-              <Pressable onPress={onThemeSearch} style={[styles.triColorBtn, styles.dockBtn]} accessibilityLabel={themeSearchLabel} testID="dock-theme">
+              <Pressable onPress={onThemeSearch} disabled={themeSearchBusy} aria-busy={themeSearchBusy} style={[styles.triColorBtn, styles.dockBtn, themeSearchBusy && styles.busyBtn]} accessibilityLabel={themeSearchLabel} testID="dock-theme">
                 <Text style={styles.triColorBtnText} numberOfLines={1}>{themeSearchLabel}</Text>
               </Pressable>
             ) : null}
@@ -4621,6 +4629,8 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     // The thumb dock (dock): a bar at the browser's foot, over the results' end.
     dock: { gap: 6, paddingTop: 8, paddingBottom: 8, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: t.border, backgroundColor: t.background },
     dockRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    // A button whose action is still running (themeSearchBusy): dimmed and not pressable.
+    busyBtn: { opacity: 0.6 },
     // No results that explain (explainEmpty).
     emptyExplain: { alignItems: 'center', gap: 10, paddingHorizontal: 16 },
     emptyTerms: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
