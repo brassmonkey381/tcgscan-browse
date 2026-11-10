@@ -2895,10 +2895,6 @@ export function CatalogBrowser({
   const pageN = pageAt.key === pageKeyNow ? pageAt.n : 0;
   const pageCount = Math.max(1, Math.ceil(visibleData.length / PER_PAGE));
   const turnTo = (n: number) => setPageAt({ key: pageKeyNow, n: Math.max(0, Math.min(pageCount - 1, n)) });
-  useEffect(() => {
-    // Within two pages of the end: ask for the next results, as the list's end would.
-    if (paged && moreToLoad && pageN >= pageCount - 2) onEndReachedRef.current();
-  }, [paged, moreToLoad, pageN, pageCount]);
   // The divider tabs: each search word and each picked filter, each one tap to drop.
   const queryTerms: { key: string; label: string; drop: () => void }[] =
     paged || explainEmpty
@@ -2933,6 +2929,17 @@ export function CatalogBrowser({
   const byHeight = pagedH > 0 ? Math.floor(((pagedH - 150) / 3 - CARD_LABEL_H - ROW_GAP - 6) / CARD_ASPECT) : byWidth;
   const pocketW = Math.max(60, Math.min(byWidth, byHeight));
   const pageW = pocketW * 3 + 2 * 6 + 2 * 10;
+  // AS MANY PAGES AS FIT (owner, 2026-11-10: "on desktop we underutilize a lot of space"): pages
+  // sit side by side across the browser's width, and a turn moves the whole spread.
+  const PAGE_GAP = 16;
+  const across = Math.max(1, Math.floor((containerWidth - 16 + PAGE_GAP) / (pageW + PAGE_GAP)));
+  const spreadStart = Math.floor(pageN / across) * across;
+  const spreadEnd = Math.min(pageCount, spreadStart + across);
+  const spreadW = across * pageW + (across - 1) * PAGE_GAP;
+  useEffect(() => {
+    // Within two pages of the end: ask for the next results, as the list's end would.
+    if (paged && moreToLoad && pageN + across * 2 >= pageCount) onEndReachedRef.current();
+  }, [paged, moreToLoad, pageN, pageCount, across]);
 
   // The search row: under the header, or in the thumb dock (docked).
   const searchRowEl = (
@@ -3291,7 +3298,7 @@ export function CatalogBrowser({
           <Text style={styles.pagedLine}>
             {count(visibleData.length)}{moreToLoad ? '+' : ''} results as {pageCount}{moreToLoad ? '+' : ''} binder pages
           </Text>
-          <View style={{ width: pageW }}>
+          <View style={{ width: spreadW }}>
             {pageTabs.length ? (
               <View style={styles.pageTabs}>
                 {pageTabs.map((t, i) => (
@@ -3309,41 +3316,46 @@ export function CatalogBrowser({
                 ))}
               </View>
             ) : null}
-            <View
-              style={[styles.binderPage, { width: pageW }]}
-              testID="results-page"
-              onTouchStart={(e) => {
-                swipeX.current = e.nativeEvent.pageX;
-              }}
-              onTouchEnd={(e) => {
-                const from = swipeX.current;
-                swipeX.current = null;
-                if (from == null) return;
-                const dx = e.nativeEvent.pageX - from;
-                if (Math.abs(dx) > 48) turnTo(pageN + (dx < 0 ? 1 : -1));
-              }}>
-              {[0, 1, 2].map((r) => {
-                const row = visibleData.slice(pageN * PER_PAGE + r * 3, pageN * PER_PAGE + r * 3 + 3);
-                return row.length ? (
-                  <View key={r} style={styles.pageRowOfThree}>
-                    {row.map((item, i) => (
-                      <View key={keyFor(item)} style={[styles.pocket, { width: pocketW }]}>
-                        {renderItem({ item, index: pageN * PER_PAGE + r * 3 + i }, pocketW)}
+            <View style={styles.pageSpread}>
+              {Array.from({ length: spreadEnd - spreadStart }, (_, k) => spreadStart + k).map((pn) => (
+                <View
+                  style={[styles.binderPage, { width: pageW }]}
+                  key={pn}
+                  testID="results-page"
+                  onTouchStart={(e) => {
+                    swipeX.current = e.nativeEvent.pageX;
+                  }}
+                  onTouchEnd={(e) => {
+                    const from = swipeX.current;
+                    swipeX.current = null;
+                    if (from == null) return;
+                    const dx = e.nativeEvent.pageX - from;
+                    if (Math.abs(dx) > 48) turnTo(spreadStart + (dx < 0 ? across : -across));
+                  }}>
+                  {[0, 1, 2].map((r) => {
+                    const row = visibleData.slice(pn * PER_PAGE + r * 3, pn * PER_PAGE + r * 3 + 3);
+                    return row.length ? (
+                      <View key={r} style={styles.pageRowOfThree}>
+                        {row.map((item, i) => (
+                          <View key={keyFor(item)} style={[styles.pocket, { width: pocketW }]}>
+                            {renderItem({ item, index: pn * PER_PAGE + r * 3 + i }, pocketW)}
+                          </View>
+                        ))}
                       </View>
-                    ))}
-                  </View>
-                ) : null;
-              })}
+                    ) : null;
+                  })}
+                </View>
+                  ))}
             </View>
           </View>
           <View style={styles.pagedNav}>
-            <Pressable onPress={() => turnTo(pageN - 1)} disabled={pageN === 0} role="button" accessibilityLabel="Previous page" testID="results-prev" style={[styles.pagedTurn, pageN === 0 && styles.pagedTurnOff]}>
+            <Pressable onPress={() => turnTo(spreadStart - across)} disabled={spreadStart === 0} role="button" accessibilityLabel="Previous page" testID="results-prev" style={[styles.pagedTurn, spreadStart === 0 && styles.pagedTurnOff]}>
               <Text style={styles.pagedTurnText}>‹</Text>
             </Pressable>
             <Text style={styles.pagedCount} testID="results-page-count">
-              Page {pageN + 1} of {pageCount}{moreToLoad ? '+' : ''}
+              {spreadEnd - spreadStart > 1 ? `Pages ${spreadStart + 1}-${spreadEnd}` : `Page ${spreadStart + 1}`} of {pageCount}{moreToLoad ? '+' : ''}
             </Text>
-            <Pressable onPress={() => turnTo(pageN + 1)} disabled={pageN >= pageCount - 1} role="button" accessibilityLabel="Next page" testID="results-next" style={[styles.pagedTurn, pageN >= pageCount - 1 && styles.pagedTurnOff]}>
+            <Pressable onPress={() => turnTo(spreadStart + across)} disabled={spreadEnd >= pageCount} role="button" accessibilityLabel="Next page" testID="results-next" style={[styles.pagedTurn, spreadEnd >= pageCount && styles.pagedTurnOff]}>
               <Text style={styles.pagedTurnText}>›</Text>
             </Pressable>
           </View>
@@ -4582,6 +4594,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     pagedLine: { fontSize: 12, color: t.faint },
     pagedRow: { flexDirection: 'row', alignItems: 'flex-start' },
     pageRowOfThree: { flexDirection: 'row', gap: 6 },
+    pageSpread: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
     pocket: { overflow: 'hidden' },
     binderPage: { gap: 2, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: t.border, backgroundColor: t.panel, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
     // Divider tabs on the page's top edge, like a binder's index tabs.

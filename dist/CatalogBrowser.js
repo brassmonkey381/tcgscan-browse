@@ -2088,11 +2088,6 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const pageN = pageAt.key === pageKeyNow ? pageAt.n : 0;
     const pageCount = Math.max(1, Math.ceil(visibleData.length / PER_PAGE));
     const turnTo = (n) => setPageAt({ key: pageKeyNow, n: Math.max(0, Math.min(pageCount - 1, n)) });
-    useEffect(() => {
-        // Within two pages of the end: ask for the next results, as the list's end would.
-        if (paged && moreToLoad && pageN >= pageCount - 2)
-            onEndReachedRef.current();
-    }, [paged, moreToLoad, pageN, pageCount]);
     // The divider tabs: each search word and each picked filter, each one tap to drop.
     const queryTerms = paged || explainEmpty
         ? [
@@ -2128,6 +2123,18 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const byHeight = pagedH > 0 ? Math.floor(((pagedH - 150) / 3 - CARD_LABEL_H - ROW_GAP - 6) / CARD_ASPECT) : byWidth;
     const pocketW = Math.max(60, Math.min(byWidth, byHeight));
     const pageW = pocketW * 3 + 2 * 6 + 2 * 10;
+    // AS MANY PAGES AS FIT (owner, 2026-11-10: "on desktop we underutilize a lot of space"): pages
+    // sit side by side across the browser's width, and a turn moves the whole spread.
+    const PAGE_GAP = 16;
+    const across = Math.max(1, Math.floor((containerWidth - 16 + PAGE_GAP) / (pageW + PAGE_GAP)));
+    const spreadStart = Math.floor(pageN / across) * across;
+    const spreadEnd = Math.min(pageCount, spreadStart + across);
+    const spreadW = across * pageW + (across - 1) * PAGE_GAP;
+    useEffect(() => {
+        // Within two pages of the end: ask for the next results, as the list's end would.
+        if (paged && moreToLoad && pageN + across * 2 >= pageCount)
+            onEndReachedRef.current();
+    }, [paged, moreToLoad, pageN, pageCount, across]);
     // The search row: under the header, or in the thumb dock (docked).
     const searchRowEl = (_jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
                     ? `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards`
@@ -2174,20 +2181,20 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     return (_jsx(Pressable, { style: styles.similarThumb, onPress: () => src && setActionCard(src), children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: sid, transition: 80 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: src?.name?.slice(0, 1) ?? '?' }) })) }, sid));
                                 }) })] })) : seriesId ? (selectControl || analyticsTabs ? (tabsOwnLine ? (_jsxs(_Fragment, { children: [_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }), _jsxs(View, { style: styles.metaRow, children: [selecting ? _jsx(View, {}) : analyticsTabs, _jsx(View, { style: styles.metaEnd, children: selectControl })] })] })) : (_jsxs(View, { style: styles.metaRow, children: [_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }), _jsxs(View, { style: styles.metaEnd, children: [selectControl, selecting ? null : analyticsTabs] })] }))) : (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }))) : taxBarOn ? null : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), searching && lockNotice ? (_jsx(Pressable, { onPress: () => onLockedFeature?.(isLocked(lockedFeatures, 'sortByValue') ? 'sortByValue' : 'priceFilter'), style: styles.lockNoticeRow, children: _jsx(Text, { style: styles.lockNotice, numberOfLines: 2, children: lockNotice }) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
                 // Gated (e.g. guest): the app-supplied CTA replaces the analytics panels.
-                analyticsLocked) : catalog && analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : catalog && analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : paged ? (_jsxs(ScrollView, { style: styles.list, contentContainerStyle: styles.pagedContent, testID: "results-pages", onLayout: (e) => setPagedH(Math.round(e.nativeEvent.layout.height)), children: [_jsxs(Text, { style: styles.pagedLine, children: [count(visibleData.length), moreToLoad ? '+' : '', " results as ", pageCount, moreToLoad ? '+' : '', " binder pages"] }), _jsxs(View, { style: { width: pageW }, children: [pageTabs.length ? (_jsx(View, { style: styles.pageTabs, children: pageTabs.map((t, i) => (_jsx(Pressable, { onPress: t.drop, role: "button", accessibilityLabel: `Drop ${t.label}`, testID: "results-tab", style: [styles.pageTab, { backgroundColor: TAB_COLORS[i % TAB_COLORS.length] }], children: _jsxs(Text, { style: styles.pageTabText, numberOfLines: 1, children: [t.label, " \u2715"] }) }, t.key))) })) : null, _jsx(View, { style: [styles.binderPage, { width: pageW }], testID: "results-page", onTouchStart: (e) => {
-                                    swipeX.current = e.nativeEvent.pageX;
-                                }, onTouchEnd: (e) => {
-                                    const from = swipeX.current;
-                                    swipeX.current = null;
-                                    if (from == null)
-                                        return;
-                                    const dx = e.nativeEvent.pageX - from;
-                                    if (Math.abs(dx) > 48)
-                                        turnTo(pageN + (dx < 0 ? 1 : -1));
-                                }, children: [0, 1, 2].map((r) => {
-                                    const row = visibleData.slice(pageN * PER_PAGE + r * 3, pageN * PER_PAGE + r * 3 + 3);
-                                    return row.length ? (_jsx(View, { style: styles.pageRowOfThree, children: row.map((item, i) => (_jsx(View, { style: [styles.pocket, { width: pocketW }], children: renderItem({ item, index: pageN * PER_PAGE + r * 3 + i }, pocketW) }, keyFor(item)))) }, r)) : null;
-                                }) })] }), _jsxs(View, { style: styles.pagedNav, children: [_jsx(Pressable, { onPress: () => turnTo(pageN - 1), disabled: pageN === 0, role: "button", accessibilityLabel: "Previous page", testID: "results-prev", style: [styles.pagedTurn, pageN === 0 && styles.pagedTurnOff], children: _jsx(Text, { style: styles.pagedTurnText, children: "\u2039" }) }), _jsxs(Text, { style: styles.pagedCount, testID: "results-page-count", children: ["Page ", pageN + 1, " of ", pageCount, moreToLoad ? '+' : ''] }), _jsx(Pressable, { onPress: () => turnTo(pageN + 1), disabled: pageN >= pageCount - 1, role: "button", accessibilityLabel: "Next page", testID: "results-next", style: [styles.pagedTurn, pageN >= pageCount - 1 && styles.pagedTurnOff], children: _jsx(Text, { style: styles.pagedTurnText, children: "\u203A" }) })] }), footer] })) : (_jsx(FlatList, { ref: listRef, 
+                analyticsLocked) : catalog && analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : catalog && analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : paged ? (_jsxs(ScrollView, { style: styles.list, contentContainerStyle: styles.pagedContent, testID: "results-pages", onLayout: (e) => setPagedH(Math.round(e.nativeEvent.layout.height)), children: [_jsxs(Text, { style: styles.pagedLine, children: [count(visibleData.length), moreToLoad ? '+' : '', " results as ", pageCount, moreToLoad ? '+' : '', " binder pages"] }), _jsxs(View, { style: { width: spreadW }, children: [pageTabs.length ? (_jsx(View, { style: styles.pageTabs, children: pageTabs.map((t, i) => (_jsx(Pressable, { onPress: t.drop, role: "button", accessibilityLabel: `Drop ${t.label}`, testID: "results-tab", style: [styles.pageTab, { backgroundColor: TAB_COLORS[i % TAB_COLORS.length] }], children: _jsxs(Text, { style: styles.pageTabText, numberOfLines: 1, children: [t.label, " \u2715"] }) }, t.key))) })) : null, _jsx(View, { style: styles.pageSpread, children: Array.from({ length: spreadEnd - spreadStart }, (_, k) => spreadStart + k).map((pn) => (_jsx(View, { style: [styles.binderPage, { width: pageW }], testID: "results-page", onTouchStart: (e) => {
+                                        swipeX.current = e.nativeEvent.pageX;
+                                    }, onTouchEnd: (e) => {
+                                        const from = swipeX.current;
+                                        swipeX.current = null;
+                                        if (from == null)
+                                            return;
+                                        const dx = e.nativeEvent.pageX - from;
+                                        if (Math.abs(dx) > 48)
+                                            turnTo(spreadStart + (dx < 0 ? across : -across));
+                                    }, children: [0, 1, 2].map((r) => {
+                                        const row = visibleData.slice(pn * PER_PAGE + r * 3, pn * PER_PAGE + r * 3 + 3);
+                                        return row.length ? (_jsx(View, { style: styles.pageRowOfThree, children: row.map((item, i) => (_jsx(View, { style: [styles.pocket, { width: pocketW }], children: renderItem({ item, index: pn * PER_PAGE + r * 3 + i }, pocketW) }, keyFor(item)))) }, r)) : null;
+                                    }) }, pn))) })] }), _jsxs(View, { style: styles.pagedNav, children: [_jsx(Pressable, { onPress: () => turnTo(spreadStart - across), disabled: spreadStart === 0, role: "button", accessibilityLabel: "Previous page", testID: "results-prev", style: [styles.pagedTurn, spreadStart === 0 && styles.pagedTurnOff], children: _jsx(Text, { style: styles.pagedTurnText, children: "\u2039" }) }), _jsxs(Text, { style: styles.pagedCount, testID: "results-page-count", children: [spreadEnd - spreadStart > 1 ? `Pages ${spreadStart + 1}-${spreadEnd}` : `Page ${spreadStart + 1}`, " of ", pageCount, moreToLoad ? '+' : ''] }), _jsx(Pressable, { onPress: () => turnTo(spreadStart + across), disabled: spreadEnd >= pageCount, role: "button", accessibilityLabel: "Next page", testID: "results-next", style: [styles.pagedTurn, spreadEnd >= pageCount && styles.pagedTurnOff], children: _jsx(Text, { style: styles.pagedTurnText, children: "\u203A" }) })] }), footer] })) : (_jsx(FlatList, { ref: listRef, 
                 // Keyboard nav scrolls by index; a miss (virtualized far jump) is non-fatal.
                 onScrollToIndexFailed: () => { }, style: styles.list, 
                 // Render a growing window of the (uncapped) results — reveal more as you scroll.
@@ -2536,6 +2543,7 @@ function makeStyles(t, taxTileHeight) {
         pagedLine: { fontSize: 12, color: t.faint },
         pagedRow: { flexDirection: 'row', alignItems: 'flex-start' },
         pageRowOfThree: { flexDirection: 'row', gap: 6 },
+        pageSpread: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
         pocket: { overflow: 'hidden' },
         binderPage: { gap: 2, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: t.border, backgroundColor: t.panel, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
         // Divider tabs on the page's top edge, like a binder's index tabs.
