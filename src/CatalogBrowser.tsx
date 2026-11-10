@@ -4593,7 +4593,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     pagedTurnOff: { opacity: 0.35 },
     pagedTurnText: { fontSize: 22, color: t.text, marginTop: -2 },
     pagedCount: { fontSize: 13, color: t.text, fontWeight: '600' },
-    dockBtn: { flexGrow: 1, flexBasis: 0, minWidth: 0, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
+    dockBtn: { flexGrow: 1, flexBasis: 'auto', minWidth: 0, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
     // Language, size, then Sort & filter at the far end; wraps rather than scrolls on a narrow embed.
     // ONE LINE, ALWAYS (owner, 2026-11-03): language, size and Sort & filter never wrap; at a
     // squeeze Sort & filter gives up width and cuts its label, so the row keeps its height.
