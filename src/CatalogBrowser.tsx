@@ -2923,23 +2923,45 @@ export function CatalogBrowser({
   const TAB_COLORS = ['#f6d548', '#e6b800', '#cfd6e4', '#cfe0fb', '#f3c4d6', '#c9e8cf'];
   const swipeX = useRef<number | null>(null);
   const [pagedH, setPagedH] = useState(0);
-  // Three pockets across, three down: as wide as the browser allows and short enough that the
-  // whole page, its line and its turn buttons fit the room without scrolling.
-  const byWidth = Math.floor((Math.min(containerWidth - 16, 560) - 2 * 10 - 2 * 6) / 3);
-  const byHeight = pagedH > 0 ? Math.floor(((pagedH - 150) / 3 - CARD_LABEL_H - ROW_GAP - 6) / CARD_ASPECT) : byWidth;
-  const pocketW = Math.max(60, Math.min(byWidth, byHeight));
-  const pageW = pocketW * 3 + 2 * 6 + 2 * 10;
-  // AS MANY PAGES AS FIT (owner, 2026-11-10: "on desktop we underutilize a lot of space"): pages
-  // sit side by side across the browser's width, and a turn moves the whole spread.
-  const PAGE_GAP = 16;
-  const across = Math.max(1, Math.floor((containerWidth - 16 + PAGE_GAP) / (pageW + PAGE_GAP)));
-  const spreadStart = Math.floor(pageN / across) * across;
-  const spreadEnd = Math.min(pageCount, spreadStart + across);
+  // EDGE TO EDGE (owner, 2026-11-10: "remove the results text and move the navigation to the left
+  // and right sides ... scale up the pages and images to the very top and bottom edge"). On a wide
+  // screen the turn arrows are columns at the sides and the count sits beside the tabs, so the
+  // pages take every pixel of height left; they come in one or two rows, whichever shows more pages
+  // while a card stays at least PAGES_MIN_CARD wide. A phone keeps one page and its arrows below.
+  // ONE RULE AT EVERY SIZE (owner, 2026-11-10: "the 3 page one looks good ... something that works
+  // well universally"). Cards keep one readable size everywhere (PAGES_CARD, the 3-pages-at-1280
+  // look); the window decides HOW MANY pages, in rows and columns, and the cards then grow evenly
+  // into whatever room is left. A bigger screen shows more pages, not bigger ones.
+  const PAGE_GAP = 12;
+  const PAGES_CARD = 84;
+  const sideArrows = containerWidth >= 700;
+  const ARROW_COL = sideArrows ? 36 : 0;
+  const TABS_H = 32;
+  const NAV_H = sideArrows ? 0 : 56;
+  const pageChrome = 2 * 10 + 2 * 6; // padding + the gaps between three pockets
+  const pageHFor = (card: number) => 3 * (card * CARD_ASPECT + CARD_LABEL_H + ROW_GAP) + 2 * 10 + 2 * 2;
+  const cardFromPageH = (h: number) => Math.floor(((h - 2 * 10 - 2 * 2) / 3 - CARD_LABEL_H - ROW_GAP) / CARD_ASPECT);
+  const freeW = Math.max(200, containerWidth - 2 * ARROW_COL - 16);
+  const freeH = pagedH > 0 ? pagedH - TABS_H - NAV_H - 12 : 0;
+  const pick = (() => {
+    const rows = sideArrows && freeH > 0 ? Math.max(1, Math.min(3, Math.floor((freeH + PAGE_GAP) / (pageHFor(PAGES_CARD) + PAGE_GAP)))) : 1;
+    const across = sideArrows ? Math.max(1, Math.floor((freeW + PAGE_GAP) / (PAGES_CARD * 3 + pageChrome + PAGE_GAP))) : 1;
+    const byH = freeH > 0 ? cardFromPageH((freeH - (rows - 1) * PAGE_GAP) / rows) : 9999;
+    const byW = Math.floor(((Math.min(freeW, sideArrows ? 99999 : 560) - (across - 1) * PAGE_GAP) / across - pageChrome) / 3);
+    const card = Math.max(56, Math.min(byH, byW));
+    return { rows, across, card, w: card * 3 + pageChrome };
+  })();
+  const pocketW = pick.card;
+  const pageW = pick.w;
+  const across = pick.across;
+  const perSpread = pick.across * pick.rows;
+  const spreadStart = Math.floor(pageN / perSpread) * perSpread;
+  const spreadEnd = Math.min(pageCount, spreadStart + perSpread);
   const spreadW = across * pageW + (across - 1) * PAGE_GAP;
   useEffect(() => {
     // Within two pages of the end: ask for the next results, as the list's end would.
-    if (paged && moreToLoad && pageN + across * 2 >= pageCount) onEndReachedRef.current();
-  }, [paged, moreToLoad, pageN, pageCount, across]);
+    if (paged && moreToLoad && pageN + perSpread * 2 >= pageCount) onEndReachedRef.current();
+  }, [paged, moreToLoad, pageN, pageCount, perSpread]);
 
   // The search row: under the header, or in the thumb dock (docked).
   const searchRowEl = (
@@ -3295,11 +3317,14 @@ export function CatalogBrowser({
         </ScrollView>
       ) : paged ? (
         <ScrollView style={styles.list} contentContainerStyle={styles.pagedContent} testID="results-pages" onLayout={(e) => setPagedH(Math.round(e.nativeEvent.layout.height))}>
-          <Text style={styles.pagedLine}>
-            {count(visibleData.length)}{moreToLoad ? '+' : ''} results as {pageCount}{moreToLoad ? '+' : ''} binder pages
-          </Text>
+          <View style={styles.pagedStage}>
+          {sideArrows ? (
+            <Pressable onPress={() => turnTo(spreadStart - perSpread)} disabled={spreadStart === 0} role="button" accessibilityLabel="Previous pages" testID="results-prev" style={[styles.pagedSide, spreadStart === 0 && styles.pagedTurnOff]}>
+              <Text style={styles.pagedSideText}>‹</Text>
+            </Pressable>
+          ) : null}
           <View style={{ width: spreadW }}>
-            {pageTabs.length ? (
+            <View style={styles.pageTabsRow}>
               <View style={styles.pageTabs}>
                 {pageTabs.map((t, i) => (
                   <Pressable
@@ -3315,7 +3340,12 @@ export function CatalogBrowser({
                   </Pressable>
                 ))}
               </View>
-            ) : null}
+              {sideArrows ? (
+                <Text style={styles.pagedCountSmall} testID="results-page-count">
+                  {spreadEnd - spreadStart > 1 ? `Pages ${spreadStart + 1}-${spreadEnd}` : `Page ${spreadStart + 1}`} of {pageCount}{moreToLoad ? '+' : ''}
+                </Text>
+              ) : null}
+            </View>
             <View style={styles.pageSpread}>
               {Array.from({ length: spreadEnd - spreadStart }, (_, k) => spreadStart + k).map((pn) => (
                 <View
@@ -3330,7 +3360,7 @@ export function CatalogBrowser({
                     swipeX.current = null;
                     if (from == null) return;
                     const dx = e.nativeEvent.pageX - from;
-                    if (Math.abs(dx) > 48) turnTo(spreadStart + (dx < 0 ? across : -across));
+                    if (Math.abs(dx) > 48) turnTo(spreadStart + (dx < 0 ? perSpread : -perSpread));
                   }}>
                   {[0, 1, 2].map((r) => {
                     const row = visibleData.slice(pn * PER_PAGE + r * 3, pn * PER_PAGE + r * 3 + 3);
@@ -3348,17 +3378,25 @@ export function CatalogBrowser({
                   ))}
             </View>
           </View>
+          {sideArrows ? (
+            <Pressable onPress={() => turnTo(spreadStart + perSpread)} disabled={spreadEnd >= pageCount} role="button" accessibilityLabel="Next pages" testID="results-next" style={[styles.pagedSide, spreadEnd >= pageCount && styles.pagedTurnOff]}>
+              <Text style={styles.pagedSideText}>›</Text>
+            </Pressable>
+          ) : null}
+          </View>
+          {sideArrows ? null : (
           <View style={styles.pagedNav}>
-            <Pressable onPress={() => turnTo(spreadStart - across)} disabled={spreadStart === 0} role="button" accessibilityLabel="Previous page" testID="results-prev" style={[styles.pagedTurn, spreadStart === 0 && styles.pagedTurnOff]}>
+            <Pressable onPress={() => turnTo(spreadStart - perSpread)} disabled={spreadStart === 0} role="button" accessibilityLabel="Previous page" testID="results-prev" style={[styles.pagedTurn, spreadStart === 0 && styles.pagedTurnOff]}>
               <Text style={styles.pagedTurnText}>‹</Text>
             </Pressable>
             <Text style={styles.pagedCount} testID="results-page-count">
               {spreadEnd - spreadStart > 1 ? `Pages ${spreadStart + 1}-${spreadEnd}` : `Page ${spreadStart + 1}`} of {pageCount}{moreToLoad ? '+' : ''}
             </Text>
-            <Pressable onPress={() => turnTo(spreadStart + across)} disabled={spreadEnd >= pageCount} role="button" accessibilityLabel="Next page" testID="results-next" style={[styles.pagedTurn, spreadEnd >= pageCount && styles.pagedTurnOff]}>
+            <Pressable onPress={() => turnTo(spreadStart + perSpread)} disabled={spreadEnd >= pageCount} role="button" accessibilityLabel="Next page" testID="results-next" style={[styles.pagedTurn, spreadEnd >= pageCount && styles.pagedTurnOff]}>
               <Text style={styles.pagedTurnText}>›</Text>
             </Pressable>
           </View>
+          )}
           {footer}
         </ScrollView>
       ) : (
@@ -4590,11 +4628,16 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     emptyTermText: { fontSize: 13, color: t.text, fontWeight: '600' },
     emptyHint: { fontSize: 13, color: t.faint, textAlign: 'center', maxWidth: 420 },
     // Results as binder pages (resultsAsPages).
-    pagedContent: { alignItems: 'center', gap: 10, paddingVertical: 10 },
-    pagedLine: { fontSize: 12, color: t.faint },
+    pagedContent: { alignItems: 'center', justifyContent: 'center', flexGrow: 1, gap: 6, paddingVertical: 6 },
+
     pagedRow: { flexDirection: 'row', alignItems: 'flex-start' },
     pageRowOfThree: { flexDirection: 'row', gap: 6 },
-    pageSpread: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
+    pageSpread: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' },
+    pagedStage: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center' },
+    pagedSide: { width: 36, alignItems: 'center', justifyContent: 'center' },
+    pagedSideText: { fontSize: 40, color: t.text, lineHeight: 44 },
+    pageTabsRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, minHeight: 28 },
+    pagedCountSmall: { fontSize: 12, color: t.faint, paddingBottom: 6 },
     pocket: { overflow: 'hidden' },
     binderPage: { gap: 2, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: t.border, backgroundColor: t.panel, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
     // Divider tabs on the page's top edge, like a binder's index tabs.
