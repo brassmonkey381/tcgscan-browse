@@ -679,6 +679,27 @@ interface CatalogBrowserProps {
    */
   headless?: boolean;
   /**
+   * THE THUMB DOCK (MIC-017 piece 5, opt-in; needs compactHeader). In a phone-narrow browser the
+   * header's controls move to a bar at the FOOT of the browser, where a thumb reaches them: the
+   * search field, Filters (with a count of what is on), View, and the Color / Theme buttons.
+   * Filters opens the same Filters sheet (sort at its foot). Nothing above the results but the
+   * results line. Wider than a phone, the compact header is unchanged.
+   */
+  dock?: boolean;
+  /**
+   * RESULTS AS BINDER PAGES (MIC-017 piece 5, opt-in). Card results arrive as 3x3 pages you turn
+   * (arrows, or a swipe), the way they will sit in a binder, with the search's terms and filters as
+   * divider tabs on the page's edge: tap a tab to drop that term. Pages near the end ask for more.
+   * An empty result keeps the ordinary empty state; shelves (series, sets) are unchanged.
+   */
+  resultsAsPages?: boolean;
+  /**
+   * NO RESULTS THAT EXPLAIN (MIC-017 piece 5, opt-in). An empty search says what it searched,
+   * lists each word and filter as a chip that drops it in one tap, and adds the one or two hints
+   * that fit (a language bound, a theme word, a long query).
+   */
+  explainEmpty?: boolean;
+  /**
    * EXTRA CARD ACTIONS (MIC-032, opt-in): appended to the DEFAULT sheet (place / replace and the
    * built-ins) when the host passes no `cardActions`, so a host keeps the kit's own verbs and adds
    * one of its own (michi: "Share picture"). Ignored when `cardActions` is given.
@@ -841,6 +862,9 @@ export function CatalogBrowser({
   featureRowLead,
   compactHeader = false,
   headless = false,
+  dock = false,
+  resultsAsPages = false,
+  explainEmpty = false,
   moreCardActions,
   layout,
   onColorSearch,
@@ -1244,6 +1268,8 @@ export function CatalogBrowser({
   // one-frame reflow on desktop, where the stacked form would otherwise flash first.
   const compactSearch = containerWidth > 0 && containerWidth < COMPACT_SEARCH_W;
   const compactBar = containerWidth > 0 && containerWidth < COMPACT_BAR_W;
+  // The thumb dock (dock): a phone-narrow compact browser draws its controls at its foot.
+  const docked = dock && compactHeader && !headless && compactBar;
   // THE DESK HEADER (MIC-017, owner 2026-11-09: "on desktop we can make all the collapsed UI fit
   // nicely on 1-2 rows, and maybe the HIDE FILTERS thing would actually not be necessary"): at
   // desk width the compact header is one row of buttons and the search, with no fold handle.
@@ -1675,7 +1701,7 @@ export function CatalogBrowser({
   );
 
   // Dense grid geometry from the measured width. Falls back to a sane default pre-layout.
-  const { numColumns, tileW, taxCols, taxTileW } = useMemo(() => {
+  const { numColumns, tileW: gridTileW, taxCols, taxTileW } = useMemo(() => {
     if (containerWidth <= 0) {
       return { numColumns: 4, tileW: cardTileWidth, taxCols: 2, taxTileW: TARGET_TAX_TILE_W };
     }
@@ -1692,7 +1718,7 @@ export function CatalogBrowser({
   }, [containerWidth, cardTileWidth, cardSize]);
 
   const cols = isCardLevel ? numColumns : taxCols;
-  const cardRowHeight = Math.round(tileW * CARD_ASPECT + CARD_LABEL_H + ROW_GAP);
+  const cardRowHeight = Math.round(gridTileW * CARD_ASPECT + CARD_LABEL_H + ROW_GAP);
   const rowHeight = isCardLevel ? cardRowHeight : taxTileH + ROW_GAP;
 
   // Size=V-UNION surfaces assembled group tiles (no per-card signal exists for them). Shown
@@ -2422,7 +2448,8 @@ export function CatalogBrowser({
           ? `vu-${item.group.pieces.join('-')}`
           : `card-${item.card.id}`;
 
-  const renderItem = ({ item, index }: { item: BrowseItem; index: number }) => {
+  const renderItem = ({ item, index }: { item: BrowseItem; index: number }, width?: number) => {
+    const tileW = width ?? gridTileW;
     if (item.kind === 'series') {
       const s = item.series;
       const meta = [seriesDateRange(s), count(s.cardCount, 'card'), count(s.setIds.length, 'set')]
@@ -2857,10 +2884,94 @@ export function CatalogBrowser({
     },
   };
 
+  // RESULTS AS BINDER PAGES (resultsAsPages).
+  const PER_PAGE = 9;
+  const paged = resultsAsPages && isCardLevel && !analyticsView && visibleData.length > 0;
+  const pageKeyNow = `${cardQuery}|${JSON.stringify(selection)}`;
+  const [pageAt, setPageAt] = useState({ key: pageKeyNow, n: 0 });
+  const pageN = pageAt.key === pageKeyNow ? pageAt.n : 0;
+  const pageCount = Math.max(1, Math.ceil(visibleData.length / PER_PAGE));
+  const turnTo = (n: number) => setPageAt({ key: pageKeyNow, n: Math.max(0, Math.min(pageCount - 1, n)) });
+  useEffect(() => {
+    // Within two pages of the end: ask for the next results, as the list's end would.
+    if (paged && moreToLoad && pageN >= pageCount - 2) onEndReachedRef.current();
+  }, [paged, moreToLoad, pageN, pageCount]);
+  // The divider tabs: each search word and each picked filter, each one tap to drop.
+  const queryTerms: { key: string; label: string; drop: () => void }[] =
+    paged || explainEmpty
+      ? [
+        ...(cardQuery.match(/(?:[^\s"]+:)?"[^"]*"|\S+/g) ?? []).map((tok, i, all) => ({
+          key: `q${i}:${tok}`,
+          label: tok.replace(/"/g, ''),
+          drop: () => onChangeQuery(all.filter((_, j) => j !== i).join(' ')),
+        })),
+        ...Object.entries(selection)
+          .filter(([k, v]) => k !== 'language' && v.length > 0)
+          .flatMap(([k, v]) =>
+            v.map((val) => ({ key: `f:${k}:${val}`, label: val, drop: () => toggleFacetValue(k, val) })),
+          ),
+        ]
+      : [];
+  const pageTabs = paged ? queryTerms : [];
+  // The hints an empty search earns (explainEmpty): only the ones that fit this search.
+  const emptyHints: string[] = [];
+  if (explainEmpty) {
+    if (languageToggleVisible && languages.length === 1) emptyHints.push(`Only ${languages[0] === 'ja' ? 'Japanese' : 'English'} cards are searched. View can add the other language.`);
+    if (/\b(theme|art|scene):/i.test(cardQuery)) emptyHints.push('Theme words match what the art shows. A broader word finds more.');
+    if (queryTerms.length >= 3) emptyHints.push('Every word must match. Drop one to widen the search.');
+    if (!emptyHints.length) emptyHints.push('Check the spelling, or search part of a name.');
+  }
+  const TAB_COLORS = ['#f6d548', '#e6b800', '#cfd6e4', '#cfe0fb', '#f3c4d6', '#c9e8cf'];
+  const swipeX = useRef<number | null>(null);
+  const tabsW = pageTabs.length ? 34 : 0;
+  const pageW = Math.max(160, Math.min(containerWidth - tabsW - 12, 520));
+  const pocketW = Math.floor((pageW - 2 * 10 - 2 * 6) / 3);
+
+  // The search row: under the header, or in the thumb dock (docked).
+  const searchRowEl = (
+        <View style={styles.searchRow}>
+          <TextInput
+            value={cardQuery}
+            onChangeText={onChangeQuery}
+            placeholder={
+              compactSearch
+                ? `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards`
+                : `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards, ${QUERY_HINT}`
+            }
+            placeholderTextColor={theme.searchPlaceholder ?? theme.faint}
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+            // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input
+            // under 16px, and the zoom stays after the search. The compact box is the phone's.
+            style={[styles.search, styles.searchFlex, compactSearch && styles.searchCompact]}
+          />
+          <View style={styles.searchToolsInline}>
+            {canSaveSearch ? (
+              <Pressable
+                onPress={() => toggleSavedSearch(currentSearch())}
+                style={[styles.helpBtn, searchSaved && styles.helpBtnOn]}
+                hitSlop={6}
+                accessibilityLabel={searchSaved ? 'Unsave this search' : 'Save this search'}>
+                <Text style={[styles.helpBtnText, searchSaved && styles.helpBtnTextOn]}>
+                  {searchSaved ? '★' : '☆'}
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => setHelpOpen((v) => !v)}
+              style={[styles.helpBtn, helpOpen && styles.helpBtnOn]}
+              hitSlop={6}
+              accessibilityLabel="Search syntax help">
+              <Text style={[styles.helpBtnText, helpOpen && styles.helpBtnTextOn]}>?</Text>
+            </Pressable>
+          </View>
+        </View>
+  );
+
   return (
     <View style={styles.browser} onLayout={onLayout}>
       <View style={styles.controls}>
-        {headless ? null : compactHeader ? compactRows : featureRow ? (
+        {headless || docked ? null : compactHeader ? compactRows : featureRow ? (
           <View style={styles.triColorRow}>
             {featureRowLead}
             {onColorSearch ? (
@@ -2931,52 +3042,14 @@ export function CatalogBrowser({
           tap away. `compactSearch` is derived from the MEASURED container, not the window, so a
           narrow embed (the binder card picker) gets the same treatment as a narrow phone.
         */}
-        {headless ? null : (
-        <View style={styles.searchRow}>
-          <TextInput
-            value={cardQuery}
-            onChangeText={onChangeQuery}
-            placeholder={
-              compactSearch
-                ? `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards`
-                : `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards, ${QUERY_HINT}`
-            }
-            placeholderTextColor={theme.searchPlaceholder ?? theme.faint}
-            autoCorrect={false}
-            clearButtonMode="while-editing"
-            // 16px ON A PHONE (owner, 2026-10-29): mobile Safari zooms the page into any focused input
-            // under 16px, and the zoom stays after the search. The compact box is the phone's.
-            style={[styles.search, styles.searchFlex, compactSearch && styles.searchCompact]}
-          />
-          <View style={styles.searchToolsInline}>
-            {canSaveSearch ? (
-              <Pressable
-                onPress={() => toggleSavedSearch(currentSearch())}
-                style={[styles.helpBtn, searchSaved && styles.helpBtnOn]}
-                hitSlop={6}
-                accessibilityLabel={searchSaved ? 'Unsave this search' : 'Save this search'}>
-                <Text style={[styles.helpBtnText, searchSaved && styles.helpBtnTextOn]}>
-                  {searchSaved ? '★' : '☆'}
-                </Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              onPress={() => setHelpOpen((v) => !v)}
-              style={[styles.helpBtn, helpOpen && styles.helpBtnOn]}
-              hitSlop={6}
-              accessibilityLabel="Search syntax help">
-              <Text style={[styles.helpBtnText, helpOpen && styles.helpBtnTextOn]}>?</Text>
-            </Pressable>
-          </View>
-        </View>
-        )}
+        {headless || docked ? null : searchRowEl}
         {/*
           THE GROUP ROW (owner, 2026-11-03): under the search, never folded, at every level. The
           language bound and the card size are each one button group (pick one), and Sort & filter
           is here before a search even starts. The language rides near the search because it
           applies to the SEARCH, not the results: flipping it re-runs every call against the server.
         */}
-        {headless || (compactHeader && wideHeader) ? null : compactHeader ? (
+        {headless || docked || (compactHeader && wideHeader) ? null : compactHeader ? (
           // The handle (compactHeader): says what it does, and carries a dot while filters are on
           // and folded away, so a folded header never hides that the results are filtered.
           <Pressable
@@ -3206,6 +3279,62 @@ export function CatalogBrowser({
             <SeriesAnalytics catalog={catalog} seriesId={seriesId} onOpenCard={openCard} theme={theme} />
           ) : null}
         </ScrollView>
+      ) : paged ? (
+        <ScrollView style={styles.list} contentContainerStyle={styles.pagedContent} testID="results-pages">
+          <Text style={styles.pagedLine}>
+            {count(visibleData.length)}{moreToLoad ? '+' : ''} results as {pageCount}{moreToLoad ? '+' : ''} binder pages
+          </Text>
+          <View style={styles.pagedRow}>
+            <View
+              style={[styles.binderPage, { width: pageW }]}
+              testID="results-page"
+              onTouchStart={(e) => {
+                swipeX.current = e.nativeEvent.pageX;
+              }}
+              onTouchEnd={(e) => {
+                const from = swipeX.current;
+                swipeX.current = null;
+                if (from == null) return;
+                const dx = e.nativeEvent.pageX - from;
+                if (Math.abs(dx) > 48) turnTo(pageN + (dx < 0 ? 1 : -1));
+              }}>
+              {visibleData.slice(pageN * PER_PAGE, pageN * PER_PAGE + PER_PAGE).map((item, i) => (
+                <View key={keyFor(item)} style={{ width: pocketW }}>
+                  {renderItem({ item, index: pageN * PER_PAGE + i }, pocketW)}
+                </View>
+              ))}
+            </View>
+            {pageTabs.length ? (
+              <View style={styles.pageTabs}>
+                {pageTabs.map((t, i) => (
+                  <Pressable
+                    key={t.key}
+                    onPress={t.drop}
+                    role="button"
+                    accessibilityLabel={`Drop ${t.label}`}
+                    testID="results-tab"
+                    style={[styles.pageTab, { backgroundColor: TAB_COLORS[i % TAB_COLORS.length] }]}>
+                    <Text style={styles.pageTabText} numberOfLines={1}>
+                      {t.label} ✕
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+          </View>
+          <View style={styles.pagedNav}>
+            <Pressable onPress={() => turnTo(pageN - 1)} disabled={pageN === 0} role="button" accessibilityLabel="Previous page" testID="results-prev" style={[styles.pagedTurn, pageN === 0 && styles.pagedTurnOff]}>
+              <Text style={styles.pagedTurnText}>‹</Text>
+            </Pressable>
+            <Text style={styles.pagedCount} testID="results-page-count">
+              Page {pageN + 1} of {pageCount}{moreToLoad ? '+' : ''}
+            </Text>
+            <Pressable onPress={() => turnTo(pageN + 1)} disabled={pageN >= pageCount - 1} role="button" accessibilityLabel="Next page" testID="results-next" style={[styles.pagedTurn, pageN >= pageCount - 1 && styles.pagedTurnOff]}>
+              <Text style={styles.pagedTurnText}>›</Text>
+            </Pressable>
+          </View>
+          {footer}
+        </ScrollView>
       ) : (
       <FlatList
         ref={listRef}
@@ -3255,6 +3384,24 @@ export function CatalogBrowser({
                 accessibilityLabel="Retry the search">
                 <Text style={[styles.clear, { textAlign: 'center' }]}>Retry</Text>
               </Pressable>
+            </View>
+          ) : explainEmpty && searching && !((!warm && serverLoading) || themePending) ? (
+            <View style={styles.emptyExplain} testID="empty-explained">
+              <Text style={styles.empty}>No cards match “{q}”.</Text>
+              {queryTerms.length > 1 ? (
+                <View style={styles.emptyTerms}>
+                  {queryTerms.map((t) => (
+                    <Pressable key={t.key} onPress={t.drop} role="button" accessibilityLabel={`Search without ${t.label}`} testID="empty-drop" style={styles.emptyTerm}>
+                      <Text style={styles.emptyTermText}>{t.label} ✕</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {emptyHints.slice(0, 2).map((h) => (
+                <Text key={h} style={styles.emptyHint}>
+                  {h}
+                </Text>
+              ))}
             </View>
           ) : (
           <Text style={styles.empty}>
@@ -3331,6 +3478,54 @@ export function CatalogBrowser({
         }
       />
       )}
+
+      {docked ? (
+        <View style={styles.dock} testID="browse-dock">
+          {viewOpen ? (
+            <View style={styles.groupRow}>
+              {languageToggleVisible ? <LanguageToggle theme={themeProp} /> : null}
+              <SizeChips theme={theme} size={cardSize} onPickSize={pickCardSize} />
+            </View>
+          ) : null}
+          {searchRowEl}
+          <View style={styles.dockRow}>
+            {analyticsView ? null : (
+              <Pressable
+                onPress={() => (sheetMode || !isCardLevel ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v))}
+                role="button"
+                aria-expanded={sortFilterOpen}
+                accessibilityLabel={`Filters and sort${activeFilterCount > 0 ? `, ${activeFilterCount} on` : ''}`}
+                testID="dock-filters"
+                style={[styles.facetToggle, styles.dockBtn, sortFilterLit && styles.facetToggleOn]}>
+                <Text style={[styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn]} numberOfLines={1}>
+                  {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : 'Filters'}
+                </Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => setViewOpen((v) => !v)}
+              role="button"
+              aria-expanded={viewOpen}
+              accessibilityLabel="View: card size and printing language"
+              testID="dock-view"
+              style={[styles.facetToggle, styles.dockBtn, viewOpen && styles.facetToggleOn]}>
+              <Text style={[styles.facetToggleText, viewOpen && styles.facetToggleTextOn]} numberOfLines={1}>
+                View
+              </Text>
+            </Pressable>
+            {onColorSearch ? (
+              <Pressable onPress={onColorSearch} style={[styles.triColorBtn, styles.dockBtn]} accessibilityLabel={colorSearchLabel} testID="dock-color">
+                <Text style={styles.triColorBtnText} numberOfLines={1}>{colorSearchLabel}</Text>
+              </Pressable>
+            ) : null}
+            {onThemeSearch ? (
+              <Pressable onPress={onThemeSearch} style={[styles.triColorBtn, styles.dockBtn]} accessibilityLabel={themeSearchLabel} testID="dock-theme">
+                <Text style={styles.triColorBtnText} numberOfLines={1}>{themeSearchLabel}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
 
       {sheetOpen ? (
         <FilterSheet
@@ -4358,6 +4553,29 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     },
     searchCompact: { fontSize: 16 },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    // The thumb dock (dock): a bar at the browser's foot, over the results' end.
+    dock: { gap: 6, paddingTop: 8, paddingBottom: 8, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: t.border, backgroundColor: t.background },
+    dockRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    // No results that explain (explainEmpty).
+    emptyExplain: { alignItems: 'center', gap: 10, paddingHorizontal: 16 },
+    emptyTerms: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
+    emptyTerm: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: t.border, backgroundColor: t.panel },
+    emptyTermText: { fontSize: 13, color: t.text, fontWeight: '600' },
+    emptyHint: { fontSize: 13, color: t.faint, textAlign: 'center', maxWidth: 420 },
+    // Results as binder pages (resultsAsPages).
+    pagedContent: { alignItems: 'center', gap: 10, paddingVertical: 10 },
+    pagedLine: { fontSize: 12, color: t.faint },
+    pagedRow: { flexDirection: 'row', alignItems: 'flex-start' },
+    binderPage: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: t.border, backgroundColor: t.panel, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
+    pageTabs: { gap: 6, marginTop: 18, marginLeft: -1 },
+    pageTab: { width: 34, minHeight: 70, maxHeight: 130, paddingVertical: 8, borderTopRightRadius: 8, borderBottomRightRadius: 8, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+    pageTabText: { fontSize: 11, fontWeight: '700', color: '#222', transform: [{ rotate: '90deg' }], width: 120, textAlign: 'center' },
+    pagedNav: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    pagedTurn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: t.border, backgroundColor: t.panel },
+    pagedTurnOff: { opacity: 0.35 },
+    pagedTurnText: { fontSize: 22, color: t.text, marginTop: -2 },
+    pagedCount: { fontSize: 13, color: t.text, fontWeight: '600' },
+    dockBtn: { flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center' },
     // Language, size, then Sort & filter at the far end; wraps rather than scrolls on a narrow embed.
     // ONE LINE, ALWAYS (owner, 2026-11-03): language, size and Sort & filter never wrap; at a
     // squeeze Sort & filter gives up width and cuts its label, so the row keeps its height.
