@@ -1191,6 +1191,10 @@ export function CatalogBrowser({
   // handler always sees the live grid without re-binding.
   const [focusIdx, setFocusIdx] = useState(-1);
   const listRef = useRef<FlatList<BrowseItem>>(null);
+  // RESULTS AS PAGES TURN BY ARROW KEY (michi, 2026-11-11: "navigate with mouse wheel scroll and or
+  // left right arrows"): while the pointer is over the pages or focus is inside them, Left / Right
+  // turn a spread instead of moving the grid's focus ring. Refreshed every render (see below).
+  const pagedNavRef = useRef<{ on: boolean; inside: () => boolean; turn: (dir: 1 | -1) => void }>({ on: false, inside: () => false, turn: () => {} });
   const keyNavRef = useRef<{
     count: number;
     cols: number;
@@ -1213,6 +1217,12 @@ export function CatalogBrowser({
       const nav = keyNavRef.current;
       if (e.key === 'Escape') {
         nav.escape();
+        return;
+      }
+      const pg = pagedNavRef.current;
+      if (!nav.modalOpen && pg.on && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && pg.inside()) {
+        e.preventDefault?.();
+        pg.turn(e.key === 'ArrowRight' ? 1 : -1);
         return;
       }
       if (nav.modalOpen || nav.count === 0) return; // modals own their keys
@@ -2988,6 +2998,68 @@ export function CatalogBrowser({
     if (paged && moreToLoad && pageN + perSpread * 2 >= pageCount) onEndReachedRef.current();
   }, [paged, moreToLoad, pageN, pageCount, perSpread]);
 
+  // WHEEL AND ARROW KEYS TURN THE PAGES (web; michi, 2026-11-11). A vertical wheel or a trackpad
+  // swipe over the pages turns one spread per gesture; at the first or last spread the wheel is left
+  // alone so the page around still scrolls (never a trap). A gesture is one burst of wheel events:
+  // a trackpad's momentum tail never turns twice. Turning is a swap, not an animation, so reduced
+  // motion has nothing to calm here.
+  const pagedStageRef = useRef<View>(null);
+  const pagedHover = useRef(false);
+  const pagedLive = useRef({ spreadStart, spreadEnd, perSpread, pageCount, turnTo });
+  pagedLive.current = { spreadStart, spreadEnd, perSpread, pageCount, turnTo };
+  const pagedCanTurn = (dir: 1 | -1) => {
+    const l = pagedLive.current;
+    return dir > 0 ? l.spreadEnd < l.pageCount || moreToLoad : l.spreadStart > 0;
+  };
+  const pagedTurn = (dir: 1 | -1) => {
+    const l = pagedLive.current;
+    if (dir > 0 && l.spreadEnd >= l.pageCount) return; // the next results are on their way (the effect above asks)
+    l.turnTo(l.spreadStart + dir * l.perSpread);
+  };
+  pagedNavRef.current = {
+    on: paged,
+    inside: () => {
+      const el = pagedStageRef.current as unknown as HTMLElement | null;
+      const doc = (globalThis as { document?: { activeElement?: unknown } }).document;
+      return pagedHover.current || (!!el && !!doc?.activeElement && typeof el.contains === 'function' && el.contains(doc.activeElement as Node));
+    },
+    turn: (dir) => pagedTurn(dir),
+  };
+  const pagedCanTurnRef = useRef(pagedCanTurn);
+  pagedCanTurnRef.current = pagedCanTurn;
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !paged) return;
+    const el = pagedStageRef.current as unknown as HTMLElement | null;
+    if (!el || typeof el.addEventListener !== 'function') return;
+    let lastEvent = -Infinity;
+    let lastTurn = -Infinity;
+    const enter = () => { pagedHover.current = true; };
+    const leave = () => { pagedHover.current = false; };
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return; // pinch zoom
+      const delta = Math.abs(e.deltaX) >= Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (Math.abs(delta) < 2) return;
+      const dir: 1 | -1 = delta > 0 ? 1 : -1;
+      if (!pagedCanTurnRef.current(dir)) return; // at an end: the page scrolls
+      e.preventDefault();
+      const gap = e.timeStamp - lastEvent;
+      lastEvent = e.timeStamp;
+      // A new gesture (a pause of 180ms), or a long steady scroll (a page every 650ms).
+      if (gap < 180 && e.timeStamp - lastTurn < 650) return;
+      lastTurn = e.timeStamp;
+      pagedNavRef.current.turn(dir);
+    };
+    el.addEventListener('mouseenter', enter);
+    el.addEventListener('mouseleave', leave);
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      pagedHover.current = false;
+      el.removeEventListener('mouseenter', enter);
+      el.removeEventListener('mouseleave', leave);
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, [paged]);
+
   // The search row: under the header, or in the thumb dock (docked).
   const searchRowEl = (
         <View style={styles.searchRow}>
@@ -3351,7 +3423,7 @@ export function CatalogBrowser({
         </ScrollView>
       ) : paged ? (
         <ScrollView style={styles.list} contentContainerStyle={styles.pagedContent} testID="results-pages" onLayout={(e) => setPagedH(Math.round(e.nativeEvent.layout.height))}>
-          <View style={styles.pagedStage}>
+          <View style={styles.pagedStage} ref={pagedStageRef}>
           {sideArrows ? (
             <Pressable onPress={() => turnTo(spreadStart - perSpread)} disabled={spreadStart === 0} role="button" accessibilityLabel="Previous pages" testID="results-prev" style={[styles.pagedSide, spreadStart === 0 && styles.pagedTurnOff]}>
               <Text style={styles.pagedSideText}>‹</Text>

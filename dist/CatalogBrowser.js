@@ -633,6 +633,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // handler always sees the live grid without re-binding.
     const [focusIdx, setFocusIdx] = useState(-1);
     const listRef = useRef(null);
+    // RESULTS AS PAGES TURN BY ARROW KEY (michi, 2026-11-11: "navigate with mouse wheel scroll and or
+    // left right arrows"): while the pointer is over the pages or focus is inside them, Left / Right
+    // turn a spread instead of moving the grid's focus ring. Refreshed every render (see below).
+    const pagedNavRef = useRef({ on: false, inside: () => false, turn: () => { } });
     const keyNavRef = useRef({ count: 0, cols: 1, focus: -1, modalOpen: false, enter: () => { }, escape: () => { } });
     useEffect(() => {
         if (Platform.OS !== 'web')
@@ -648,6 +652,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             const nav = keyNavRef.current;
             if (e.key === 'Escape') {
                 nav.escape();
+                return;
+            }
+            const pg = pagedNavRef.current;
+            if (!nav.modalOpen && pg.on && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && pg.inside()) {
+                e.preventDefault?.();
+                pg.turn(e.key === 'ArrowRight' ? 1 : -1);
                 return;
             }
             if (nav.modalOpen || nav.count === 0)
@@ -2182,6 +2192,74 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         if (paged && moreToLoad && pageN + perSpread * 2 >= pageCount)
             onEndReachedRef.current();
     }, [paged, moreToLoad, pageN, pageCount, perSpread]);
+    // WHEEL AND ARROW KEYS TURN THE PAGES (web; michi, 2026-11-11). A vertical wheel or a trackpad
+    // swipe over the pages turns one spread per gesture; at the first or last spread the wheel is left
+    // alone so the page around still scrolls (never a trap). A gesture is one burst of wheel events:
+    // a trackpad's momentum tail never turns twice. Turning is a swap, not an animation, so reduced
+    // motion has nothing to calm here.
+    const pagedStageRef = useRef(null);
+    const pagedHover = useRef(false);
+    const pagedLive = useRef({ spreadStart, spreadEnd, perSpread, pageCount, turnTo });
+    pagedLive.current = { spreadStart, spreadEnd, perSpread, pageCount, turnTo };
+    const pagedCanTurn = (dir) => {
+        const l = pagedLive.current;
+        return dir > 0 ? l.spreadEnd < l.pageCount || moreToLoad : l.spreadStart > 0;
+    };
+    const pagedTurn = (dir) => {
+        const l = pagedLive.current;
+        if (dir > 0 && l.spreadEnd >= l.pageCount)
+            return; // the next results are on their way (the effect above asks)
+        l.turnTo(l.spreadStart + dir * l.perSpread);
+    };
+    pagedNavRef.current = {
+        on: paged,
+        inside: () => {
+            const el = pagedStageRef.current;
+            const doc = globalThis.document;
+            return pagedHover.current || (!!el && !!doc?.activeElement && typeof el.contains === 'function' && el.contains(doc.activeElement));
+        },
+        turn: (dir) => pagedTurn(dir),
+    };
+    const pagedCanTurnRef = useRef(pagedCanTurn);
+    pagedCanTurnRef.current = pagedCanTurn;
+    useEffect(() => {
+        if (Platform.OS !== 'web' || !paged)
+            return;
+        const el = pagedStageRef.current;
+        if (!el || typeof el.addEventListener !== 'function')
+            return;
+        let lastEvent = -Infinity;
+        let lastTurn = -Infinity;
+        const enter = () => { pagedHover.current = true; };
+        const leave = () => { pagedHover.current = false; };
+        const onWheel = (e) => {
+            if (e.ctrlKey)
+                return; // pinch zoom
+            const delta = Math.abs(e.deltaX) >= Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+            if (Math.abs(delta) < 2)
+                return;
+            const dir = delta > 0 ? 1 : -1;
+            if (!pagedCanTurnRef.current(dir))
+                return; // at an end: the page scrolls
+            e.preventDefault();
+            const gap = e.timeStamp - lastEvent;
+            lastEvent = e.timeStamp;
+            // A new gesture (a pause of 180ms), or a long steady scroll (a page every 650ms).
+            if (gap < 180 && e.timeStamp - lastTurn < 650)
+                return;
+            lastTurn = e.timeStamp;
+            pagedNavRef.current.turn(dir);
+        };
+        el.addEventListener('mouseenter', enter);
+        el.addEventListener('mouseleave', leave);
+        el.addEventListener('wheel', onWheel, { passive: false });
+        return () => {
+            pagedHover.current = false;
+            el.removeEventListener('mouseenter', enter);
+            el.removeEventListener('mouseleave', leave);
+            el.removeEventListener('wheel', onWheel);
+        };
+    }, [paged]);
     // The search row: under the header, or in the thumb dock (docked).
     const searchRowEl = (_jsxs(View, { style: styles.searchRow, children: [_jsx(TextInput, { value: cardQuery, onChangeText: onChangeQuery, placeholder: compactSearch
                     ? `Search ${tax?.cardCount ? count(tax.cardCount) + ' ' : ''}cards`
@@ -2230,7 +2308,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     return (_jsx(Pressable, { style: styles.similarThumb, onPress: () => src && setActionCard(src), children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: sid, transition: 80 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: src?.name?.slice(0, 1) ?? '?' }) })) }, sid));
                                 }) })] })) : seriesId ? (selectControl || analyticsTabs ? (tabsOwnLine ? (_jsxs(_Fragment, { children: [_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }), _jsxs(View, { style: styles.metaRow, children: [selecting ? _jsx(View, {}) : analyticsTabs, _jsx(View, { style: styles.metaEnd, children: selectControl })] })] })) : (_jsxs(View, { style: styles.metaRow, children: [_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }), _jsxs(View, { style: styles.metaEnd, children: [selectControl, selecting ? null : analyticsTabs] })] }))) : (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }))) : taxBarOn || compactHeader ? null : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), searching && lockNotice ? (_jsx(Pressable, { onPress: () => onLockedFeature?.(isLocked(lockedFeatures, 'sortByValue') ? 'sortByValue' : 'priceFilter'), style: styles.lockNoticeRow, children: _jsx(Text, { style: styles.lockNotice, numberOfLines: 2, children: lockNotice }) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
                 // Gated (e.g. guest): the app-supplied CTA replaces the analytics panels.
-                analyticsLocked) : catalog && analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : catalog && analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : paged ? (_jsxs(ScrollView, { style: styles.list, contentContainerStyle: styles.pagedContent, testID: "results-pages", onLayout: (e) => setPagedH(Math.round(e.nativeEvent.layout.height)), children: [_jsxs(View, { style: styles.pagedStage, children: [sideArrows ? (_jsx(Pressable, { onPress: () => turnTo(spreadStart - perSpread), disabled: spreadStart === 0, role: "button", accessibilityLabel: "Previous pages", testID: "results-prev", style: [styles.pagedSide, spreadStart === 0 && styles.pagedTurnOff], children: _jsx(Text, { style: styles.pagedSideText, children: "\u2039" }) })) : null, _jsxs(View, { style: { width: spreadW }, children: [_jsxs(View, { style: styles.pageTabsRow, children: [_jsx(View, { style: styles.pageTabs, children: pageTabs.map((t, i) => (_jsx(Pressable, { onPress: t.drop, role: "button", accessibilityLabel: `Drop ${t.label}`, testID: "results-tab", style: [styles.pageTab, { backgroundColor: TAB_COLORS[i % TAB_COLORS.length] }], children: _jsxs(Text, { style: styles.pageTabText, numberOfLines: 1, children: [t.label, " \u2715"] }) }, t.key))) }), sideArrows ? (_jsxs(Text, { style: styles.pagedCountSmall, testID: "results-page-count", children: [spreadEnd - spreadStart > 1 ? `Pages ${spreadStart + 1}-${spreadEnd}` : `Page ${spreadStart + 1}`, " of ", pageCount, moreToLoad ? '+' : ''] })) : null] }), _jsx(View, { style: styles.pageSpread, children: Array.from({ length: spreadEnd - spreadStart }, (_, k) => spreadStart + k).map((pn) => (_jsx(View, { style: [styles.binderPage, { width: pageW }], testID: "results-page", onTouchStart: (e) => {
+                analyticsLocked) : catalog && analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : catalog && analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : paged ? (_jsxs(ScrollView, { style: styles.list, contentContainerStyle: styles.pagedContent, testID: "results-pages", onLayout: (e) => setPagedH(Math.round(e.nativeEvent.layout.height)), children: [_jsxs(View, { style: styles.pagedStage, ref: pagedStageRef, children: [sideArrows ? (_jsx(Pressable, { onPress: () => turnTo(spreadStart - perSpread), disabled: spreadStart === 0, role: "button", accessibilityLabel: "Previous pages", testID: "results-prev", style: [styles.pagedSide, spreadStart === 0 && styles.pagedTurnOff], children: _jsx(Text, { style: styles.pagedSideText, children: "\u2039" }) })) : null, _jsxs(View, { style: { width: spreadW }, children: [_jsxs(View, { style: styles.pageTabsRow, children: [_jsx(View, { style: styles.pageTabs, children: pageTabs.map((t, i) => (_jsx(Pressable, { onPress: t.drop, role: "button", accessibilityLabel: `Drop ${t.label}`, testID: "results-tab", style: [styles.pageTab, { backgroundColor: TAB_COLORS[i % TAB_COLORS.length] }], children: _jsxs(Text, { style: styles.pageTabText, numberOfLines: 1, children: [t.label, " \u2715"] }) }, t.key))) }), sideArrows ? (_jsxs(Text, { style: styles.pagedCountSmall, testID: "results-page-count", children: [spreadEnd - spreadStart > 1 ? `Pages ${spreadStart + 1}-${spreadEnd}` : `Page ${spreadStart + 1}`, " of ", pageCount, moreToLoad ? '+' : ''] })) : null] }), _jsx(View, { style: styles.pageSpread, children: Array.from({ length: spreadEnd - spreadStart }, (_, k) => spreadStart + k).map((pn) => (_jsx(View, { style: [styles.binderPage, { width: pageW }], testID: "results-page", onTouchStart: (e) => {
                                                 swipeX.current = e.nativeEvent.pageX;
                                             }, onTouchEnd: (e) => {
                                                 const from = swipeX.current;
