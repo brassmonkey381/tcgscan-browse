@@ -3121,7 +3121,7 @@ export function CatalogBrowser({
             accessibilityState={{ expanded: !headerFolded }}
             accessibilityLabel={headerFolded ? 'Show filters and view' : 'Hide filters and view'}
             testID="header-fold"
-            hitSlop={4}
+            hitSlop={10}
             style={styles.foldLine}>
             <View style={styles.foldRule} />
             <View style={styles.foldChevron}>
@@ -3188,7 +3188,9 @@ export function CatalogBrowser({
           <TaxonomyBar
             styles={styles}
             // The series count rides this bar at the top level (one row, not two: owner, 2026-10-25).
-            lead={!seriesId && !searching && !similarTo ? `${series.length} series` : undefined}
+            // No count under the compact header (michi, 2026-11-11: "remove the 17 series text. No text
+            // needed in this area at all"): the shelf itself shows what is there.
+            lead={!compactHeader && !seriesId && !searching && !similarTo ? `${series.length} series` : undefined}
           />
         ) : null}
         {/*
@@ -3317,7 +3319,7 @@ export function CatalogBrowser({
           ) : (
             <Breadcrumb styles={styles} crumbs={crumbs} />
           )
-        ) : taxBarOn ? null : (
+        ) : taxBarOn || compactHeader ? null : (
           <Text style={styles.meta}>{series.length} series</Text>
         )}
         {/* A locked token was stripped from the query — say so, or the results read as if the
@@ -4861,10 +4863,11 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     },
     foldHandleText: { fontSize: t.controlHeight ? 15 : 14, fontWeight: '700', color: t.accent },
     foldDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.accent },
-    foldLine: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28, marginVertical: 2 },
+    // As thin as a control can be and still be tapped: the strip is 18 tall, the hit area grows by hitSlop.
+    foldLine: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 18 },
     foldRule: { flex: 1, height: 1, backgroundColor: t.border },
-    foldChevron: { width: 28, height: 22, borderRadius: 11, borderWidth: 1, borderColor: t.border, alignItems: 'center', justifyContent: 'center', backgroundColor: t.panel },
-    foldChevronText: { fontSize: 15, lineHeight: 18, color: t.subtext },
+    foldChevron: { width: 26, height: 16, borderRadius: 8, borderWidth: 1, borderColor: t.border, alignItems: 'center', justifyContent: 'center', backgroundColor: t.panel },
+    foldChevronText: { fontSize: 12, lineHeight: 14, color: t.subtext },
     // While folded with filters on: a dot on the chevron, so a folded header never hides them.
     foldDotOn: { position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: 4, backgroundColor: t.accent },
     triColorBtn: {
