@@ -2143,7 +2143,12 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // well universally"). Cards keep one readable size everywhere (PAGES_CARD, the 3-pages-at-1280
     // look); the window decides HOW MANY pages, in rows and columns, and the cards then grow evenly
     // into whatever room is left. A bigger screen shows more pages, not bigger ones.
-    const PAGE_GAP = 12;
+    // THE PLAIN GRID'S DENSITY (michi, 2026-11-11: "basically touching and adjacent with very little
+    // emphasis on the cost/name ... make images bigger and maybe fit more"): a page is the tiles at
+    // the grid's own spacing inside a thin 4px frame, pockets 4px apart, pages 8px apart.
+    const PAGE_GAP = 8;
+    const PAGE_PAD = 4;
+    const POCKET_GAP = 4;
     // S / M / L SET THE CARD SIZE HERE TOO (michi, 2026-11-11: "the S|M|L settings should change the
     // scale of the images shown, and thus how many pages are shown"): the size step picks the card,
     // the window then decides how many pages fit (pagedLayouts picks all three together).
@@ -2152,9 +2157,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const ARROW_COL = sideArrows ? 36 : 0;
     const TABS_H = 32;
     const NAV_H = sideArrows ? 0 : 56;
-    const pageChrome = 2 * 10 + 2 * 6; // padding + the gaps between three pockets
-    const pageHFor = (card) => 3 * (card * CARD_ASPECT + CARD_LABEL_H + ROW_GAP) + 2 * 10 + 2 * 2;
-    const cardFromPageH = (h) => Math.floor(((h - 2 * 10 - 2 * 2) / 3 - CARD_LABEL_H - ROW_GAP) / CARD_ASPECT);
+    const pageChrome = 2 * PAGE_PAD + 2 * POCKET_GAP; // the frame + the gaps between three pockets
+    // A tile is the card, its name line and the grid's row gap (cardTile's marginBottom).
+    const pageHFor = (card) => 3 * (card * CARD_ASPECT + CARD_LABEL_H + ROW_GAP) + PAGE_PAD;
+    const cardFromPageH = (h) => Math.floor(((h - PAGE_PAD) / 3 - CARD_LABEL_H - ROW_GAP) / CARD_ASPECT);
     const freeW = Math.max(200, containerWidth - 2 * ARROW_COL - 16);
     const freeH = pagedH > 0 ? pagedH - TABS_H - NAV_H - 12 : 0;
     const pick = (() => {
@@ -2188,7 +2194,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     similarEventRef.current?.({ type: 'toggled', game: similarGame, on: !similarOn });
                                 }, accessibilityRole: "switch", accessibilityState: { checked: similarOn }, accessibilityLabel: "Similar words: search a theme word together with its synonyms", testID: "similar-words-switch", style: [styles.similarBtn, similarOn && styles.similarBtnOn], children: [_jsx(View, { style: [styles.similarKnob, similarOn && styles.similarKnobOn] }), _jsx(Text, { style: [styles.similarText, similarOn && styles.similarTextOn], children: "Similar words" })] }), similarOn && (themeServer ? themeExpanded : serverExpanded).length ? (_jsx(Text, { style: styles.similarAlso, numberOfLines: compactSearch ? 1 : 2, testID: "similar-words-also", children: compactSearch
                                     ? describeExpansions(themeServer ? themeExpanded : serverExpanded, 3, 'Also:')
-                                    : describeExpansions(themeServer ? themeExpanded : serverExpanded) })) : null] })) : null, headless || docked ? null : searchRowEl, headless || docked || (compactHeader && wideHeader) ? null : compactHeader ? (_jsxs(Pressable, { onPress: () => setHeaderFolded((f) => !f), accessibilityRole: "button", accessibilityState: { expanded: !headerFolded }, accessibilityLabel: headerFolded ? 'Show filters and view' : 'Hide filters', testID: "header-fold", style: styles.foldHandle, children: [_jsx(Text, { style: styles.foldHandleText, children: headerFolded ? '▾ Filters & view' : '▴ Hide filters' }), headerFolded && sortFilterLit ? _jsx(View, { style: styles.foldDot }) : null] })) : (_jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize }), _jsx(View, { style: styles.controlsSpacer }), sortFilterControl] })), shelfToolsOpen && !sheetMode && !headerAway ? shelfBar(false) : null, (sheetMode && !artTypeOnTop) || headerAway ? null : themeBar, sheetMode || headerAway ? null : savedChips, !warm && !coldSearch ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: loadLabel(catalogStatus, coldSearch) })] }), catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
+                                    : describeExpansions(themeServer ? themeExpanded : serverExpanded) })) : null] })) : null, headless || docked ? null : searchRowEl, headless || docked || (compactHeader && wideHeader) ? null : compactHeader ? (_jsxs(Pressable, { onPress: () => setHeaderFolded((f) => !f), accessibilityRole: "button", accessibilityState: { expanded: !headerFolded }, accessibilityLabel: headerFolded ? 'Show filters and view' : 'Hide filters and view', testID: "header-fold", hitSlop: 4, style: styles.foldLine, children: [_jsx(View, { style: styles.foldRule }), _jsxs(View, { style: styles.foldChevron, children: [_jsx(Text, { style: styles.foldChevronText, children: headerFolded ? '⌄' : '⌃' }), headerFolded && sortFilterLit ? _jsx(View, { style: styles.foldDotOn }) : null] }), _jsx(View, { style: styles.foldRule })] })) : (_jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize }), _jsx(View, { style: styles.controlsSpacer }), sortFilterControl] })), shelfToolsOpen && !sheetMode && !headerAway ? shelfBar(false) : null, (sheetMode && !artTypeOnTop) || headerAway ? null : themeBar, sheetMode || headerAway ? null : savedChips, !warm && !coldSearch ? (_jsxs(View, { children: [_jsxs(View, { style: styles.modeBadge, children: [_jsx(View, { style: [styles.modeDot, styles.modeDotLoading] }), _jsx(Text, { style: styles.modeText, numberOfLines: 1, children: loadLabel(catalogStatus, coldSearch) })] }), catalogStatus.status !== 'error' ? (_jsx(View, { style: styles.progressTrack, children: _jsx(View, { style: [styles.progressFill, { width: `${Math.round(catalogStatus.progress * 100)}%` }] }) })) : null] })) : null, helpOpen ? _jsx(SearchManual, { styles: styles, onClose: () => setHelpOpen(false) }) : null, occupant &&
                         similarAvailable() &&
                         !(similarTo?.ids.length === 1 && similarTo.ids[0] === occupant.id) ? (_jsx(Pressable, { style: styles.pocketSimilar, onPress: () => openSimilar(occupant), children: _jsxs(Text, { style: styles.pocketSimilarText, numberOfLines: 1, children: ["\u2248 Find similar to \u201C", occupant.name, "\u201D (in this pocket)"] }) })) : null, isCardLevel && !analyticsView && !sheetMode && !headerAway ? cardBar(false) : null, taxBarOn && !headerAway ? (_jsx(TaxonomyBar, { styles: styles, 
                         // The series count rides this bar at the top level (one row, not two: owner, 2026-10-25).
@@ -2642,15 +2648,15 @@ function makeStyles(t, taxTileHeight) {
         // Results as binder pages (resultsAsPages).
         pagedContent: { alignItems: 'center', justifyContent: 'center', flexGrow: 1, gap: 6, paddingVertical: 6 },
         pagedRow: { flexDirection: 'row', alignItems: 'flex-start' },
-        pageRowOfThree: { flexDirection: 'row', gap: 6 },
-        pageSpread: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' },
+        pageRowOfThree: { flexDirection: 'row', gap: 4 },
+        pageSpread: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' },
         pagedStage: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center' },
         pagedSide: { width: 36, alignItems: 'center', justifyContent: 'center' },
         pagedSideText: { fontSize: 40, color: t.text, lineHeight: 44 },
         pageTabsRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, minHeight: 28 },
         pagedCountSmall: { fontSize: 12, color: t.faint, paddingBottom: 6 },
         pocket: { overflow: 'hidden' },
-        binderPage: { gap: 2, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: t.border, backgroundColor: t.panel, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
+        binderPage: { gap: 0, padding: 4, paddingBottom: 0, borderRadius: 8, borderWidth: 1, borderColor: t.border, backgroundColor: t.panel, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
         // Divider tabs on the page's top edge, like a binder's index tabs.
         pageTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, paddingHorizontal: 10, marginBottom: -1 },
         pageTab: { maxWidth: 170, paddingHorizontal: 10, paddingVertical: 5, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
@@ -2774,6 +2780,12 @@ function makeStyles(t, taxTileHeight) {
         },
         foldHandleText: { fontSize: t.controlHeight ? 15 : 14, fontWeight: '700', color: t.accent },
         foldDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.accent },
+        foldLine: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28, marginVertical: 2 },
+        foldRule: { flex: 1, height: 1, backgroundColor: t.border },
+        foldChevron: { width: 28, height: 22, borderRadius: 11, borderWidth: 1, borderColor: t.border, alignItems: 'center', justifyContent: 'center', backgroundColor: t.panel },
+        foldChevronText: { fontSize: 16, lineHeight: 18, fontWeight: '700', color: t.subtext, marginTop: -2 },
+        // While folded with filters on: a dot on the chevron, so a folded header never hides them.
+        foldDotOn: { position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: 4, backgroundColor: t.accent },
         triColorBtn: {
             backgroundColor: t.accent,
             borderRadius: 9,
