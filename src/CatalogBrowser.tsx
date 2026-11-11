@@ -1279,6 +1279,11 @@ export function CatalogBrowser({
 
   // Measured content width → dense column count. 0 until the first layout pass.
   const [containerWidth, setContainerWidth] = useState(0);
+  // THE BROWSER'S OWN BOX in the window, read when the Filters sheet opens: the sheet drops over the
+  // browser (the editor's dock, /browse's results column), centred, not across the whole page
+  // (michi, 2026-11-11). On a native app the browser is the screen, so nothing changes there.
+  const browserRef = useRef<View>(null);
+  const [browserBox, setBrowserBox] = useState<{ x: number; w: number } | null>(null);
   const onLayout = (e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
     if (w > 0 && Math.abs(w - containerWidth) > 0.5) setContainerWidth(w);
@@ -2598,6 +2603,12 @@ export function CatalogBrowser({
   // Where the art-type row sits once Filters is a sheet: in it (the phone's way), or still on top.
   const artTypeOnTop = sheetMode && layout?.artTypeInFilters === false;
   const sheetOpen = sheetMode && toolsOpen;
+  useEffect(() => {
+    if (!sheetOpen || Platform.OS !== 'web') return;
+    browserRef.current?.measureInWindow((x, _y, w) => {
+      if (w > 0) setBrowserBox({ x, w });
+    });
+  }, [sheetOpen]);
   const foldable = sheetMode && isCardLevel && visibleData.length > 0;
   const folded = foldable && !toolsOpen;
   const foldSummary = folded
@@ -3016,7 +3027,7 @@ export function CatalogBrowser({
   );
 
   return (
-    <View style={styles.browser} onLayout={onLayout}>
+    <View ref={browserRef} collapsable={false} style={styles.browser} onLayout={onLayout}>
       <View style={styles.controls}>
         {headless || docked ? null : compactHeader ? compactRows : featureRow ? (
           <View style={styles.triColorRow}>
@@ -3606,6 +3617,7 @@ export function CatalogBrowser({
       {sheetOpen ? (
         <FilterSheet
           styles={styles}
+          frame={browserBox}
           topInset={overlayTopInset}
           onClose={() => setToolsOpen(false)}
           renderDone={renderSheetDone}
@@ -4470,8 +4482,11 @@ function FacetBar({
  * refilters the grid behind it. A tap below the sheet, Done, or the hardware back shuts it. It
  * slides in under the state step; Reduce Motion shows it in place.
  */
+/** The widest the Filters sheet gets inside a wide browser; centred in it. */
+const SHEET_MAX_W = 720;
 function FilterSheet({
   styles,
+  frame,
   topInset,
   onClose,
   renderDone,
@@ -4479,6 +4494,8 @@ function FilterSheet({
   children,
 }: {
   styles: Styles;
+  /** The browser's box in the window: the sheet stays inside it, centred. Null = the whole window. */
+  frame?: { x: number; w: number } | null;
   topInset: number;
   onClose: () => void;
   renderDone?: (close: () => void) => ReactNode;
@@ -4507,6 +4524,7 @@ function FilterSheet({
       <Animated.View
         style={[
           styles.sheet,
+          frame ? { left: frame.x + Math.max(0, (frame.w - Math.min(frame.w, SHEET_MAX_W)) / 2), right: undefined, width: Math.min(frame.w, SHEET_MAX_W) } : null,
           {
             maxHeight: Math.round(height * 0.66),
             paddingTop: topInset + 12,
