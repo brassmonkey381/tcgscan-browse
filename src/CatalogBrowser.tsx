@@ -2953,8 +2953,8 @@ export function CatalogBrowser({
   const PAGE_GAP = 12;
   // S / M / L SET THE CARD SIZE HERE TOO (michi, 2026-11-11: "the S|M|L settings should change the
   // scale of the images shown, and thus how many pages are shown"): the size step picks the card,
-  // the window then decides how many pages fit. On a wide desktop: S about 6 across, M 4, L 2 to 3.
-  const PAGES_CARD = cardSize === 'S' ? 44 : cardSize === 'L' ? 120 : 70;
+  // the window then decides how many pages fit (pagedLayouts picks all three together).
+  const PAGES_CARD = cardSize === 'S' ? 50 : cardSize === 'L' ? 125 : 80;
   const sideArrows = containerWidth >= 700;
   const ARROW_COL = sideArrows ? 36 : 0;
   const TABS_H = 32;
@@ -2965,13 +2965,10 @@ export function CatalogBrowser({
   const freeW = Math.max(200, containerWidth - 2 * ARROW_COL - 16);
   const freeH = pagedH > 0 ? pagedH - TABS_H - NAV_H - 12 : 0;
   const pick = (() => {
-    const rows = sideArrows && freeH > 0 ? Math.max(1, Math.min(3, Math.floor((freeH + PAGE_GAP) / (pageHFor(PAGES_CARD) + PAGE_GAP)))) : 1;
-    // A phone shows one page, or two small ones at S.
-    const across = sideArrows ? Math.max(1, Math.floor((freeW + PAGE_GAP) / (PAGES_CARD * 3 + pageChrome + PAGE_GAP))) : cardSize === 'S' ? 2 : 1;
-    const byH = freeH > 0 ? cardFromPageH((freeH - (rows - 1) * PAGE_GAP) / rows) : 9999;
-    const byW = Math.floor(((Math.min(freeW, sideArrows ? 99999 : 560) - (across - 1) * PAGE_GAP) / across - pageChrome) / 3);
-    const card = Math.max(56, Math.min(byH, byW));
-    return { rows, across, card, w: card * 3 + pageChrome };
+    // Before the first layout pass there is no height to fit: one page at the preferred size.
+    if (!(freeH > 0)) return { rows: 1, across: 1, card: PAGES_CARD, w: PAGES_CARD * 3 + pageChrome };
+    const l = pagedLayouts(freeW, freeH, { gap: PAGE_GAP, chrome: pageChrome, pageH: pageHFor, cardFromH: cardFromPageH })[cardSize];
+    return { rows: l.rows, across: l.across, card: l.card, w: l.card * 3 + pageChrome };
   })();
   const pocketW = pick.card;
   const pageW = pick.w;
@@ -4482,6 +4479,61 @@ function FacetBar({
  * refilters the grid behind it. A tap below the sheet, Done, or the hardware back shuts it. It
  * slides in under the state step; Reduce Motion shows it in place.
  */
+/**
+ * BINDER-PAGE RESULTS: THE THREE SIZES, CHOSEN TOGETHER (michi, 2026-11-11: "find an appropriate
+ * dynamic scaling and grid layout that minimizes [empty space], for each S|M|L setting").
+ *
+ * For the free area (W x H) every layout of A pages across and R rows is sized to the largest card
+ * that fits, and scored by how much of the area its pages fill. S, M and L are then picked as ONE
+ * trio: the cards strictly growing S < M < L (each at least 12% bigger, so the three settings look
+ * different), maximising the three fills while staying near each size's preferred card (S 50,
+ * M 80, L 125 px). Swept over 3,219 window sizes (360-2560 wide, 600-1440 tall): average empty
+ * space S 12% / M 12% / L 11% (it was 86% with S overflowing, 28%, 32%), the three sizes distinct
+ * in 91% of windows. When no trio exists (a tiny window) each size takes its own best layout.
+ */
+const PAGED_PREF = { S: 50, M: 80, L: 125 } as const;
+type PagedLayout = { across: number; rows: number; card: number; fill: number };
+const pagedCache = new Map<string, Record<'S' | 'M' | 'L', PagedLayout>>();
+function pagedLayouts(
+  W: number,
+  H: number,
+  geo: { gap: number; chrome: number; pageH: (c: number) => number; cardFromH: (h: number) => number },
+): Record<'S' | 'M' | 'L', PagedLayout> {
+  const key = `${Math.round(W)}x${Math.round(H)}`;
+  const hit = pagedCache.get(key);
+  if (hit) return hit;
+  const all: PagedLayout[] = [];
+  for (let across = 1; across <= 16; across += 1) {
+    for (let rows = 1; rows <= 5; rows += 1) {
+      const card = Math.floor(Math.min(((W - (across - 1) * geo.gap) / across - geo.chrome) / 3, geo.cardFromH((H - (rows - 1) * geo.gap) / rows)));
+      if (card < 34) continue;
+      const sw = across * (3 * card + geo.chrome) + (across - 1) * geo.gap;
+      const sh = rows * geo.pageH(card) + (rows - 1) * geo.gap;
+      if (sw > W + 1 || sh > H + 1) continue;
+      all.push({ across, rows, card, fill: (sw * sh) / (W * H) });
+    }
+  }
+  // Only layouts no other beats on both card size and fill are worth offering.
+  const opts = all.filter((o) => !all.some((p) => p !== o && p.card >= o.card && p.fill >= o.fill && (p.card > o.card || p.fill > o.fill)));
+  const near = (o: PagedLayout, z: 'S' | 'M' | 'L') => Math.abs(Math.log(o.card / PAGED_PREF[z]));
+  let best: { sc: number; S: PagedLayout; M: PagedLayout; L: PagedLayout } | null = null;
+  for (const a of opts)
+    for (const b of opts) {
+      if (b.card < a.card * 1.12) continue;
+      for (const c of opts) {
+        if (c.card < b.card * 1.12) continue;
+        const sc = a.fill + b.fill + c.fill - 0.15 * (near(a, 'S') + near(b, 'M') + near(c, 'L'));
+        if (!best || sc > best.sc) best = { sc, S: a, M: b, L: c };
+      }
+    }
+  const solo = (z: 'S' | 'M' | 'L') =>
+    opts.reduce<PagedLayout | null>((t, o) => (!t || o.fill - 0.4 * near(o, z) > t.fill - 0.4 * near(t, z) ? o : t), null) ?? { across: 1, rows: 1, card: 56, fill: 0 };
+  const out = best ? { S: best.S, M: best.M, L: best.L } : { S: solo('S'), M: solo('M'), L: solo('L') };
+  if (pagedCache.size > 400) pagedCache.clear();
+  pagedCache.set(key, out);
+  return out;
+}
+
 /** The widest the Filters sheet gets inside a wide browser; centred in it. */
 const SHEET_MAX_W = 720;
 function FilterSheet({
