@@ -2146,8 +2146,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const PAGE_GAP = 12;
     // S / M / L SET THE CARD SIZE HERE TOO (michi, 2026-11-11: "the S|M|L settings should change the
     // scale of the images shown, and thus how many pages are shown"): the size step picks the card,
-    // the window then decides how many pages fit. At 1280: S about 6 across, M 4, L 2.
-    const PAGES_CARD = cardSize === 'S' ? 52 : cardSize === 'L' ? 140 : 84;
+    // the window then decides how many pages fit. On a wide desktop: S about 6 across, M 4, L 2 to 3.
+    const PAGES_CARD = cardSize === 'S' ? 44 : cardSize === 'L' ? 120 : 70;
     const sideArrows = containerWidth >= 700;
     const ARROW_COL = sideArrows ? 36 : 0;
     const TABS_H = 32;
