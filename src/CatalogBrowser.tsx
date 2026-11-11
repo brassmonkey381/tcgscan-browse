@@ -2951,6 +2951,13 @@ export function CatalogBrowser({
   const TAB_COLORS = ['#f6d548', '#e6b800', '#cfd6e4', '#cfe0fb', '#f3c4d6', '#c9e8cf'];
   const swipeX = useRef<number | null>(null);
   const [pagedH, setPagedH] = useState(0);
+  // THE VIEW PANEL DOES NOT RESCALE THE PAGES (michi, 2026-11-11: "collapsing the VIEW dropdown
+  // seems to switch the SCALE ... especially at L"). The pages' layout is picked from the height
+  // left to them, and the open panel took ~50px of it, so every open and close re-picked the
+  // layout: S / M / L previewed at one scale and landed at another. While the panel is open the
+  // height it had before stays the one the layout uses; the pages scroll under it instead.
+  const viewOpenRef = useRef(false);
+  viewOpenRef.current = viewOpen;
   // EDGE TO EDGE (owner, 2026-11-10: "remove the results text and move the navigation to the left
   // and right sides ... scale up the pages and images to the very top and bottom edge"). On a wide
   // screen the turn arrows are columns at the sides and the count sits beside the tabs, so the
@@ -3422,7 +3429,10 @@ export function CatalogBrowser({
           ) : null}
         </ScrollView>
       ) : paged ? (
-        <ScrollView style={styles.list} contentContainerStyle={styles.pagedContent} testID="results-pages" onLayout={(e) => setPagedH(Math.round(e.nativeEvent.layout.height))}>
+        <ScrollView style={styles.list} contentContainerStyle={styles.pagedContent} testID="results-pages" onLayout={(e) => {
+          const h = Math.round(e.nativeEvent.layout.height);
+          if (!viewOpenRef.current || pagedH === 0) setPagedH(h);
+        }}>
           <View style={styles.pagedStage} ref={pagedStageRef}>
           {sideArrows ? (
             <Pressable onPress={() => turnTo(spreadStart - perSpread)} disabled={spreadStart === 0} role="button" accessibilityLabel="Previous pages" testID="results-prev" style={[styles.pagedSide, spreadStart === 0 && styles.pagedTurnOff]}>
