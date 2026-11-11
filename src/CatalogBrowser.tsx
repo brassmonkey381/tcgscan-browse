@@ -516,7 +516,14 @@ interface CatalogBrowserProps {
    * "Add all to a binder" action. Omit to hide that action (e.g. surfaces with no binder).
    * `cards` carries the resolved cards for the ids that could be resolved (see onPickCard).
    */
-  onPickCards?: (cardIds: string[], cards?: CatalogCard[]) => void;
+  onPickCards?: (cardIds: string[], cards?: CatalogCard[], action?: number) => void;
+  /**
+   * Opt-in: several batch-add buttons side by side in the selection panel instead of the one
+   * (e.g. ["Add to hand", "Add to page"]); onPickCards gets the pressed one's index as `action`.
+   */
+  pickCardsActions?: readonly string[];
+  /** Opt-in: the selection panel widens and its cards scale to fill it (fitSelectionGrid). */
+  bigSelection?: boolean;
   /**
    * Label for the multi-select batch-add button, worded for the app's container —
    * e.g. poke-michi's default "Add all to a binder", tcgscan-app's "Add all to portfolio".
@@ -849,6 +856,8 @@ export function CatalogBrowser({
   onPickVUnion,
   onPickCards,
   pickCardsLabel,
+  pickCardsActions,
+  bigSelection = false,
   cardActions,
   quickAction,
   onCardTap,
@@ -2708,11 +2717,25 @@ export function CatalogBrowser({
       </Text>
     </Pressable>
   );
-  // The compact header's two rows (compactHeader): game | Filters | View, then Color | Theme.
+  // THE COMPACT HEADER, ONE ROW IN ONE ORDER (michi, 2026-11-11: "TCG SELECTOR | COLOR SEARCH |
+  // THEME SEARCH | FILTERS | VIEW", on one line "when there's room"). It wraps where the width runs
+  // out, the same at every width: the editor's dock and /browse read the same.
+  const colorBtn = onColorSearch ? (
+    <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel={colorSearchLabel}>
+      <Text style={styles.triColorBtnText}>{colorSearchLabel}</Text>
+    </Pressable>
+  ) : null;
+  const themeBtn = onThemeSearch ? (
+    <Pressable onPress={onThemeSearch} disabled={themeSearchBusy} aria-busy={themeSearchBusy} style={[styles.triColorBtn, themeSearchBusy && styles.busyBtn]} accessibilityLabel={themeSearchLabel} testID="header-theme">
+      <Text style={styles.triColorBtnText}>{themeSearchLabel}</Text>
+    </Pressable>
+  ) : null;
   const compactRows = headerFolded ? null : (
     <>
-      <View style={[styles.triColorRow, wideHeader && styles.wideHeaderRow]}>
+      <View style={[styles.triColorRow, styles.wideHeaderRow]} testID="header-row">
         {featureRowLead}
+        {colorBtn}
+        {themeBtn}
         {sortFilterControl}
         <Pressable
           onPress={() => setViewOpen((v) => !v)}
@@ -2725,35 +2748,11 @@ export function CatalogBrowser({
             View ▾
           </Text>
         </Pressable>
-        {wideHeader && onColorSearch ? (
-          <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel={colorSearchLabel}>
-            <Text style={styles.triColorBtnText}>{colorSearchLabel}</Text>
-          </Pressable>
-        ) : null}
-        {wideHeader && onThemeSearch ? (
-          <Pressable onPress={onThemeSearch} disabled={themeSearchBusy} aria-busy={themeSearchBusy} style={[styles.triColorBtn, themeSearchBusy && styles.busyBtn]} accessibilityLabel={themeSearchLabel} testID="header-theme">
-            <Text style={styles.triColorBtnText}>{themeSearchLabel}</Text>
-          </Pressable>
-        ) : null}
       </View>
       {viewOpen ? (
         <View style={styles.groupRow}>
           {languageToggleVisible ? <LanguageToggle theme={themeProp} /> : null}
           <SizeChips theme={theme} size={cardSize} onPickSize={pickCardSize} />
-        </View>
-      ) : null}
-      {featureRow && !wideHeader ? (
-        <View style={styles.triColorRow}>
-          {onColorSearch ? (
-            <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel={colorSearchLabel}>
-              <Text style={styles.triColorBtnText}>{colorSearchLabel}</Text>
-            </Pressable>
-          ) : null}
-          {onThemeSearch ? (
-            <Pressable onPress={onThemeSearch} disabled={themeSearchBusy} aria-busy={themeSearchBusy} style={[styles.triColorBtn, themeSearchBusy && styles.busyBtn]} accessibilityLabel={themeSearchLabel} testID="header-theme">
-              <Text style={styles.triColorBtnText}>{themeSearchLabel}</Text>
-            </Pressable>
-          ) : null}
         </View>
       ) : null}
     </>
@@ -2941,7 +2940,10 @@ export function CatalogBrowser({
   // look); the window decides HOW MANY pages, in rows and columns, and the cards then grow evenly
   // into whatever room is left. A bigger screen shows more pages, not bigger ones.
   const PAGE_GAP = 12;
-  const PAGES_CARD = 84;
+  // S / M / L SET THE CARD SIZE HERE TOO (michi, 2026-11-11: "the S|M|L settings should change the
+  // scale of the images shown, and thus how many pages are shown"): the size step picks the card,
+  // the window then decides how many pages fit. At 1280: S about 6 across, M 4, L 2.
+  const PAGES_CARD = cardSize === 'S' ? 52 : cardSize === 'L' ? 140 : 84;
   const sideArrows = containerWidth >= 700;
   const ARROW_COL = sideArrows ? 36 : 0;
   const TABS_H = 32;
@@ -2953,7 +2955,8 @@ export function CatalogBrowser({
   const freeH = pagedH > 0 ? pagedH - TABS_H - NAV_H - 12 : 0;
   const pick = (() => {
     const rows = sideArrows && freeH > 0 ? Math.max(1, Math.min(3, Math.floor((freeH + PAGE_GAP) / (pageHFor(PAGES_CARD) + PAGE_GAP)))) : 1;
-    const across = sideArrows ? Math.max(1, Math.floor((freeW + PAGE_GAP) / (PAGES_CARD * 3 + pageChrome + PAGE_GAP))) : 1;
+    // A phone shows one page, or two small ones at S.
+    const across = sideArrows ? Math.max(1, Math.floor((freeW + PAGE_GAP) / (PAGES_CARD * 3 + pageChrome + PAGE_GAP))) : cardSize === 'S' ? 2 : 1;
     const byH = freeH > 0 ? cardFromPageH((freeH - (rows - 1) * PAGE_GAP) / rows) : 9999;
     const byW = Math.floor(((Math.min(freeW, sideArrows ? 99999 : 560) - (across - 1) * PAGE_GAP) / across - pageChrome) / 3);
     const card = Math.max(56, Math.min(byH, byW));
@@ -3634,6 +3637,8 @@ export function CatalogBrowser({
           cards={selectedCards}
           onAddAll={onPickCards ? () => onPickCards(selectedIds, selectedCards) : undefined}
           addAllLabel={pickCardsLabel}
+          addActions={onPickCards && pickCardsActions?.length ? pickCardsActions.map((label, i) => ({ label, onPress: () => onPickCards(selectedIds, selectedCards, i) })) : undefined}
+          big={bigSelection}
           onFindSimilarAll={similarAvailable() ? () => openSimilarMany(selectedIds) : undefined}
           onMoreLikeAll={
             similarAvailable() && similarTo && !similarTo.injected ? () => refineSimilar('more', selectedIds) : undefined

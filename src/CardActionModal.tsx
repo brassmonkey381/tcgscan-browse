@@ -179,9 +179,36 @@ export function CardActionModal({ card, actions, value, onClose, theme = lightTh
  * overflow), then offers the batch actions. Buttons are hidden when their handler is absent
  * (e.g. no "Find similar to all" when the data server isn't configured).
  */
+/**
+ * THE BIG SELECTION GRID (opt-in, `big`; michi 2026-11-11: "make sure the cards fill the modal
+ * area more ... the images scale up based on the number of cards"). The panel widens to the window
+ * (up to 960) and the cards take the largest size at which all of them fit the image area, card
+ * shape kept: one card is big, three are large, twenty-four smaller. Below MIN_W the grid scrolls.
+ */
+const BIG_SHEET_MAX = 960;
+const BIG_GAP = 8;
+const BIG_MIN_W = 64;
+export function fitSelectionGrid(n: number, W: number, H: number): { cols: number; w: number } {
+  let best = { cols: 1, w: 0 };
+  for (let cols = 1; cols <= Math.max(1, n); cols += 1) {
+    const rows = Math.ceil(n / cols);
+    const byW = (W - (cols - 1) * BIG_GAP) / cols;
+    const byH = ((H - (rows - 1) * BIG_GAP) / rows) * (63 / 88);
+    const w = Math.min(byW, byH);
+    if (w > best.w) best = { cols, w };
+  }
+  if (best.w < BIG_MIN_W) {
+    const cols = Math.max(1, Math.floor((W + BIG_GAP) / (BIG_MIN_W + BIG_GAP)));
+    return { cols, w: BIG_MIN_W };
+  }
+  return { cols: best.cols, w: Math.floor(best.w) };
+}
+
 export function MultiCardActionModal({
   cards,
   onAddAll,
+  addActions,
+  big = false,
   addAllLabel = 'Add all to a binder',
   onFindSimilarAll,
   onMoreLikeAll,
@@ -192,6 +219,10 @@ export function MultiCardActionModal({
   cards: CatalogCard[];
   /** The batch-add action (app-supplied). Omit to hide the button. */
   onAddAll?: () => void;
+  /** Several add actions side by side instead of the one (e.g. "Add to hand" | "Add to page"). */
+  addActions?: { label: string; onPress: () => void }[];
+  /** The big selection grid (see fitSelectionGrid). */
+  big?: boolean;
   /** Label for the batch-add button — apps word it for their container
    *  ("Add all to a binder" / "Add all to portfolio" / …). */
   addAllLabel?: string;
@@ -205,17 +236,35 @@ export function MultiCardActionModal({
   theme?: BrowseTheme;
 }) {
   const styles = makeStyles(theme);
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const imageMaxHeight = Math.min(IMAGE_MAX_HEIGHT, Math.round(windowHeight * IMAGE_VIEWPORT_FRACTION));
+  const sheetW = Math.min(BIG_SHEET_MAX, windowWidth - 40);
+  const gridW = sheetW - 28;
+  const gridH = Math.round(windowHeight * 0.62);
+  const fit = big ? fitSelectionGrid(cards.length, gridW, gridH) : null;
+  const fitRows = fit ? Math.ceil(cards.length / fit.cols) : 0;
+  const fitH = fit ? Math.min(gridH, fitRows * Math.round(fit.w * (88 / 63)) + (fitRows - 1) * BIG_GAP) : 0;
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         {/* Backdrop behind the sheet, as in CardActionModal, so a drag anywhere scrolls. */}
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
-        <View style={[styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }]}>
+        <View style={[styles.sheet, { maxHeight: windowHeight - SHEET_MARGIN }, big ? { maxWidth: BIG_SHEET_MAX } : null]}>
           {/* SCROLLS WHEN IT DOES NOT FIT: a tall card on a short phone (or a long action list)
               used to push Cancel off the screen with no way to reach it. */}
           <ScrollView style={{ overscrollBehavior: 'contain' } as object} contentContainerStyle={styles.sheetBody} bounces={false} alwaysBounceVertical={false} overScrollMode="never" nestedScrollEnabled>
+          {fit ? (
+            <ScrollView style={{ height: fitH }} contentContainerStyle={[styles.bigGrid, { width: fit.cols * fit.w + (fit.cols - 1) * BIG_GAP }]}>
+              {cards.map((c) => {
+                const uri = cardThumbUrl(c.id, fit.w > 150 ? 640 : 245);
+                return (
+                  <View key={c.id} style={[styles.multiThumb, { width: fit.w }]}>
+                    {uri ? <Image source={{ uri }} style={styles.image} contentFit="contain" transition={80} /> : null}
+                  </View>
+                );
+              })}
+            </ScrollView>
+          ) : (
           <View style={[styles.imageWrap, { maxHeight: imageMaxHeight }]}>
             <ScrollView contentContainerStyle={styles.multiGrid}>
               {cards.map((c) => {
@@ -234,12 +283,29 @@ export function MultiCardActionModal({
               })}
             </ScrollView>
           </View>
+          )}
           <Text style={styles.name} numberOfLines={1}>
             {cards.length} cards selected
           </Text>
 
           <View style={styles.actions}>
-            {onAddAll ? (
+            {addActions?.length ? (
+              <View style={styles.actionRow}>
+                {addActions.map((a) => (
+                  <Pressable
+                    key={a.label}
+                    style={[styles.action, styles.actionPrimary, styles.actionHalf]}
+                    onPress={() => {
+                      onClose();
+                      a.onPress();
+                    }}>
+                    <Text style={[styles.actionText, styles.actionPrimaryText]} numberOfLines={1}>
+                      {a.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : onAddAll ? (
               <Pressable
                 style={[styles.action, styles.actionPrimary]}
                 onPress={() => {
@@ -329,6 +395,9 @@ function makeStyles(t: BrowseTheme) {
     // Multi-select: cram the selected thumbs into the image footprint, wrapping + scrolling.
     multiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 6, justifyContent: 'center' },
     multiThumb: { width: 52, aspectRatio: 63 / 88, borderRadius: 6, overflow: 'hidden', backgroundColor: t.imagePlaceholder },
+    bigGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: BIG_GAP, alignSelf: 'center', justifyContent: 'center' },
+    actionRow: { flexDirection: 'row', gap: 8 },
+    actionHalf: { flex: 1, alignItems: 'center' },
     imageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     imageFallbackText: { color: t.faint, fontSize: 12 },
     name: { fontSize: 16, fontWeight: '700', color: t.text },

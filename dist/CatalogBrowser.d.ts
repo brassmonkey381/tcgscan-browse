@@ -56,7 +56,14 @@ interface CatalogBrowserProps {
      * "Add all to a binder" action. Omit to hide that action (e.g. surfaces with no binder).
      * `cards` carries the resolved cards for the ids that could be resolved (see onPickCard).
      */
-    onPickCards?: (cardIds: string[], cards?: CatalogCard[]) => void;
+    onPickCards?: (cardIds: string[], cards?: CatalogCard[], action?: number) => void;
+    /**
+     * Opt-in: several batch-add buttons side by side in the selection panel instead of the one
+     * (e.g. ["Add to hand", "Add to page"]); onPickCards gets the pressed one's index as `action`.
+     */
+    pickCardsActions?: readonly string[];
+    /** Opt-in: the selection panel widens and its cards scale to fill it (fitSelectionGrid). */
+    bigSelection?: boolean;
     /**
      * Label for the multi-select batch-add button, worded for the app's container —
      * e.g. poke-michi's default "Add all to a binder", tcgscan-app's "Add all to portfolio".
@@ -376,5 +383,5 @@ export type SimilarWordsEvent = {
 };
 /** "Also searching: trash, junk, litter (+12)" — one clause per widened word. */
 export declare function describeExpansions(list: readonly SimilarExpansion[], shown?: number, prefix?: string): string;
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, headless, dock, dockExtra, resultsAsPages, explainEmpty, moreCardActions, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeSearchBusy, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, pickCardsActions, bigSelection, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, compactHeader, headless, dock, dockExtra, resultsAsPages, explainEmpty, moreCardActions, layout, onColorSearch, onThemeSearch, onSimilarWordsEvent, colorSearchLabel, themeSearchLabel, themeSearchBusy, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};
