@@ -2169,7 +2169,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // S / M / L SET THE CARD SIZE HERE TOO (michi, 2026-11-11: "the S|M|L settings should change the
     // scale of the images shown, and thus how many pages are shown"): the size step picks the card,
     // the window then decides how many pages fit (pagedLayouts picks all three together).
-    const PAGES_CARD = cardSize === 'S' ? 50 : cardSize === 'L' ? 125 : 80;
+    const PAGES_CARD = PAGED_TARGET[cardSize];
     const sideArrows = containerWidth >= 700;
     const ARROW_COL = sideArrows ? 36 : 0;
     const TABS_H = 32;
@@ -2184,7 +2184,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
         // Before the first layout pass there is no height to fit: one page at the preferred size.
         if (!(freeH > 0))
             return { rows: 1, across: 1, card: PAGES_CARD, w: PAGES_CARD * 3 + pageChrome };
-        const l = pagedLayouts(freeW, freeH, { gap: PAGE_GAP, chrome: pageChrome, pageH: pageHFor, cardFromH: cardFromPageH })[cardSize];
+        const geo = { gap: PAGE_GAP, chrome: pageChrome, pageH: pageHFor, cardFromH: cardFromPageH };
+        // The editor's sizes first (pagedLayoutAt); a window too narrow for a page of them (a phone)
+        // keeps the fit-everything trio below.
+        const l = pagedLayoutAt(freeW, freeH, geo, cardSize) ?? pagedLayouts(freeW, freeH, geo)[cardSize];
         return { rows: l.rows, across: l.across, card: l.card, w: l.card * 3 + pageChrome };
     })();
     const pocketW = pick.card;
@@ -2194,6 +2197,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const spreadStart = Math.floor(pageN / perSpread) * perSpread;
     const spreadEnd = Math.min(pageCount, spreadStart + perSpread);
     const spreadW = across * pageW + (across - 1) * PAGE_GAP;
+    // Pages taller than the window (M / L on most screens): the stage scrolls, so a vertical wheel
+    // scrolls it and only a sideways one turns the pages.
+    const pagedTallRef = useRef(false);
+    pagedTallRef.current = freeH > 0 && pick.rows * pageHFor(pick.card) + (pick.rows - 1) * PAGE_GAP > freeH + 1;
     useEffect(() => {
         // Within two pages of the end: ask for the next results, as the list's end would.
         if (paged && moreToLoad && pageN + perSpread * 2 >= pageCount)
@@ -2246,6 +2253,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
             if (Math.abs(delta) < 2)
                 return;
             const dir = delta > 0 ? 1 : -1;
+            if (pagedTallRef.current && Math.abs(e.deltaY) > Math.abs(e.deltaX))
+                return; // tall pages: scroll them
             if (!pagedCanTurnRef.current(dir))
                 return; // at an end: the page scrolls
             e.preventDefault();
@@ -2568,6 +2577,49 @@ function FacetBar({ styles, compact, options, selection, activeCount, open, onTo
  * in 91% of windows. When no trio exists (a tiny window) each size takes its own best layout.
  */
 const PAGED_PREF = { S: 50, M: 80, L: 125 };
+/**
+ * THE EDITOR'S CARD SIZES ON THE RESULT PAGES (michi, 2026-11-11: "the browse kit SML sizes are too
+ * small on the /browse screen ... the same size they are displayed in a /binder editor browse kit").
+ * The editor's card dock shows S 142, M 218, L ~300 px cards, and the pages aim for exactly those.
+ * The owner's rule for fitting them to a window:
+ *   - a card may shrink by up to 20% when that keeps the pages inside the window, or fits another
+ *     row or column of pages, choosing whatever leaves the least empty space;
+ *   - when even that does not fit, one row of pages at the full size, and the pages scroll.
+ * Returns null when one page cannot fit across at 80% of the S size (a phone): the caller keeps
+ * the fit-everything trio (pagedLayouts) there.
+ */
+const PAGED_TARGET = { S: 142, M: 218, L: 300 };
+const PAGED_SHRINK = 0.8;
+function pagedLayoutAt(W, H, geo, z) {
+    const T = PAGED_TARGET[z];
+    const fitW = (across) => Math.floor(((W - (across - 1) * geo.gap) / across - geo.chrome) / 3);
+    if (fitW(1) < Math.ceil(PAGED_TARGET.S * PAGED_SHRINK))
+        return null;
+    const min = Math.ceil(T * PAGED_SHRINK);
+    let best = null;
+    for (let across = 1; across <= 12; across += 1) {
+        for (let rows = 1; rows <= 4; rows += 1) {
+            const card = Math.min(T, fitW(across), geo.cardFromH((H - (rows - 1) * geo.gap) / rows));
+            if (card < min)
+                continue;
+            const sw = across * (3 * card + geo.chrome) + (across - 1) * geo.gap;
+            const sh = rows * geo.pageH(card) + (rows - 1) * geo.gap;
+            const fill = (sw * sh) / (W * H);
+            // Empty space counts most; each step of shrinking costs a little, so a full-size card wins a tie.
+            const sc = fill - 0.8 * (1 - card / T);
+            if (!best || sc > best.sc)
+                best = { across, rows, card, fill, sc };
+        }
+    }
+    if (best)
+        return { across: best.across, rows: best.rows, card: best.card, fill: best.fill };
+    // Nothing fits the window: one row, as many full-size pages across as fit, and the pages scroll.
+    let across = 1;
+    while (fitW(across + 1) >= T)
+        across += 1;
+    const card = Math.min(T, fitW(across)); // never wider than the window
+    return { across, rows: 1, card, fill: 1 };
+}
 const pagedCache = new Map();
 function pagedLayouts(W, H, geo) {
     const key = `${Math.round(W)}x${Math.round(H)}`;
