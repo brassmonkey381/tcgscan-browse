@@ -3125,7 +3125,7 @@ export function CatalogBrowser({
             style={styles.foldLine}>
             <View style={styles.foldRule} />
             <View style={styles.foldChevron}>
-              <Text style={styles.foldChevronText}>{headerFolded ? '⌄' : '⌃'}</Text>
+              <Text style={styles.foldChevronText}>{headerFolded ? '▾' : '▴'}</Text>
               {headerFolded && sortFilterLit ? <View style={styles.foldDotOn} /> : null}
             </View>
             <View style={styles.foldRule} />
@@ -4864,7 +4864,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     foldLine: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28, marginVertical: 2 },
     foldRule: { flex: 1, height: 1, backgroundColor: t.border },
     foldChevron: { width: 28, height: 22, borderRadius: 11, borderWidth: 1, borderColor: t.border, alignItems: 'center', justifyContent: 'center', backgroundColor: t.panel },
-    foldChevronText: { fontSize: 16, lineHeight: 18, fontWeight: '700', color: t.subtext, marginTop: -2 },
+    foldChevronText: { fontSize: 15, lineHeight: 18, color: t.subtext },
     // While folded with filters on: a dot on the chevron, so a folded header never hides them.
     foldDotOn: { position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: 4, backgroundColor: t.accent },
     triColorBtn: {
