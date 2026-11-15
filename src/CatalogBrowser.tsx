@@ -21,6 +21,7 @@
  * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
  */
 import { Image } from 'expo-image';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
@@ -1148,6 +1149,8 @@ export function CatalogBrowser({
   // one-frame reflow on desktop, where the stacked form would otherwise flash first.
   const compactSearch = containerWidth > 0 && containerWidth < COMPACT_SEARCH_W;
   const compactBar = containerWidth > 0 && containerWidth < COMPACT_BAR_W;
+  /** A desktop browser: the only place the TCG-028 sizing applies, so the phone apps keep theirs. */
+  const deskWeb = Platform.OS === 'web' && containerWidth >= COMPACT_BAR_W;
 
   const clearFilters = () => setSelection({});
 
@@ -2462,8 +2465,14 @@ export function CatalogBrowser({
             disabled={selectedIds.length < 2}
             onPress={() => setMultiOpen(true)}
             role="button"
-            style={[styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff]}>
-            <Text style={styles.selectBtnText} numberOfLines={1}>
+            style={[
+              styles.selectBtn,
+              deskWeb && styles.selectBtnDesk,
+              selectedIds.length < 2 && (deskWeb ? styles.selectBtnHintDesk : styles.selectBtnOff),
+            ]}>
+            <Text
+              style={[styles.selectBtnText, deskWeb && styles.selectBtnTextDesk, deskWeb && selectedIds.length < 2 && styles.selectBtnHintTextDesk]}
+              numberOfLines={1}>
               {selectedIds.length < 2
                 ? `${selectedIds.length} selected · tap 2+`
                 : `Continue with ${count(selectedIds.length)}`}
@@ -2484,8 +2493,8 @@ export function CatalogBrowser({
           onPress={() => setMultiSelectMode(true)}
           role="button"
           accessibilityLabel="Select multiple cards"
-          style={styles.selectBtn}>
-          <Text style={styles.selectBtnText}>⊕ Select</Text>
+          style={[styles.selectBtn, deskWeb && styles.selectBtnDesk]}>
+          <Text style={[styles.selectBtnText, deskWeb && styles.selectBtnTextDesk]}>⊕ Select</Text>
         </Pressable>
       )
     ) : null;
@@ -3609,9 +3618,19 @@ function SortControls({
                 style={[styles.chip, on && styles.chipOn, lock && styles.chipLocked]}
                 aria-disabled={lock}
                 accessibilityLabel={lock ? `${o.label} (not included on your plan)` : o.label}>
-                <Text style={[styles.chipText, on && styles.chipTextOn, lock && styles.chipTextLocked]} numberOfLines={1}>
-                  {lock ? `${o.label} ⋯` : o.label}
-                </Text>
+                {lock ? (
+                  // TCG-028 p14 (owner: "LOCK"): a small lock, not dots, so it reads as a plan feature.
+                  <View style={styles.chipLockRow}>
+                    <Text style={[styles.chipText, styles.chipTextLocked]} numberOfLines={1}>
+                      {o.label}
+                    </Text>
+                    <LockGlyph color={styles.chipTextLocked.color as string} />
+                  </View>
+                ) : (
+                  <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>
+                    {o.label}
+                  </Text>
+                )}
               </Pressable>
             );
           })}
@@ -3623,6 +3642,16 @@ function SortControls({
         </Pressable>
       ) : null}
     </View>
+  );
+}
+
+/** A 10 px padlock for a locked chip (TCG-028 p14). */
+function LockGlyph({ color }: { color: string }) {
+  return (
+    <Svg width={10} height={12} viewBox="0 0 10 12" accessibilityElementsHidden importantForAccessibility="no">
+      <Path d="M2.5 5V3.5a2.5 2.5 0 0 1 5 0V5" stroke={color} strokeWidth={1.4} fill="none" />
+      <Rect x={1} y={5} width={8} height={6.5} rx={1.2} fill={color} />
+    </Svg>
   );
 }
 
@@ -4320,6 +4349,7 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     // hidden), but visibly not-yours — dashed edge + faded text.
     chipLocked: { borderStyle: 'dashed', borderColor: t.faint, backgroundColor: 'transparent' },
     chipTextLocked: { color: t.faint },
+    chipLockRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     lockNoticeRow: { paddingHorizontal: 2, paddingBottom: 4 },
     lockNotice: { fontSize: 11, color: t.faint, fontStyle: 'italic' },
     // sort control (field chips + a ↑/↓ direction toggle)
@@ -4537,6 +4567,13 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     // growing it: the browse should start with cards, not chrome.
     selectBtn: { paddingVertical: 1, paddingHorizontal: 10, borderRadius: 999, backgroundColor: t.accent },
     selectBtnOff: { opacity: 0.4 },
+    // TCG-028 p11: on a desktop browser, Select is the same height and type as the Cards / Analytics tabs.
+    selectBtnDesk: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 8, justifyContent: 'center' },
+    selectBtnTextDesk: { fontSize: 13, lineHeight: 18 },
+    // TCG-028 p15: "0 selected · tap 2+" is the only instruction, so it reads at full strength:
+    // an outline with full-strength text instead of a faded fill.
+    selectBtnHintDesk: { backgroundColor: 'transparent', borderWidth: 1, borderColor: t.accent, paddingVertical: 5, paddingHorizontal: 13 },
+    selectBtnHintTextDesk: { color: t.text },
     selectBtnText: { color: t.accentText, fontSize: 12, fontWeight: '700', lineHeight: 16 },
     selectToggle: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: t.border },
     selectToggleText: { fontSize: 12, fontWeight: '600', color: t.link },
