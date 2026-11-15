@@ -130,6 +130,7 @@ import { resolveTheme, tileShadow as baseTileShadow, type BrowseTheme } from './
 import { ThemeFilterBar, type ThemeTypeGroup } from './ThemeFilterBar';
 import { PixelGlyph, QuickScreen, isPlusLabel } from './QuickGlyph';
 import { count } from './counts';
+import { MultiSelectButton } from './SelectButton';
 import { SORT_DEFAULT_DIR } from './query';
 
 /** Animated.delay for a LOOP: the stock delay is a timing with isInteraction true, which on web
@@ -2650,17 +2651,15 @@ export function CatalogBrowser({
     canMultiSelect && isCardLevel && !analyticsView ? (
       selecting ? (
         <>
-          <Pressable
-            disabled={selectedIds.length < 2}
-            onPress={() => setMultiOpen(true)}
-            role="button"
-            style={[styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff]}>
-            <Text style={styles.selectBtnText} numberOfLines={1}>
-              {selectedIds.length < 2
-                ? `${selectedIds.length} selected · tap 2+`
-                : `Continue with ${count(selectedIds.length)}`}
-            </Text>
-          </Pressable>
+          {/* One style for every multi-select control (MIC-039, see SelectButton.tsx). Under 2
+              picks the pill is solid but inert (the hint says why), never dimmed. */}
+          <MultiSelectButton
+            theme={theme}
+            on
+            count={selectedIds.length}
+            onLabel={selectedIds.length < 2 ? undefined : `Continue with ${count(selectedIds.length)}`}
+            onPress={selectedIds.length < 2 ? undefined : () => setMultiOpen(true)}
+          />
           <Pressable
             onPress={() => {
               setMultiSelectMode(false);
@@ -2672,13 +2671,12 @@ export function CatalogBrowser({
           </Pressable>
         </>
       ) : (
-        <Pressable
+        <MultiSelectButton
+          theme={theme}
+          on={false}
           onPress={() => setMultiSelectMode(true)}
-          role="button"
           accessibilityLabel="Select multiple cards"
-          style={styles.selectBtn}>
-          <Text style={styles.selectBtnText}>⊕ Select</Text>
-        </Pressable>
+        />
       )
     ) : null;
 
@@ -2732,28 +2730,35 @@ export function CatalogBrowser({
       role="button"
       aria-expanded={sortFilterOpen}
       accessibilityLabel={`Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`}
-      style={[styles.facetToggle, styles.sortFilterBtn, sortFilterLit && styles.facetToggleOn]}>
+      style={[styles.facetToggle, styles.sortFilterBtn, compactHeader && compactSearch && !theme.controlHeight && styles.facetToggleTight, sortFilterLit && styles.facetToggleOn]}>
       <Text style={[styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn]} numberOfLines={1}>
-        {compactHeader ? 'Filters ▾' : 'Sort & filter ▾'}
+        {compactHeader ? 'Filters' : 'Sort & filter'}
+        <Text style={compactHeader && compactSearch && !theme.controlHeight ? styles.caretTight : undefined}> ▾</Text>
       </Text>
     </Pressable>
   );
   // THE COMPACT HEADER, ONE ROW IN ONE ORDER (michi, 2026-11-11: "TCG SELECTOR | COLOR SEARCH |
   // THEME SEARCH | FILTERS | VIEW", on one line "when there's room"). It wraps where the width runs
   // out, the same at every width: the editor's dock and /browse read the same.
+  // A TIGHT ROW IN A NARROW BROWSER (MIC-039 p36, owner: "tighten"). In the editor's picker sheet
+  // at 390px, View dropped alone onto a second line. Under COMPACT_SEARCH_W the row's gap, the
+  // buttons' side padding and their type step down a notch, and every button is 36px tall (Filters
+  // and View were 28), so they take less width without a smaller tap target. A host touch height
+  // (theme.controlHeight, michi's /browse page) keeps its own sizing.
+  const tightHeader = compactSearch && !theme.controlHeight;
   const colorBtn = onColorSearch ? (
-    <Pressable onPress={onColorSearch} style={styles.triColorBtn} accessibilityLabel={colorSearchLabel}>
-      <Text style={styles.triColorBtnText}>{colorSearchLabel}</Text>
+    <Pressable onPress={onColorSearch} style={[styles.triColorBtn, tightHeader && styles.triColorBtnTight]} accessibilityLabel={colorSearchLabel}>
+      <Text style={[styles.triColorBtnText, tightHeader && styles.triColorBtnTextTight]}>{colorSearchLabel}</Text>
     </Pressable>
   ) : null;
   const themeBtn = onThemeSearch ? (
-    <Pressable onPress={onThemeSearch} disabled={themeSearchBusy} aria-busy={themeSearchBusy} style={[styles.triColorBtn, themeSearchBusy && styles.busyBtn]} accessibilityLabel={themeSearchLabel} testID="header-theme">
-      <Text style={styles.triColorBtnText}>{themeSearchLabel}</Text>
+    <Pressable onPress={onThemeSearch} disabled={themeSearchBusy} aria-busy={themeSearchBusy} style={[styles.triColorBtn, tightHeader && styles.triColorBtnTight, themeSearchBusy && styles.busyBtn]} accessibilityLabel={themeSearchLabel} testID="header-theme">
+      <Text style={[styles.triColorBtnText, tightHeader && styles.triColorBtnTextTight]}>{themeSearchLabel}</Text>
     </Pressable>
   ) : null;
   const compactRows = headerFolded ? null : (
     <>
-      <View style={[styles.triColorRow, styles.wideHeaderRow]} testID="header-row">
+      <View style={[styles.triColorRow, styles.wideHeaderRow, tightHeader && styles.headerRowTight]} testID="header-row">
         {featureRowLead}
         {colorBtn}
         {themeBtn}
@@ -2764,9 +2769,9 @@ export function CatalogBrowser({
           aria-expanded={viewOpen}
           accessibilityLabel="View: card size and printing language"
           testID="header-view"
-          style={[styles.facetToggle, styles.sortFilterBtn, viewOpen && styles.facetToggleOn]}>
+          style={[styles.facetToggle, styles.sortFilterBtn, tightHeader && styles.facetToggleTight, viewOpen && styles.facetToggleOn]}>
           <Text style={[styles.facetToggleText, viewOpen && styles.facetToggleTextOn]} numberOfLines={1}>
-            View ▾
+            View<Text style={tightHeader ? styles.caretTight : undefined}> ▾</Text>
           </Text>
         </Pressable>
       </View>
@@ -3002,11 +3007,23 @@ export function CatalogBrowser({
   const perSpread = pick.across * pick.rows;
   const spreadStart = Math.floor(pageN / perSpread) * perSpread;
   const spreadEnd = Math.min(pageCount, spreadStart + perSpread);
-  const spreadW = across * pageW + (across - 1) * PAGE_GAP;
+  // A spread as wide as the pages it SHOWS: three results on a layout with room for three pages
+  // across were drawn in a three-page-wide box with one page at its left, off centre.
+  const shownAcross = Math.max(1, Math.min(across, spreadEnd - spreadStart));
+  const spreadW = shownAcross * pageW + (shownAcross - 1) * PAGE_GAP;
   // Pages taller than the window (M / L on most screens): the stage scrolls, so a vertical wheel
   // scrolls it and only a sideways one turns the pages.
   const pagedTallRef = useRef(false);
-  pagedTallRef.current = freeH > 0 && pick.rows * pageHFor(pick.card) + (pick.rows - 1) * PAGE_GAP > freeH + 1;
+  const pagedTall = freeH > 0 && pick.rows * pageHFor(pick.card) + (pick.rows - 1) * PAGE_GAP > freeH + 1;
+  pagedTallRef.current = pagedTall;
+  // NO EMPTY BAND OVER A FEW RESULTS (owner, MIC-039 p25: "Just centering horizontally and
+  // vertically should probably be good enough"). The layout sizes a page to fill the height, but a
+  // page of three results drew one row, so the centred block was a third of the height with a tall
+  // blank band above it that read as something failed to load. A page now always keeps its three
+  // rows, the slots past the last result drawn as empty pockets, so the centred block fills the
+  // height it was sized for and every page in a spread is the same height. Pages taller than the
+  // window (which scroll) are not padded when they stand alone; they sit at the top instead.
+  const padPages = !pagedTall || spreadEnd - spreadStart > 1;
   useEffect(() => {
     // Within two pages of the end: ask for the next results, as the list's end would.
     if (paged && moreToLoad && pageN + perSpread * 2 >= pageCount) onEndReachedRef.current();
@@ -3437,7 +3454,7 @@ export function CatalogBrowser({
           ) : null}
         </ScrollView>
       ) : paged ? (
-        <ScrollView style={styles.list} contentContainerStyle={styles.pagedContent} testID="results-pages" onLayout={(e) => {
+        <ScrollView style={styles.list} contentContainerStyle={[styles.pagedContent, !padPages && styles.pagedContentTop]} testID="results-pages" onLayout={(e) => {
           const h = Math.round(e.nativeEvent.layout.height);
           if (!viewOpenRef.current || pagedH === 0) setPagedH(h);
         }}>
@@ -3488,15 +3505,22 @@ export function CatalogBrowser({
                   }}>
                   {[0, 1, 2].map((r) => {
                     const row = visibleData.slice(pn * PER_PAGE + r * 3, pn * PER_PAGE + r * 3 + 3);
-                    return row.length ? (
+                    if (!row.length && !padPages) return null;
+                    const empties = padPages ? 3 - row.length : 0;
+                    return (
                       <View key={r} style={styles.pageRowOfThree}>
                         {row.map((item, i) => (
                           <View key={keyFor(item)} style={[styles.pocket, { width: pocketW }]}>
                             {renderItem({ item, index: pn * PER_PAGE + r * 3 + i }, pocketW)}
                           </View>
                         ))}
+                        {Array.from({ length: empties }, (_, e) => (
+                          <View key={`empty-${e}`} style={[styles.pocketEmptyCell, { width: pocketW }]} testID="results-empty-pocket">
+                            <View style={[styles.pocketEmpty, { height: Math.round(pocketW * CARD_ASPECT) }]} />
+                          </View>
+                        ))}
                       </View>
-                    ) : null;
+                    );
                   })}
                 </View>
                   ))}
@@ -4863,6 +4887,11 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     emptyHint: { fontSize: 13, color: t.faint, textAlign: 'center', maxWidth: 420 },
     // Results as binder pages (resultsAsPages).
     pagedContent: { alignItems: 'center', justifyContent: 'center', flexGrow: 1, gap: 6, paddingVertical: 6 },
+    pagedContentTop: { justifyContent: 'flex-start' },
+    // An empty pocket on a page with fewer than nine results: a faint dashed sleeve, as tall as a
+    // card, with the name line's room under it, so the row is as tall as one with cards.
+    pocketEmptyCell: { marginBottom: CARD_LABEL_H + ROW_GAP },
+    pocketEmpty: { borderRadius: 6, borderWidth: 1, borderStyle: 'dashed', borderColor: t.border },
 
     pagedRow: { flexDirection: 'row', alignItems: 'flex-start' },
     pageRowOfThree: { flexDirection: 'row', gap: 4 },
@@ -5013,6 +5042,12 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
       ...(t.controlHeight ? { minHeight: t.controlHeight, justifyContent: 'center' as const, paddingVertical: 0 } : null),
     },
     triColorBtnText: { fontSize: t.controlHeight ? 15 : 14, fontWeight: '800', letterSpacing: 0.3, color: t.accentText },
+    // The tight header (narrow browser, no host touch height): see `tightHeader`.
+    headerRowTight: { gap: 6 },
+    triColorBtnTight: { paddingHorizontal: 10, paddingVertical: 0, minHeight: 36, justifyContent: 'center' },
+    triColorBtnTextTight: { fontSize: 13, letterSpacing: 0 },
+    facetToggleTight: { paddingHorizontal: 9, paddingVertical: 0, minHeight: 36, justifyContent: 'center', flexShrink: 0 },
+    caretTight: { fontSize: 9 },
     newNudge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
     // The glow: a ring the button's own colour, sitting outside it, that swells and fades every
     // so often — light coming off the button rather than the button changing size.
@@ -5336,7 +5371,6 @@ function makeStyles(t: BrowseTheme, taxTileHeight: number) {
     // The results line's one filled button. Slim enough (1px) to sit in that line without
     // growing it: the browse should start with cards, not chrome.
     selectBtn: { paddingVertical: 1, paddingHorizontal: 10, borderRadius: 999, backgroundColor: t.accent },
-    selectBtnOff: { opacity: 0.4 },
     selectBtnText: { color: t.accentText, fontSize: 12, fontWeight: '700', lineHeight: 16 },
     selectToggle: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: t.border },
     selectToggleText: { fontSize: 12, fontWeight: '600', color: t.link },

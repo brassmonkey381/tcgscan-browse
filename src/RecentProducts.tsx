@@ -27,6 +27,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -146,6 +147,12 @@ interface RecentProductsProps {
    * secondary action. Omitted → the action is hidden (TCGPlayer stays primary).
    */
   onAddToBinder?: (card: CatalogCard) => void;
+  /**
+   * Below this WINDOW width (px) the TCGplayer / eBay links under set and card tiles are left out
+   * (michi-maker, MIC-039: on a phone they stacked under every card and made the tiles uneven).
+   * A card's sheet still offers both stores. Default 600; pass 0 to always show them.
+   */
+  shopLinksMinWidth?: number;
 }
 
 /** A set paired with its (filtered) cards priciest-first, its montage slice, and its shop URL. */
@@ -178,8 +185,11 @@ export function RecentProducts({
   onViewSet,
   onOpenSet,
   onAddToBinder,
+  shopLinksMinWidth = 600,
 }: RecentProductsProps) {
   const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
+  const { width: windowW } = useWindowDimensions();
+  const showShopLinks = windowW >= shopLinksMinWidth;
   const styles = useMemo(() => makeStyles(theme), [theme]);
   // Card thumbs resolve by id via the content-hashed manifest; repaint when it lands.
   useImageManifest();
@@ -411,7 +421,7 @@ export function RecentProducts({
     ebayUrl: string,
     about: { item: OutboundItem; id: string },
     centered = false,
-  ): ReactNode => (
+  ): ReactNode => !showShopLinks ? null : (
     <View style={[styles.storeRow, centered && styles.storeRowCenter]}>
       {tcgUrl ? (
         <Pressable
@@ -569,7 +579,7 @@ export function RecentProducts({
       onPress={() => setActionCard(card)}
       accessibilityLabel={`${card.name} actions${card.releaseDate > today ? ' (upcoming)' : ''}`}>
       <CardThumb card={card} styles={styles} upcoming={!!card.releaseDate && card.releaseDate > today} />
-      <Text style={styles.scardName} numberOfLines={1}>
+      <Text style={styles.scardName} numberOfLines={2}>
         {card.name}
       </Text>
       {card.setName ? (
@@ -591,13 +601,13 @@ export function RecentProducts({
       accessibilityLabel={onOpenSet ? `Browse ${set.name}${upcoming ? ' (upcoming)' : ''}` : undefined}>
       {/* The same ladder as the set tiles, so a strip header and its tile never disagree. Falls
           back to NEW SET once a release is old enough that the ladder says nothing. */}
-      <Text style={[styles.cardHeaderKicker, upcoming && styles.cardHeaderKickerUpcoming]}>
+      <Text style={[styles.cardHeaderKicker, upcoming && styles.cardHeaderKickerUpcoming]} numberOfLines={2}>
         {releaseTag(set.releaseDate)?.label ?? 'NEW SET'}
       </Text>
-      <Text style={styles.cardHeaderName} numberOfLines={3}>
+      <Text style={styles.cardHeaderName} numberOfLines={2}>
         {set.name}
       </Text>
-      {set.releaseDate ? <Text style={styles.cardHeaderDate}>{formatSetDate(set.releaseDate)}</Text> : null}
+      {set.releaseDate ? <Text style={styles.cardHeaderDate} numberOfLines={1}>{formatSetDate(set.releaseDate)}</Text> : null}
       {set.coverUri ? (
         <Image
           source={{ uri: set.coverUri }}
@@ -887,7 +897,10 @@ function makeStyles(t: BrowseTheme) {
     fillImg: { width: '100%', height: '100%' },
 
     // set tile
+    // flexGrow: every set tile in a carousel row is as tall as the tallest (MIC-039), and the name
+    // keeps room for two lines, so a one-line name does not make a shorter tile either.
     tile: {
+      flexGrow: 1,
       borderWidth: 1,
       borderColor: t.border,
       borderRadius: 12,
@@ -928,7 +941,7 @@ function makeStyles(t: BrowseTheme) {
     tileFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     tileFooterLeft: { flex: 1, gap: 3 },
     tileLogo: { width: 72, height: 44 },
-    tileName: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15 },
+    tileName: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15, minHeight: 30 },
     tileMeta: { fontSize: 10, color: t.subtext, fontVariant: ['tabular-nums'] },
     tileLink: { fontSize: 11, fontWeight: '700', color: t.link, marginTop: 1 },
     tileLinkCenter: { textAlign: 'center' },
@@ -952,33 +965,42 @@ function makeStyles(t: BrowseTheme) {
       color: t.faint,
       textAlign: 'center',
     },
-    scardName: { fontSize: 10, lineHeight: 12, color: t.text, textAlign: 'center' },
+    // Two lines, always reserved, so every card tile in the strip is the same height.
+    scardName: { fontSize: 10, lineHeight: 12, minHeight: 24, color: t.text, textAlign: 'center' },
     scardSet: { fontSize: 8, lineHeight: 10, color: t.subtext, textAlign: 'center' },
     scardMeta: { fontSize: 9, lineHeight: 11, fontWeight: '700', color: t.link, textAlign: 'center' },
 
     // "NEW SET / UPCOMING" filler between each set's run in the Cards carousel
+    // THE LEADING SET PANEL, LAID OUT ON PURPOSE (MIC-039, owner: "re-align the VERY RECENT ME06:
+    // Delta Reign type leading panel so it's a bit more intentional"). It is exactly a card picture's
+    // shape, so its top and bottom edges line up with the cards beside it; the kicker, name and date
+    // read top-down from its top-left corner at one padding, and the set logo takes what is left at
+    // the bottom (shrinking, never pushing the text out).
     cardHeader: {
-      flex: 1,
+      width: '100%',
+      aspectRatio: 63 / 88,
       borderWidth: 1,
       borderColor: t.border,
-      borderRadius: 8,
+      borderRadius: 5,
       backgroundColor: t.panel,
-      padding: 6,
+      padding: 8,
       gap: 3,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: 'stretch',
+      justifyContent: 'flex-start',
+      overflow: 'hidden',
     },
     cardHeaderKicker: {
-      fontSize: RELEASE_TAG_FONT_SIZE,
-      lineHeight: RELEASE_TAG_LINE_HEIGHT,
+      fontSize: 10,
+      lineHeight: 12,
       fontWeight: '800',
       letterSpacing: 0.5,
       color: t.subtext,
       textTransform: 'uppercase' as const,
+      textAlign: 'left',
     },
     cardHeaderKickerUpcoming: { color: t.link },
-    cardHeaderName: { fontSize: 11, fontWeight: '800', color: t.text, textAlign: 'center', lineHeight: 14 },
-    cardHeaderDate: { fontSize: 9, color: t.subtext, fontVariant: ['tabular-nums'] },
-    cardHeaderLogo: { width: '100%', height: 40, marginTop: 2 },
+    cardHeaderName: { fontSize: 12, fontWeight: '800', color: t.text, textAlign: 'left', lineHeight: 15 },
+    cardHeaderDate: { fontSize: 10, lineHeight: 12, color: t.subtext, textAlign: 'left', fontVariant: ['tabular-nums'] },
+    cardHeaderLogo: { flex: 1, minHeight: 0, maxHeight: 48, width: '100%', marginTop: 4 },
   });
 }

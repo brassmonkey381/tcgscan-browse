@@ -53,6 +53,15 @@ export {
 
 export { LanguageToggle } from './LanguageToggle';
 export { Segmented, type SegmentOption } from './Segmented';
+export {
+  contrastRatio,
+  MULTI_SELECT_PILL,
+  MultiSelectButton,
+  multiSelectOnLabel,
+  SelectGlyph,
+  selectFill,
+  type MultiSelectButtonProps,
+} from './SelectButton';
 
 export {
   applyFeatureLocks,

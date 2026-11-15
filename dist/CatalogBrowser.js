@@ -48,6 +48,7 @@ import { resolveTheme, tileShadow as baseTileShadow } from './theme';
 import { ThemeFilterBar } from './ThemeFilterBar';
 import { PixelGlyph, QuickScreen, isPlusLabel } from './QuickGlyph';
 import { count } from './counts';
+import { MultiSelectButton } from './SelectButton';
 import { SORT_DEFAULT_DIR } from './query';
 /** Animated.delay for a LOOP: the stock delay is a timing with isInteraction true, which on web
  *  holds InteractionManager for the whole pause and freezes every FlatList (MIC-031). */
@@ -2014,12 +2015,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // there as the only filled button in the chrome: the text links (Sort & filter, Clear) and the
     // outline chips (S/M/L) are settings; this one starts something.
     const selecting = multiSelectMode || selectedIds.length > 0;
-    const selectControl = canMultiSelect && isCardLevel && !analyticsView ? (selecting ? (_jsxs(_Fragment, { children: [_jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), role: "button", style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, numberOfLines: 1, children: selectedIds.length < 2
-                        ? `${selectedIds.length} selected · tap 2+`
-                        : `Continue with ${count(selectedIds.length)}` }) }), _jsx(Pressable, { onPress: () => {
+    const selectControl = canMultiSelect && isCardLevel && !analyticsView ? (selecting ? (_jsxs(_Fragment, { children: [_jsx(MultiSelectButton, { theme: theme, on: true, count: selectedIds.length, onLabel: selectedIds.length < 2 ? undefined : `Continue with ${count(selectedIds.length)}`, onPress: selectedIds.length < 2 ? undefined : () => setMultiOpen(true) }), _jsx(Pressable, { onPress: () => {
                     setMultiSelectMode(false);
                     clearSelection();
-                }, hitSlop: 8, role: "button", children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), role: "button", accessibilityLabel: "Select multiple cards", style: styles.selectBtn, children: _jsx(Text, { style: styles.selectBtnText, children: "\u2295 Select" }) }))) : null;
+                }, hitSlop: 8, role: "button", children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(MultiSelectButton, { theme: theme, on: false, onPress: () => setMultiSelectMode(true), accessibilityLabel: "Select multiple cards" }))) : null;
     // Sets | Analytics (or Cards | Analytics): rides the end of the breadcrumb line, unless Select
     // is on that line too and the screen is a phone's.
     const tabsOwnLine = compactBar && !!selectControl;
@@ -2048,13 +2047,19 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // button, so it never grows and wraps off the group row (owner's screenshot, 2026-11-03).
     const sortFilterOpen = sheetMode || !isCardLevel ? toolsOpen : filtersOpen;
     const sortFilterLit = sortFilterOpen || activeFilterCount > 0 || parsed.owned != null;
-    const sortFilterControl = analyticsView ? null : (_jsx(Pressable, { onPress: () => (sheetMode || !isCardLevel ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v)), role: "button", "aria-expanded": sortFilterOpen, accessibilityLabel: `Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`, style: [styles.facetToggle, styles.sortFilterBtn, sortFilterLit && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn], numberOfLines: 1, children: compactHeader ? 'Filters ▾' : 'Sort & filter ▾' }) }));
+    const sortFilterControl = analyticsView ? null : (_jsx(Pressable, { onPress: () => (sheetMode || !isCardLevel ? setToolsOpen((v) => !v) : setFiltersOpen((v) => !v)), role: "button", "aria-expanded": sortFilterOpen, accessibilityLabel: `Sort and filter${activeFilterCount > 0 ? `, ${activeFilterCount} filters on` : ''}`, style: [styles.facetToggle, styles.sortFilterBtn, compactHeader && compactSearch && !theme.controlHeight && styles.facetToggleTight, sortFilterLit && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, sortFilterLit && styles.facetToggleTextOn], numberOfLines: 1, children: [compactHeader ? 'Filters' : 'Sort & filter', _jsx(Text, { style: compactHeader && compactSearch && !theme.controlHeight ? styles.caretTight : undefined, children: " \u25BE" })] }) }));
     // THE COMPACT HEADER, ONE ROW IN ONE ORDER (michi, 2026-11-11: "TCG SELECTOR | COLOR SEARCH |
     // THEME SEARCH | FILTERS | VIEW", on one line "when there's room"). It wraps where the width runs
     // out, the same at every width: the editor's dock and /browse read the same.
-    const colorBtn = onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: styles.triColorBtn, accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: styles.triColorBtnText, children: colorSearchLabel }) })) : null;
-    const themeBtn = onThemeSearch ? (_jsx(Pressable, { onPress: onThemeSearch, disabled: themeSearchBusy, "aria-busy": themeSearchBusy, style: [styles.triColorBtn, themeSearchBusy && styles.busyBtn], accessibilityLabel: themeSearchLabel, testID: "header-theme", children: _jsx(Text, { style: styles.triColorBtnText, children: themeSearchLabel }) })) : null;
-    const compactRows = headerFolded ? null : (_jsxs(_Fragment, { children: [_jsxs(View, { style: [styles.triColorRow, styles.wideHeaderRow], testID: "header-row", children: [featureRowLead, colorBtn, themeBtn, sortFilterControl, _jsx(Pressable, { onPress: () => setViewOpen((v) => !v), role: "button", "aria-expanded": viewOpen, accessibilityLabel: "View: card size and printing language", testID: "header-view", style: [styles.facetToggle, styles.sortFilterBtn, viewOpen && styles.facetToggleOn], children: _jsx(Text, { style: [styles.facetToggleText, viewOpen && styles.facetToggleTextOn], numberOfLines: 1, children: "View \u25BE" }) })] }), viewOpen ? (_jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize })] })) : null] }));
+    // A TIGHT ROW IN A NARROW BROWSER (MIC-039 p36, owner: "tighten"). In the editor's picker sheet
+    // at 390px, View dropped alone onto a second line. Under COMPACT_SEARCH_W the row's gap, the
+    // buttons' side padding and their type step down a notch, and every button is 36px tall (Filters
+    // and View were 28), so they take less width without a smaller tap target. A host touch height
+    // (theme.controlHeight, michi's /browse page) keeps its own sizing.
+    const tightHeader = compactSearch && !theme.controlHeight;
+    const colorBtn = onColorSearch ? (_jsx(Pressable, { onPress: onColorSearch, style: [styles.triColorBtn, tightHeader && styles.triColorBtnTight], accessibilityLabel: colorSearchLabel, children: _jsx(Text, { style: [styles.triColorBtnText, tightHeader && styles.triColorBtnTextTight], children: colorSearchLabel }) })) : null;
+    const themeBtn = onThemeSearch ? (_jsx(Pressable, { onPress: onThemeSearch, disabled: themeSearchBusy, "aria-busy": themeSearchBusy, style: [styles.triColorBtn, tightHeader && styles.triColorBtnTight, themeSearchBusy && styles.busyBtn], accessibilityLabel: themeSearchLabel, testID: "header-theme", children: _jsx(Text, { style: [styles.triColorBtnText, tightHeader && styles.triColorBtnTextTight], children: themeSearchLabel }) })) : null;
+    const compactRows = headerFolded ? null : (_jsxs(_Fragment, { children: [_jsxs(View, { style: [styles.triColorRow, styles.wideHeaderRow, tightHeader && styles.headerRowTight], testID: "header-row", children: [featureRowLead, colorBtn, themeBtn, sortFilterControl, _jsx(Pressable, { onPress: () => setViewOpen((v) => !v), role: "button", "aria-expanded": viewOpen, accessibilityLabel: "View: card size and printing language", testID: "header-view", style: [styles.facetToggle, styles.sortFilterBtn, tightHeader && styles.facetToggleTight, viewOpen && styles.facetToggleOn], children: _jsxs(Text, { style: [styles.facetToggleText, viewOpen && styles.facetToggleTextOn], numberOfLines: 1, children: ["View", _jsx(Text, { style: tightHeader ? styles.caretTight : undefined, children: " \u25BE" })] }) })] }), viewOpen ? (_jsxs(View, { style: styles.groupRow, children: [languageToggleVisible ? _jsx(LanguageToggle, { theme: themeProp }) : null, _jsx(SizeChips, { theme: theme, size: cardSize, onPickSize: pickCardSize })] })) : null] }));
     // The filter rows, built once and placed either inline (a wide screen) or in the sheet (a
     // compact one). `pinned` keeps the Filters panel open: in the sheet it is the whole point.
     // Sort, which a wide screen puts at the end of the filter strip and the phone's sheet puts at
@@ -2196,11 +2201,23 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     const perSpread = pick.across * pick.rows;
     const spreadStart = Math.floor(pageN / perSpread) * perSpread;
     const spreadEnd = Math.min(pageCount, spreadStart + perSpread);
-    const spreadW = across * pageW + (across - 1) * PAGE_GAP;
+    // A spread as wide as the pages it SHOWS: three results on a layout with room for three pages
+    // across were drawn in a three-page-wide box with one page at its left, off centre.
+    const shownAcross = Math.max(1, Math.min(across, spreadEnd - spreadStart));
+    const spreadW = shownAcross * pageW + (shownAcross - 1) * PAGE_GAP;
     // Pages taller than the window (M / L on most screens): the stage scrolls, so a vertical wheel
     // scrolls it and only a sideways one turns the pages.
     const pagedTallRef = useRef(false);
-    pagedTallRef.current = freeH > 0 && pick.rows * pageHFor(pick.card) + (pick.rows - 1) * PAGE_GAP > freeH + 1;
+    const pagedTall = freeH > 0 && pick.rows * pageHFor(pick.card) + (pick.rows - 1) * PAGE_GAP > freeH + 1;
+    pagedTallRef.current = pagedTall;
+    // NO EMPTY BAND OVER A FEW RESULTS (owner, MIC-039 p25: "Just centering horizontally and
+    // vertically should probably be good enough"). The layout sizes a page to fill the height, but a
+    // page of three results drew one row, so the centred block was a third of the height with a tall
+    // blank band above it that read as something failed to load. A page now always keeps its three
+    // rows, the slots past the last result drawn as empty pockets, so the centred block fills the
+    // height it was sized for and every page in a spread is the same height. Pages taller than the
+    // window (which scroll) are not padded when they stand alone; they sit at the top instead.
+    const padPages = !pagedTall || spreadEnd - spreadStart > 1;
     useEffect(() => {
         // Within two pages of the end: ask for the next results, as the list's end would.
         if (paged && moreToLoad && pageN + perSpread * 2 >= pageCount)
@@ -2324,7 +2341,7 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                     return (_jsx(Pressable, { style: styles.similarThumb, onPress: () => src && setActionCard(src), children: uri ? (_jsx(Image, { source: { uri }, style: styles.cardImage, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: sid, transition: 80 })) : (_jsx(View, { style: styles.cardImageFallback, children: _jsx(Text, { style: styles.cardImageFallbackText, children: src?.name?.slice(0, 1) ?? '?' }) })) }, sid));
                                 }) })] })) : seriesId ? (selectControl || analyticsTabs ? (tabsOwnLine ? (_jsxs(_Fragment, { children: [_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }), _jsxs(View, { style: styles.metaRow, children: [selecting ? _jsx(View, {}) : analyticsTabs, _jsx(View, { style: styles.metaEnd, children: selectControl })] })] })) : (_jsxs(View, { style: styles.metaRow, children: [_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }), _jsxs(View, { style: styles.metaEnd, children: [selectControl, selecting ? null : analyticsTabs] })] }))) : (_jsx(Breadcrumb, { styles: styles, crumbs: crumbs }))) : taxBarOn || compactHeader ? null : (_jsxs(Text, { style: styles.meta, children: [series.length, " series"] })), searching && lockNotice ? (_jsx(Pressable, { onPress: () => onLockedFeature?.(isLocked(lockedFeatures, 'sortByValue') ? 'sortByValue' : 'priceFilter'), style: styles.lockNoticeRow, children: _jsx(Text, { style: styles.lockNotice, numberOfLines: 2, children: lockNotice }) })) : null] }), analyticsView ? (_jsx(ScrollView, { style: styles.list, contentContainerStyle: styles.analyticsContent, children: analyticsLocked ? (
                 // Gated (e.g. guest): the app-supplied CTA replaces the analytics panels.
-                analyticsLocked) : catalog && analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : catalog && analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : paged ? (_jsxs(ScrollView, { style: styles.list, contentContainerStyle: styles.pagedContent, testID: "results-pages", onLayout: (e) => {
+                analyticsLocked) : catalog && analyticsScope === 'set' && setId ? (_jsx(SetAnalytics, { catalog: catalog, setId: setId, onOpenCard: openCard, theme: theme })) : catalog && analyticsScope === 'series' && seriesId ? (_jsx(SeriesAnalytics, { catalog: catalog, seriesId: seriesId, onOpenCard: openCard, theme: theme })) : null })) : paged ? (_jsxs(ScrollView, { style: styles.list, contentContainerStyle: [styles.pagedContent, !padPages && styles.pagedContentTop], testID: "results-pages", onLayout: (e) => {
                     const h = Math.round(e.nativeEvent.layout.height);
                     if (!viewOpenRef.current || pagedH === 0)
                         setPagedH(h);
@@ -2340,7 +2357,10 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
                                                     turnTo(spreadStart + (dx < 0 ? perSpread : -perSpread));
                                             }, children: [0, 1, 2].map((r) => {
                                                 const row = visibleData.slice(pn * PER_PAGE + r * 3, pn * PER_PAGE + r * 3 + 3);
-                                                return row.length ? (_jsx(View, { style: styles.pageRowOfThree, children: row.map((item, i) => (_jsx(View, { style: [styles.pocket, { width: pocketW }], children: renderItem({ item, index: pn * PER_PAGE + r * 3 + i }, pocketW) }, keyFor(item)))) }, r)) : null;
+                                                if (!row.length && !padPages)
+                                                    return null;
+                                                const empties = padPages ? 3 - row.length : 0;
+                                                return (_jsxs(View, { style: styles.pageRowOfThree, children: [row.map((item, i) => (_jsx(View, { style: [styles.pocket, { width: pocketW }], children: renderItem({ item, index: pn * PER_PAGE + r * 3 + i }, pocketW) }, keyFor(item)))), Array.from({ length: empties }, (_, e) => (_jsx(View, { style: [styles.pocketEmptyCell, { width: pocketW }], testID: "results-empty-pocket", children: _jsx(View, { style: [styles.pocketEmpty, { height: Math.round(pocketW * CARD_ASPECT) }] }) }, `empty-${e}`)))] }, r));
                                             }) }, pn))) })] }), sideArrows ? (_jsx(Pressable, { onPress: () => turnTo(spreadStart + perSpread), disabled: spreadEnd >= pageCount, role: "button", accessibilityLabel: "Next pages", testID: "results-next", style: [styles.pagedSide, spreadEnd >= pageCount && styles.pagedTurnOff], children: _jsx(Text, { style: styles.pagedSideText, children: "\u203A" }) })) : null] }), sideArrows ? null : (_jsxs(View, { style: styles.pagedNav, children: [_jsx(Pressable, { onPress: () => turnTo(spreadStart - perSpread), disabled: spreadStart === 0, role: "button", accessibilityLabel: "Previous page", testID: "results-prev", style: [styles.pagedTurn, spreadStart === 0 && styles.pagedTurnOff], children: _jsx(Text, { style: styles.pagedTurnText, children: "\u2039" }) }), _jsxs(Text, { style: styles.pagedCount, testID: "results-page-count", children: [spreadEnd - spreadStart > 1 ? `Pages ${spreadStart + 1}-${spreadEnd}` : `Page ${spreadStart + 1}`, " of ", pageCount, moreToLoad ? '+' : ''] }), _jsx(Pressable, { onPress: () => turnTo(spreadStart + perSpread), disabled: spreadEnd >= pageCount, role: "button", accessibilityLabel: "Next page", testID: "results-next", style: [styles.pagedTurn, spreadEnd >= pageCount && styles.pagedTurnOff], children: _jsx(Text, { style: styles.pagedTurnText, children: "\u203A" }) })] })), footer] })) : (_jsx(FlatList, { ref: listRef, 
                 // Keyboard nav scrolls by index; a miss (virtualized far jump) is non-fatal.
                 onScrollToIndexFailed: () => { }, style: styles.list, 
@@ -2790,6 +2810,11 @@ function makeStyles(t, taxTileHeight) {
         emptyHint: { fontSize: 13, color: t.faint, textAlign: 'center', maxWidth: 420 },
         // Results as binder pages (resultsAsPages).
         pagedContent: { alignItems: 'center', justifyContent: 'center', flexGrow: 1, gap: 6, paddingVertical: 6 },
+        pagedContentTop: { justifyContent: 'flex-start' },
+        // An empty pocket on a page with fewer than nine results: a faint dashed sleeve, as tall as a
+        // card, with the name line's room under it, so the row is as tall as one with cards.
+        pocketEmptyCell: { marginBottom: CARD_LABEL_H + ROW_GAP },
+        pocketEmpty: { borderRadius: 6, borderWidth: 1, borderStyle: 'dashed', borderColor: t.border },
         pagedRow: { flexDirection: 'row', alignItems: 'flex-start' },
         pageRowOfThree: { flexDirection: 'row', gap: 4 },
         pageSpread: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' },
@@ -2939,6 +2964,12 @@ function makeStyles(t, taxTileHeight) {
             ...(t.controlHeight ? { minHeight: t.controlHeight, justifyContent: 'center', paddingVertical: 0 } : null),
         },
         triColorBtnText: { fontSize: t.controlHeight ? 15 : 14, fontWeight: '800', letterSpacing: 0.3, color: t.accentText },
+        // The tight header (narrow browser, no host touch height): see `tightHeader`.
+        headerRowTight: { gap: 6 },
+        triColorBtnTight: { paddingHorizontal: 10, paddingVertical: 0, minHeight: 36, justifyContent: 'center' },
+        triColorBtnTextTight: { fontSize: 13, letterSpacing: 0 },
+        facetToggleTight: { paddingHorizontal: 9, paddingVertical: 0, minHeight: 36, justifyContent: 'center', flexShrink: 0 },
+        caretTight: { fontSize: 9 },
         newNudge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
         // The glow: a ring the button's own colour, sitting outside it, that swells and fades every
         // so often — light coming off the button rather than the button changing size.
@@ -3262,7 +3293,6 @@ function makeStyles(t, taxTileHeight) {
         // The results line's one filled button. Slim enough (1px) to sit in that line without
         // growing it: the browse should start with cards, not chrome.
         selectBtn: { paddingVertical: 1, paddingHorizontal: 10, borderRadius: 999, backgroundColor: t.accent },
-        selectBtnOff: { opacity: 0.4 },
         selectBtnText: { color: t.accentText, fontSize: 12, fontWeight: '700', lineHeight: 16 },
         selectToggle: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: t.border },
         selectToggleText: { fontSize: 12, fontWeight: '600', color: t.link },

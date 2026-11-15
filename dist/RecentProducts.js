@@ -22,7 +22,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  */
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View, } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, useWindowDimensions, View, } from 'react-native';
 import { CardActionModal } from './CardActionModal';
 import { CARD_SIZE_SCALE } from './cardSize';
 import { formatSetDate } from './catalog';
@@ -48,8 +48,10 @@ const NARROW_SET_TILE_W = 170;
 const CARD_TARGET_W = 104;
 /** Double-tap window (ms) for the carousel arrows: a second tap within this jumps to start/end. */
 const DOUBLE_TAP_MS = 200;
-export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, rarityFilter, languages, cardSize = 'M', theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }) {
+export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, cardLimit = 40, rarityFilter, languages, cardSize = 'M', theme: themeProp, title = 'Recent & Upcoming', onFindSimilar, onViewSet, onOpenSet, onAddToBinder, shopLinksMinWidth = 600, }) {
     const theme = useMemo(() => resolveTheme(themeProp), [themeProp]);
+    const { width: windowW } = useWindowDimensions();
+    const showShopLinks = windowW >= shopLinksMinWidth;
     const styles = useMemo(() => makeStyles(theme), [theme]);
     // Card thumbs resolve by id via the content-hashed manifest; repaint when it lands.
     useImageManifest();
@@ -260,7 +262,7 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
     // shared by set + card tiles. Each is ONE link → ONE destination the user picks: never spawn two
     // tabs from one tap (browsers popup-block the second). The eBay link is '' (hidden) when no EPN
     // campaign id is configured (ebaySearchUrl), so unconfigured builds show TCGPlayer only.
-    const storeLinks = (tcgUrl, ebayUrl, about, centered = false) => (_jsxs(View, { style: [styles.storeRow, centered && styles.storeRowCenter], children: [tcgUrl ? (_jsx(Pressable, { onPress: () => open(tcgUrl, 'tcgplayer', about.item, about.id), hitSlop: 4, accessibilityLabel: "Shop on TCGplayer", children: _jsx(Text, { style: styles.tileLink, children: "TCGplayer \u2197" }) })) : null, ebayUrl ? (_jsx(Pressable, { onPress: () => open(ebayUrl, 'ebay', about.item, about.id), hitSlop: 4, accessibilityLabel: "Search on eBay", children: _jsx(Text, { style: styles.tileLink, children: "eBay \u2197" }) })) : null] }));
+    const storeLinks = (tcgUrl, ebayUrl, about, centered = false) => !showShopLinks ? null : (_jsxs(View, { style: [styles.storeRow, centered && styles.storeRowCenter], children: [tcgUrl ? (_jsx(Pressable, { onPress: () => open(tcgUrl, 'tcgplayer', about.item, about.id), hitSlop: 4, accessibilityLabel: "Shop on TCGplayer", children: _jsx(Text, { style: styles.tileLink, children: "TCGplayer \u2197" }) })) : null, ebayUrl ? (_jsx(Pressable, { onPress: () => open(ebayUrl, 'ebay', about.item, about.id), hitSlop: 4, accessibilityLabel: "Search on eBay", children: _jsx(Text, { style: styles.tileLink, children: "eBay \u2197" }) })) : null] }));
     // The modal's actions for a card: add-to-binder (host chooser) + drive-the-other-browser
     // intents (when wired) + TCGPlayer.
     const actionsFor = (card) => {
@@ -330,10 +332,10 @@ export function RecentProducts({ catalog, monthsBack = 12, montageCount = 3, car
                     })()] }), _jsxs(View, { style: styles.tileFooter, children: [_jsxs(View, { style: styles.tileFooterLeft, children: [_jsx(Text, { style: styles.tileName, numberOfLines: 2, children: t.set.name }), _jsx(Text, { style: styles.tileMeta, numberOfLines: 1, children: [formatSetDate(t.set.releaseDate), count(t.set.cardCount, 'card')]
                                     .filter(Boolean)
                                     .join(' · ') }), storeLinks(t.shopUrl, ebaySearchUrl(t.set.name), { item: 'set', id: t.set.id })] }), t.set.coverUri && tileWidth >= NARROW_SET_TILE_W ? (_jsx(Image, { source: { uri: t.set.coverUri }, style: styles.tileLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `logo-${t.set.id}`, transition: 100 })) : null] })] }));
-    const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions${card.releaseDate > today ? ' (upcoming)' : ''}`, children: [_jsx(CardThumb, { card: card, styles: styles, upcoming: !!card.releaseDate && card.releaseDate > today }), _jsx(Text, { style: styles.scardName, numberOfLines: 1, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, storeLinks(productUrl(card.id), ebayCardSearchUrl(card), { item: 'card', id: card.id }, true)] }));
+    const renderCard = (card) => (_jsxs(Pressable, { style: styles.scard, onPress: () => setActionCard(card), accessibilityLabel: `${card.name} actions${card.releaseDate > today ? ' (upcoming)' : ''}`, children: [_jsx(CardThumb, { card: card, styles: styles, upcoming: !!card.releaseDate && card.releaseDate > today }), _jsx(Text, { style: styles.scardName, numberOfLines: 2, children: card.name }), card.setName ? (_jsx(Text, { style: styles.scardSet, numberOfLines: 1, children: card.setName })) : null, storeLinks(productUrl(card.id), ebayCardSearchUrl(card), { item: 'card', id: card.id }, true)] }));
     // The "NEW SET / UPCOMING" filler that heads each set's run in the Cards carousel — the set's
     // logo + name + date, styled like the Sealed carousel's set headers. Tapping opens the set.
-    const renderCardHeader = (set, upcoming) => (_jsxs(Pressable, { style: styles.cardHeader, onPress: onOpenSet ? () => onOpenSet(set) : undefined, role: onOpenSet ? 'button' : undefined, accessibilityLabel: onOpenSet ? `Browse ${set.name}${upcoming ? ' (upcoming)' : ''}` : undefined, children: [_jsx(Text, { style: [styles.cardHeaderKicker, upcoming && styles.cardHeaderKickerUpcoming], children: releaseTag(set.releaseDate)?.label ?? 'NEW SET' }), _jsx(Text, { style: styles.cardHeaderName, numberOfLines: 3, children: set.name }), set.releaseDate ? _jsx(Text, { style: styles.cardHeaderDate, children: formatSetDate(set.releaseDate) }) : null, set.coverUri ? (_jsx(Image, { source: { uri: set.coverUri }, style: styles.cardHeaderLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `ch-logo-${set.id}`, transition: 100 })) : null] }));
+    const renderCardHeader = (set, upcoming) => (_jsxs(Pressable, { style: styles.cardHeader, onPress: onOpenSet ? () => onOpenSet(set) : undefined, role: onOpenSet ? 'button' : undefined, accessibilityLabel: onOpenSet ? `Browse ${set.name}${upcoming ? ' (upcoming)' : ''}` : undefined, children: [_jsx(Text, { style: [styles.cardHeaderKicker, upcoming && styles.cardHeaderKickerUpcoming], numberOfLines: 2, children: releaseTag(set.releaseDate)?.label ?? 'NEW SET' }), _jsx(Text, { style: styles.cardHeaderName, numberOfLines: 2, children: set.name }), set.releaseDate ? _jsx(Text, { style: styles.cardHeaderDate, numberOfLines: 1, children: formatSetDate(set.releaseDate) }) : null, set.coverUri ? (_jsx(Image, { source: { uri: set.coverUri }, style: styles.cardHeaderLogo, contentFit: "contain", cachePolicy: "memory-disk", recyclingKey: `ch-logo-${set.id}`, transition: 100 })) : null] }));
     const renderCardRow = (row) => row.kind === 'header' ? renderCardHeader(row.set, row.upcoming) : renderCard(row.card);
     return (_jsxs(View, { style: styles.root, onLayout: onLayout, children: [title ? _jsx(Text, { style: styles.header, children: title }) : null, setTiles.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Sets" }), _jsx(Carousel, { items: setTiles, visible: setsPerView, keyOf: (t) => t.set.id, renderItem: renderSet, styles: styles })] })) : null, cardRows.length > 0 ? (_jsxs(_Fragment, { children: [_jsx(Text, { style: styles.subHeader, children: "Cards" }), _jsx(Carousel, { items: cardRows, visible: cardsPerView, keyOf: (r) => r.key, renderItem: renderCardRow, styles: styles })] })) : null, actionCard ? (_jsx(CardActionModal, { card: actionCard, actions: actionsFor(actionCard), value: priceOf(actionCard.id), onClose: () => setActionCard(null), theme: theme })) : null] }));
 }
@@ -459,7 +461,10 @@ function makeStyles(t) {
         // shared image fill
         fillImg: { width: '100%', height: '100%' },
         // set tile
+        // flexGrow: every set tile in a carousel row is as tall as the tallest (MIC-039), and the name
+        // keeps room for two lines, so a one-line name does not make a shorter tile either.
         tile: {
+            flexGrow: 1,
             borderWidth: 1,
             borderColor: t.border,
             borderRadius: 12,
@@ -500,7 +505,7 @@ function makeStyles(t) {
         tileFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
         tileFooterLeft: { flex: 1, gap: 3 },
         tileLogo: { width: 72, height: 44 },
-        tileName: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15 },
+        tileName: { fontSize: 12, fontWeight: '700', color: t.text, lineHeight: 15, minHeight: 30 },
         tileMeta: { fontSize: 10, color: t.subtext, fontVariant: ['tabular-nums'] },
         tileLink: { fontSize: 11, fontWeight: '700', color: t.link, marginTop: 1 },
         tileLinkCenter: { textAlign: 'center' },
@@ -523,32 +528,41 @@ function makeStyles(t) {
             color: t.faint,
             textAlign: 'center',
         },
-        scardName: { fontSize: 10, lineHeight: 12, color: t.text, textAlign: 'center' },
+        // Two lines, always reserved, so every card tile in the strip is the same height.
+        scardName: { fontSize: 10, lineHeight: 12, minHeight: 24, color: t.text, textAlign: 'center' },
         scardSet: { fontSize: 8, lineHeight: 10, color: t.subtext, textAlign: 'center' },
         scardMeta: { fontSize: 9, lineHeight: 11, fontWeight: '700', color: t.link, textAlign: 'center' },
         // "NEW SET / UPCOMING" filler between each set's run in the Cards carousel
+        // THE LEADING SET PANEL, LAID OUT ON PURPOSE (MIC-039, owner: "re-align the VERY RECENT ME06:
+        // Delta Reign type leading panel so it's a bit more intentional"). It is exactly a card picture's
+        // shape, so its top and bottom edges line up with the cards beside it; the kicker, name and date
+        // read top-down from its top-left corner at one padding, and the set logo takes what is left at
+        // the bottom (shrinking, never pushing the text out).
         cardHeader: {
-            flex: 1,
+            width: '100%',
+            aspectRatio: 63 / 88,
             borderWidth: 1,
             borderColor: t.border,
-            borderRadius: 8,
+            borderRadius: 5,
             backgroundColor: t.panel,
-            padding: 6,
+            padding: 8,
             gap: 3,
-            alignItems: 'center',
-            justifyContent: 'center',
+            alignItems: 'stretch',
+            justifyContent: 'flex-start',
+            overflow: 'hidden',
         },
         cardHeaderKicker: {
-            fontSize: RELEASE_TAG_FONT_SIZE,
-            lineHeight: RELEASE_TAG_LINE_HEIGHT,
+            fontSize: 10,
+            lineHeight: 12,
             fontWeight: '800',
             letterSpacing: 0.5,
             color: t.subtext,
             textTransform: 'uppercase',
+            textAlign: 'left',
         },
         cardHeaderKickerUpcoming: { color: t.link },
-        cardHeaderName: { fontSize: 11, fontWeight: '800', color: t.text, textAlign: 'center', lineHeight: 14 },
-        cardHeaderDate: { fontSize: 9, color: t.subtext, fontVariant: ['tabular-nums'] },
-        cardHeaderLogo: { width: '100%', height: 40, marginTop: 2 },
+        cardHeaderName: { fontSize: 12, fontWeight: '800', color: t.text, textAlign: 'left', lineHeight: 15 },
+        cardHeaderDate: { fontSize: 10, lineHeight: 12, color: t.subtext, textAlign: 'left', fontVariant: ['tabular-nums'] },
+        cardHeaderLogo: { flex: 1, minHeight: 0, maxHeight: 48, width: '100%', marginTop: 4 },
     });
 }

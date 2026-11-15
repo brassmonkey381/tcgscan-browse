@@ -71,6 +71,12 @@ interface RecentProductsProps {
      * secondary action. Omitted → the action is hidden (TCGPlayer stays primary).
      */
     onAddToBinder?: (card: CatalogCard) => void;
+    /**
+     * Below this WINDOW width (px) the TCGplayer / eBay links under set and card tiles are left out
+     * (michi-maker, MIC-039: on a phone they stacked under every card and made the tiles uneven).
+     * A card's sheet still offers both stores. Default 600; pass 0 to always show them.
+     */
+    shopLinksMinWidth?: number;
 }
-export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, rarityFilter, languages, cardSize, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, onAddToBinder, }: RecentProductsProps): import("react").JSX.Element | null;
+export declare function RecentProducts({ catalog, monthsBack, montageCount, cardLimit, rarityFilter, languages, cardSize, theme: themeProp, title, onFindSimilar, onViewSet, onOpenSet, onAddToBinder, shopLinksMinWidth, }: RecentProductsProps): import("react").JSX.Element | null;
 export {};
