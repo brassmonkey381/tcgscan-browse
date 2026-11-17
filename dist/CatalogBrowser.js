@@ -22,6 +22,7 @@ import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-run
  * the card action sheet is filled in by the app via `cardActions` (see actions.ts).
  */
 import { Image } from 'expo-image';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions, } from 'react-native';
 import { describeQuery, filterCards, parseQuery, QUERY_HINT, MANUAL_TABS, QUERY_MANUAL, runQuery, sortCards, withoutTheme, } from './query';
@@ -681,6 +682,8 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // one-frame reflow on desktop, where the stacked form would otherwise flash first.
     const compactSearch = containerWidth > 0 && containerWidth < COMPACT_SEARCH_W;
     const compactBar = containerWidth > 0 && containerWidth < COMPACT_BAR_W;
+    /** A desktop browser: the only place the TCG-028 sizing applies, so the phone apps keep theirs. */
+    const deskWeb = Platform.OS === 'web' && containerWidth >= COMPACT_BAR_W;
     const clearFilters = () => setSelection({});
     const q = cardQueryDebounced.trim();
     /*
@@ -1911,12 +1914,16 @@ export function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUni
     // there as the only filled button in the chrome: the text links (Sort & filter, Clear) and the
     // outline chips (S/M/L) are settings; this one starts something.
     const selecting = multiSelectMode || selectedIds.length > 0;
-    const selectControl = canMultiSelect && isCardLevel && !analyticsView ? (selecting ? (_jsxs(_Fragment, { children: [_jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), role: "button", style: [styles.selectBtn, selectedIds.length < 2 && styles.selectBtnOff], children: _jsx(Text, { style: styles.selectBtnText, numberOfLines: 1, children: selectedIds.length < 2
+    const selectControl = canMultiSelect && isCardLevel && !analyticsView ? (selecting ? (_jsxs(_Fragment, { children: [_jsx(Pressable, { disabled: selectedIds.length < 2, onPress: () => setMultiOpen(true), role: "button", style: [
+                    styles.selectBtn,
+                    deskWeb && styles.selectBtnDesk,
+                    selectedIds.length < 2 && (deskWeb ? styles.selectBtnHintDesk : styles.selectBtnOff),
+                ], children: _jsx(Text, { style: [styles.selectBtnText, deskWeb && styles.selectBtnTextDesk, deskWeb && selectedIds.length < 2 && styles.selectBtnHintTextDesk], numberOfLines: 1, children: selectedIds.length < 2
                         ? `${selectedIds.length} selected · tap 2+`
                         : `Continue with ${count(selectedIds.length)}` }) }), _jsx(Pressable, { onPress: () => {
                     setMultiSelectMode(false);
                     clearSelection();
-                }, hitSlop: 8, role: "button", children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), role: "button", accessibilityLabel: "Select multiple cards", style: styles.selectBtn, children: _jsx(Text, { style: styles.selectBtnText, children: "\u2295 Select" }) }))) : null;
+                }, hitSlop: 8, role: "button", children: _jsx(Text, { style: styles.clear, children: "Cancel" }) })] })) : (_jsx(Pressable, { onPress: () => setMultiSelectMode(true), role: "button", accessibilityLabel: "Select multiple cards", style: [styles.selectBtn, deskWeb && styles.selectBtnDesk], children: _jsx(Text, { style: [styles.selectBtnText, deskWeb && styles.selectBtnTextDesk], children: "\u2295 Select" }) }))) : null;
     // Sets | Analytics (or Cards | Analytics): rides the end of the breadcrumb line, unless Select
     // is on that line too and the screen is a phone's.
     const tabsOwnLine = compactBar && !!selectControl;
@@ -2179,8 +2186,12 @@ function SortControls({ styles, compact, field, dir, onPick, onToggleDir, locked
                     // Locked fields stay VISIBLE (hiding them makes the plan difference invisible, and the
                     // chip is the natural place to discover it) but read as locked and route to the upsell.
                     const lock = lockedSorts?.includes(o.field);
-                    return (_jsx(Pressable, { onPress: () => onPick(o.field), style: [styles.chip, on && styles.chipOn, lock && styles.chipLocked], "aria-disabled": lock, accessibilityLabel: lock ? `${o.label} (not included on your plan)` : o.label, children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn, lock && styles.chipTextLocked], numberOfLines: 1, children: lock ? `${o.label} ⋯` : o.label }) }, o.field));
+                    return (_jsx(Pressable, { onPress: () => onPick(o.field), style: [styles.chip, on && styles.chipOn, lock && styles.chipLocked], "aria-disabled": lock, accessibilityLabel: lock ? `${o.label} (not included on your plan)` : o.label, children: lock ? (_jsxs(View, { style: styles.chipLockRow, children: [_jsx(Text, { style: [styles.chipText, styles.chipTextLocked], numberOfLines: 1, children: o.label }), _jsx(LockGlyph, { color: styles.chipTextLocked.color })] })) : (_jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: o.label })) }, o.field));
                 }) })), field !== 'relevance' ? (_jsx(Pressable, { onPress: onToggleDir, style: styles.sortDir, accessibilityLabel: "Toggle sort direction", children: _jsx(Text, { style: styles.sortDirText, children: dir === 'asc' ? '↑' : '↓' }) })) : null] }));
+}
+/** A 10 px padlock for a locked chip (TCG-028 p14). */
+function LockGlyph({ color }) {
+    return (_jsxs(Svg, { width: 10, height: 12, viewBox: "0 0 10 12", accessibilityElementsHidden: true, importantForAccessibility: "no", children: [_jsx(Path, { d: "M2.5 5V3.5a2.5 2.5 0 0 1 5 0V5", stroke: color, strokeWidth: 1.4, fill: "none" }), _jsx(Rect, { x: 1, y: 5, width: 8, height: 6.5, rx: 1.2, fill: color })] }));
 }
 /**
  * A DROPDOWN CHIP. Reads "Label · Summary ▾" and opens a sheet listing the values, each a row
@@ -2570,6 +2581,7 @@ function makeStyles(t, taxTileHeight) {
         // hidden), but visibly not-yours — dashed edge + faded text.
         chipLocked: { borderStyle: 'dashed', borderColor: t.faint, backgroundColor: 'transparent' },
         chipTextLocked: { color: t.faint },
+        chipLockRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
         lockNoticeRow: { paddingHorizontal: 2, paddingBottom: 4 },
         lockNotice: { fontSize: 11, color: t.faint, fontStyle: 'italic' },
         // sort control (field chips + a ↑/↓ direction toggle)
@@ -2787,6 +2799,13 @@ function makeStyles(t, taxTileHeight) {
         // growing it: the browse should start with cards, not chrome.
         selectBtn: { paddingVertical: 1, paddingHorizontal: 10, borderRadius: 999, backgroundColor: t.accent },
         selectBtnOff: { opacity: 0.4 },
+        // TCG-028 p11: on a desktop browser, Select is the same height and type as the Cards / Analytics tabs.
+        selectBtnDesk: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 8, justifyContent: 'center' },
+        selectBtnTextDesk: { fontSize: 13, lineHeight: 18 },
+        // TCG-028 p15: "0 selected · tap 2+" is the only instruction, so it reads at full strength:
+        // an outline with full-strength text instead of a faded fill.
+        selectBtnHintDesk: { backgroundColor: 'transparent', borderWidth: 1, borderColor: t.accent, paddingVertical: 5, paddingHorizontal: 13 },
+        selectBtnHintTextDesk: { color: t.text },
         selectBtnText: { color: t.accentText, fontSize: 12, fontWeight: '700', lineHeight: 16 },
         selectToggle: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: t.border },
         selectToggleText: { fontSize: 12, fontWeight: '600', color: t.link },

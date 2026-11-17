@@ -31,6 +31,7 @@ import { Image } from 'expo-image';
 import { useMemo, useState } from 'react';
 import {
   FlatList,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -111,6 +112,8 @@ export function SealedBrowser({
   const [shared] = useBrowseLanguages();
   const langs = languages ?? shared;
   const [query, setQuery] = useState('');
+  /** Products whose picture failed to load (TCG-028 p13): they get the "no image yet" face. */
+  const [broken, setBroken] = useState<Record<string, true>>({});
   const [group, setGroup] = useState<SealedGroup | 'all'>('all');
   const [size, setSize] = useState<CardSize>('M');
   const [containerWidth, setContainerWidth] = useState(0);
@@ -236,13 +239,28 @@ export function SealedBrowser({
               <View style={styles.imageWrap}>
                 {/* Sealed rows carry their own tiered URLs — no manifest, no tier march. The 640px
                     webp is asked for once a tile is big enough to show it, as the card grid does. */}
-                <Image
-                  source={{ uri: (tileW >= 150 ? p.imageMedium : p.imageSmall) || p.image }}
-                  style={styles.image}
-                  contentFit="contain"
-                  transition={100}
-                  recyclingKey={p.id}
-                />
+                {(() => {
+                  const uri = (tileW >= 150 ? p.imageMedium : p.imageSmall) || p.image;
+                  // TCG-028 p13: a product with no photo said nothing (an empty box that read as a
+                  // failed load). On the web it now says so; the phone apps keep their tile.
+                  if (DESK_WEB && (!uri || broken[p.id])) {
+                    return (
+                      <View style={styles.noImage}>
+                        <Text style={styles.noImageText}>No image yet</Text>
+                      </View>
+                    );
+                  }
+                  return (
+                    <Image
+                      source={{ uri }}
+                      style={styles.image}
+                      contentFit="contain"
+                      transition={100}
+                      recyclingKey={p.id}
+                      onError={DESK_WEB ? () => setBroken((b) => ({ ...b, [p.id]: true })) : undefined}
+                    />
+                  );
+                })()}
                 {onAdd ? (
                   // Nested Pressable captures its own tap, so the tile's own press does not fire.
                   //
@@ -284,7 +302,8 @@ export function SealedBrowser({
                   );
                 })()}
               </View>
-              <Text style={styles.name} numberOfLines={1}>
+              {/* TCG-028 p05: two lines on the web, so "(Target Exclusive) [Keldeo]" endings show. */}
+              <Text style={styles.name} numberOfLines={DESK_WEB ? 2 : 1}>
                 {p.name}
               </Text>
               {price ? <Text style={styles.price}>{price}</Text> : null}
@@ -295,6 +314,9 @@ export function SealedBrowser({
     </View>
   );
 }
+
+/** The web build; the TCG-028 desktop fixes stay off the phone apps. */
+const DESK_WEB = Platform.OS === 'web';
 
 function makeStyles(t: BrowseTheme) {
   return StyleSheet.create({
@@ -353,6 +375,8 @@ function makeStyles(t: BrowseTheme) {
       backgroundColor: t.imagePlaceholder,
     },
     image: { width: '100%', height: '100%' },
+    noImage: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: t.border, borderRadius: 5 },
+    noImageText: { fontSize: 11, fontWeight: '600', color: t.subtext, textAlign: 'center' },
     quick: {
       position: 'absolute',
       top: 3,

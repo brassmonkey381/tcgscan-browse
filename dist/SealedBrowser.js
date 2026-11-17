@@ -30,7 +30,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
  */
 import { Image } from 'expo-image';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
+import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, } from 'react-native';
 import { LanguageToggle } from './LanguageToggle';
 import { Segmented } from './Segmented';
 import { CARD_GRID_GAP, CARD_SIZES, cardTileWidthFor, quickPillSize, quickTextSize } from './cardSize';
@@ -74,6 +74,8 @@ export function SealedBrowser({ theme: themeProp, languages, numColumns, onOpen,
     const [shared] = useBrowseLanguages();
     const langs = languages ?? shared;
     const [query, setQuery] = useState('');
+    /** Products whose picture failed to load (TCG-028 p13): they get the "no image yet" face. */
+    const [broken, setBroken] = useState({});
     const [group, setGroup] = useState('all');
     const [size, setSize] = useState('M');
     const [containerWidth, setContainerWidth] = useState(0);
@@ -112,14 +114,24 @@ export function SealedBrowser({ theme: themeProp, languages, numColumns, onOpen,
                                 return (_jsx(Pressable, { onPress: () => setGroup(g.key), role: "button", "aria-selected": on, accessibilityLabel: g.label, style: [styles.chip, on && styles.chipOn], children: _jsx(Text, { style: [styles.chipText, on && styles.chipTextOn], numberOfLines: 1, children: g.short }) }, g.key));
                             }) }) })] }), _jsx(FlatList, { data: shown, keyExtractor: (p) => p.id, numColumns: cols, columnWrapperStyle: cols > 1 ? styles.column : undefined, contentContainerStyle: styles.listContent, ListEmptyComponent: _jsx(View, { style: styles.empty, children: _jsx(Text, { style: styles.emptyText, children: emptyText }) }), renderItem: ({ item: p }) => {
                     const price = formatUsd(priceOf(p.id));
-                    return (_jsxs(Pressable, { style: [styles.tile, tileW > 0 ? { width: tileW } : null], role: onOpen ? 'button' : undefined, accessibilityLabel: p.name, disabled: !onOpen, onPress: onOpen ? () => onOpen(p) : undefined, children: [_jsxs(View, { style: styles.imageWrap, children: [_jsx(Image, { source: { uri: (tileW >= 150 ? p.imageMedium : p.imageSmall) || p.image }, style: styles.image, contentFit: "contain", transition: 100, recyclingKey: p.id }), onAdd ? (_jsxs(Pressable, { hitSlop: 6, accessibilityLabel: `Add ${p.name}`, onPress: () => onAdd(p), style: [styles.quick, quickPillSize(tileW)], children: [theme.quickScreen ? _jsx(QuickScreen, { color: theme.quickText ?? theme.accentText }) : null, theme.quickScreen && isPlusLabel(addLabel) ? (_jsx(PixelGlyph, { kind: "plus", color: theme.quickText ?? theme.accentText, d: quickPillSize(tileW).height })) : (_jsx(Text, { style: [styles.quickText, quickTextSize(tileW)], children: addLabel }))] })) : null, (() => {
+                    return (_jsxs(Pressable, { style: [styles.tile, tileW > 0 ? { width: tileW } : null], role: onOpen ? 'button' : undefined, accessibilityLabel: p.name, disabled: !onOpen, onPress: onOpen ? () => onOpen(p) : undefined, children: [_jsxs(View, { style: styles.imageWrap, children: [(() => {
+                                        const uri = (tileW >= 150 ? p.imageMedium : p.imageSmall) || p.image;
+                                        // TCG-028 p13: a product with no photo said nothing (an empty box that read as a
+                                        // failed load). On the web it now says so; the phone apps keep their tile.
+                                        if (DESK_WEB && (!uri || broken[p.id])) {
+                                            return (_jsx(View, { style: styles.noImage, children: _jsx(Text, { style: styles.noImageText, children: "No image yet" }) }));
+                                        }
+                                        return (_jsx(Image, { source: { uri }, style: styles.image, contentFit: "contain", transition: 100, recyclingKey: p.id, onError: DESK_WEB ? () => setBroken((b) => ({ ...b, [p.id]: true })) : undefined }));
+                                    })(), onAdd ? (_jsxs(Pressable, { hitSlop: 6, accessibilityLabel: `Add ${p.name}`, onPress: () => onAdd(p), style: [styles.quick, quickPillSize(tileW)], children: [theme.quickScreen ? _jsx(QuickScreen, { color: theme.quickText ?? theme.accentText }) : null, theme.quickScreen && isPlusLabel(addLabel) ? (_jsx(PixelGlyph, { kind: "plus", color: theme.quickText ?? theme.accentText, d: quickPillSize(tileW).height })) : (_jsx(Text, { style: [styles.quickText, quickTextSize(tileW)], children: addLabel }))] })) : null, (() => {
                                         const tag = releaseTag(p.releaseDate);
                                         if (!tag)
                                             return null;
                                         return (_jsx(View, { style: [styles.badge, tag.kind === 'countdown' && styles.badgeCountdown], pointerEvents: "none", children: _jsx(Text, { style: styles.badgeText, numberOfLines: 1, children: tag.label }) }));
-                                    })()] }), _jsx(Text, { style: styles.name, numberOfLines: 1, children: p.name }), price ? _jsx(Text, { style: styles.price, children: price }) : null] }));
+                                    })()] }), _jsx(Text, { style: styles.name, numberOfLines: DESK_WEB ? 2 : 1, children: p.name }), price ? _jsx(Text, { style: styles.price, children: price }) : null] }));
                 } }, cols)] }));
 }
+/** The web build; the TCG-028 desktop fixes stay off the phone apps. */
+const DESK_WEB = Platform.OS === 'web';
 function makeStyles(t) {
     return StyleSheet.create({
         wrap: { flex: 1 },
@@ -177,6 +189,8 @@ function makeStyles(t) {
             backgroundColor: t.imagePlaceholder,
         },
         image: { width: '100%', height: '100%' },
+        noImage: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: t.border, borderRadius: 5 },
+        noImageText: { fontSize: 11, fontWeight: '600', color: t.subtext, textAlign: 'center' },
         quick: {
             position: 'absolute',
             top: 3,
