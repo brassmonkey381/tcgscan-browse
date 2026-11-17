@@ -542,6 +542,8 @@ interface CatalogBrowserProps {
    * Select mode still wins: a tap there is already spoken for.
    */
   onCardTap?: (card: CatalogCard) => boolean;
+  /** The host's own facts in the card quick view ("You own: 2 copies"); drawn by the pop-up skin. */
+  cardFacts?: (card: CatalogCard) => { label: string; value: string }[];
   /** Where analytics tiles/bars navigate on tap. Defaults to `onPickCard`. */
   onOpenCard?: (cardId: string) => void;
   /** Artwork-panel + tonal-insert sections, rendered as the list footer so they stay
@@ -753,6 +755,7 @@ export function CatalogBrowser({
   cardActions,
   quickAction,
   onCardTap,
+  cardFacts,
   onOpenCard,
   footer,
   analytics,
@@ -2663,6 +2666,15 @@ export function CatalogBrowser({
     : [];
 
   // Refresh the keyboard-nav snapshot every render (the window listener reads it, never rebinds).
+  /** The quick view's arrows: the card before / after this one among the cards on screen. */
+  const stepCard = (dir: -1 | 1): (() => void) | undefined => {
+    if (!actionCard) return undefined;
+    const list = visibleData.filter((it): it is Extract<typeof it, { kind: 'card' }> => it.kind === 'card');
+    const at = list.findIndex((it) => it.card.id === actionCard.id);
+    const next = at < 0 ? undefined : list[at + dir];
+    return next ? () => setActionCard(next.card) : undefined;
+  };
+
   keyNavRef.current = {
     count: analyticsView ? 0 : visibleData.length,
     cols,
@@ -3134,6 +3146,9 @@ export function CatalogBrowser({
           value={priceOf(actionCard.id)}
           onClose={() => setActionCard(null)}
           theme={theme}
+          facts={cardFacts}
+          onPrev={stepCard(-1)}
+          onNext={stepCard(1)}
         />
       ) : null}
 

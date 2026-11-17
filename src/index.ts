@@ -146,7 +146,7 @@ export {
   type CardActionsFactory,
 } from './actions';
 
-export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE, type BrowseTheme } from './theme';
+export { lightTheme, resolveTheme, tileShadow, RARITY_PALETTE, type BrowsePopupSkin, type BrowseTheme } from './theme';
 
 export {
   findSimilar,

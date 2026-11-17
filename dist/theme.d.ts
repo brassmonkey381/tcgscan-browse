@@ -83,6 +83,38 @@ export interface BrowseTheme {
     searchText?: string;
     searchPlaceholder?: string;
     searchFont?: string;
+    /**
+     * THE HOST'S POP-UP SKIN for the card quick view (v0.9.65). Set it and CardActionModal draws in
+     * the host's pop-up look (tcgscan-app: navy under a yellow edge, the price as cyan pixels) with
+     * the art beside the facts on a wide window; omitted, the quick view is the plain sheet it was.
+     */
+    popup?: BrowsePopupSkin;
+}
+/** The colours of the host's pop-ups, for the card quick view (see BrowseTheme.popup). */
+export interface BrowsePopupSkin {
+    background: string;
+    /** The top edge and the step arrows. */
+    edge: string;
+    title: string;
+    text: string;
+    subtext: string;
+    link: string;
+    border: string;
+    /** A panel inside the pop-up (the close button, the art's placeholder). */
+    panel: string;
+    tag: string;
+    tagText: string;
+    primary: string;
+    primaryText: string;
+    primaryLip?: string;
+    secondary: string;
+    secondaryText: string;
+    secondaryLip?: string;
+    priceFill: string;
+    priceText: string;
+    priceFont?: string;
+    /** A glow behind the title and the price, when the skin has one. */
+    glow?: string;
 }
 /** The kit's original light look — the default when an app passes no theme. */
 export declare const lightTheme: BrowseTheme;

@@ -67,6 +67,11 @@ interface CatalogBrowserProps {
      * Select mode still wins: a tap there is already spoken for.
      */
     onCardTap?: (card: CatalogCard) => boolean;
+    /** The host's own facts in the card quick view ("You own: 2 copies"); drawn by the pop-up skin. */
+    cardFacts?: (card: CatalogCard) => {
+        label: string;
+        value: string;
+    }[];
     /** Where analytics tiles/bars navigate on tap. Defaults to `onPickCard`. */
     onOpenCard?: (cardId: string) => void;
     /** Artwork-panel + tonal-insert sections, rendered as the list footer so they stay
@@ -267,5 +272,5 @@ interface CatalogBrowserProps {
  * Series → Set → Card browser. Search overrides the drill-down; the facet bar applies to
  * the card-list and search-result levels only.
  */
-export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
+export declare function CatalogBrowser({ catalog, selectedCardId, onPickCard, onPickVUnion, onPickCards, pickCardsLabel, cardActions, quickAction, onCardTap, cardFacts, onOpenCard, footer, analytics, analyticsLocked, theme: themeProp, cardTileWidth, taxTileHeight, initialSimilar, languages: languagesProp, showLanguageToggle, lockedFeatures, onLockedFeature, cardSize: cardSizeProp, onCardSizeChange, overlayTopInset, renderSheetDone, featureRowLead, onColorSearch, onThemeSearch, colorSearchLabel, themeSearchLabel, themeServer, themeTools: themeToolsProp, ownedIds, }: CatalogBrowserProps): import("react").JSX.Element;
 export {};

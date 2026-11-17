@@ -10,7 +10,7 @@
  */
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import type { CardAction } from './actions';
 import { resolveLabel } from './actions';
@@ -18,7 +18,7 @@ import { evolutionNeighbors, type CatalogCard } from './catalog';
 import { cardThumbUrl } from './config';
 import { formatUsd } from './prices';
 import { fetchCardDetail, type CardDetail } from './search';
-import { lightTheme, type BrowseTheme } from './theme';
+import { lightTheme, type BrowsePopupSkin, type BrowseTheme } from './theme';
 
 interface CardActionModalProps {
   card: CatalogCard;
@@ -28,6 +28,11 @@ interface CardActionModalProps {
   value: number;
   onClose: () => void;
   theme?: BrowseTheme;
+  /** The host's own facts under the kit's ("You own: 0 copies"); drawn by the pop-up skin only. */
+  facts?: (card: CatalogCard) => { label: string; value: string }[];
+  /** Step to the previous / next card in the grid without closing (pop-up skin only). */
+  onPrev?: () => void;
+  onNext?: () => void;
 }
 
 /**
@@ -43,7 +48,13 @@ const IMAGE_MAX_HEIGHT = 640;
 /** The backdrop's padding, top and bottom: the sheet never grows past the screen less this. */
 const SHEET_MARGIN = 40;
 
-export function CardActionModal({ card, actions, value, onClose, theme = lightTheme }: CardActionModalProps) {
+export function CardActionModal(props: CardActionModalProps) {
+  const theme = props.theme ?? lightTheme;
+  if (theme.popup) return <PopupCardView {...props} theme={theme} skin={theme.popup} />;
+  return <PlainCardView {...props} theme={theme} />;
+}
+
+function PlainCardView({ card, actions, value, onClose, theme = lightTheme }: CardActionModalProps) {
   const styles = makeStyles(theme);
   const { height: windowHeight } = useWindowDimensions();
   const imageMaxHeight = Math.min(IMAGE_MAX_HEIGHT, Math.round(windowHeight * IMAGE_VIEWPORT_FRACTION));
@@ -296,6 +307,283 @@ export function MultiCardActionModal({
       </View>
     </Modal>
   );
+}
+
+/** At this window width and up the popup quick view lays the art beside the facts. */
+const POPUP_WIDE_AT = 760;
+const POPUP_MAX_WIDTH_WIDE = 900;
+
+/**
+ * THE QUICK VIEW IN THE HOST'S POP-UP SKIN (v0.9.65, tcgscan-app TCG-029 R03, owner approved
+ * 2026-11-16). Drawn only when the theme carries `popup`; without it the sheet above draws exactly
+ * as before, so michi-maker is unchanged.
+ *
+ * One primary action as the big button (the app's `primary`), the next as its partner, the rest in
+ * a compact row; the price in the host's price chip; the host's own facts ("You own 0 copies")
+ * under the kit's; a close X; and, when the browser passes neighbours, arrows (and the left/right
+ * keys on the web) that step through the grid without closing.
+ */
+function PopupCardView({
+  card,
+  actions,
+  value,
+  onClose,
+  theme,
+  skin,
+  facts: hostFacts,
+  onPrev,
+  onNext,
+}: CardActionModalProps & { theme: BrowseTheme; skin: BrowsePopupSkin }) {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const wide = windowWidth >= POPUP_WIDE_AT;
+  const styles = makePopupStyles(skin, wide);
+  const uri = cardThumbUrl(card.id, 640);
+
+  // Left/right keys step through the grid on the web, while the pop-up is open.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || (!onPrev && !onNext)) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft' && onPrev) {
+        e.preventDefault();
+        onPrev();
+      } else if (e.key === 'ArrowRight' && onNext) {
+        e.preventDefault();
+        onNext();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onPrev, onNext]);
+
+  const [detail, setDetail] = useState<CardDetail | null>(null);
+  useEffect(() => {
+    setDetail(null);
+    if (card.evolutionLine.length > 0) return;
+    let stale = false;
+    fetchCardDetail([card.id]).then((d) => {
+      if (!stale && d[card.id]) setDetail(d[card.id]);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [card.id, card.evolutionLine.length]);
+  const evo = evolutionNeighbors(
+    detail ? { ...card, evolvesFrom: card.evolvesFrom || detail.evolvesFrom, evolutionLine: detail.evolutionLine } : card,
+  );
+
+  const tags = [card.rarity, card.stage].filter(Boolean);
+  const rows: { label: string; value: string }[] = [
+    ...(card.illustrator ? [{ label: 'Illustrator', value: card.illustrator }] : []),
+    ...(evo.from ? [{ label: 'Evolves from', value: evo.from }] : []),
+    ...(evo.to ? [{ label: 'Evolves to', value: evo.to }] : []),
+    ...(hostFacts ? hostFacts(card) : []),
+  ];
+
+  const ordered = [...actions].sort((a, b) => Number(b.kind === 'primary') - Number(a.kind === 'primary'));
+  const [first, second, ...rest] = ordered;
+  const press = (action: CardAction) => () => {
+    onClose();
+    action.onPress(card);
+  };
+  const imageW = wide ? Math.min(300, Math.round((windowHeight - SHEET_MARGIN * 2) * (63 / 88) * 0.8)) : undefined;
+
+  const art = (
+    <View style={[styles.art, imageW ? { width: imageW } : null]}>
+      {uri ? (
+        <Image source={{ uri }} style={styles.image} contentFit="contain" transition={120} />
+      ) : theme.comingSoonImage ? (
+        <Image source={theme.comingSoonImage} style={styles.image} contentFit="contain" accessibilityLabel="Image coming soon" />
+      ) : (
+        <View style={styles.imageFallback}>
+          <Text style={styles.sub}>no image</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const arrow = (dir: 'prev' | 'next', go?: () => void) =>
+    go ? (
+      <Pressable
+        role="button"
+        accessibilityLabel={dir === 'prev' ? 'Previous card' : 'Next card'}
+        onPress={go}
+        style={[styles.arrow, dir === 'prev' ? styles.arrowPrev : styles.arrowNext]}>
+        <Text style={styles.arrowGlyph}>{dir === 'prev' ? '‹' : '›'}</Text>
+      </Pressable>
+    ) : null;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={[styles.backdrop, { backgroundColor: theme.overlay }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+        <View style={[styles.box, { maxHeight: windowHeight - SHEET_MARGIN }]}>
+          <ScrollView
+            style={{ overscrollBehavior: 'contain' } as object}
+            contentContainerStyle={styles.body}
+            bounces={false}
+            alwaysBounceVertical={false}
+            overScrollMode="never"
+            nestedScrollEnabled>
+            {art}
+            <View style={styles.info}>
+              <View style={styles.titleRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text role="heading" style={styles.title} numberOfLines={2}>
+                    {card.name}
+                  </Text>
+                  <Text style={styles.sub} numberOfLines={1}>
+                    {[card.setName, card.number].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+                <Pressable role="button" accessibilityLabel="Close" onPress={onClose} hitSlop={6} style={styles.close}>
+                  <Text style={styles.closeGlyph}>×</Text>
+                </Pressable>
+              </View>
+              {tags.length ? (
+                <View style={styles.tags}>
+                  {tags.map((t) => (
+                    <View key={t} style={styles.tag}>
+                      <Text style={styles.tagText}>{t}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              {rows.length ? (
+                <View style={styles.rows}>
+                  {rows.map((r) => (
+                    <View key={r.label} style={styles.row}>
+                      <Text style={styles.rowLabel}>{r.label.toUpperCase()}</Text>
+                      <Text style={styles.rowValue} numberOfLines={1}>
+                        {r.value}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <View style={styles.priceBox}>
+                <Text style={styles.rowLabel}>MARKET</Text>
+                <View style={styles.priceLine}>
+                  <View style={styles.priceChip}>
+                    <Text style={styles.priceText}>{value > 0 ? formatUsd(value) : '—'}</Text>
+                  </View>
+                  <Text style={[styles.sub, { flex: 1 }]}>
+                    {value > 0 ? 'TCGplayer market, near mint.' : 'No market price yet.'}
+                  </Text>
+                </View>
+              </View>
+              {card.imageSubstituted ? (
+                <Text style={styles.caveat}>
+                  This image may differ slightly from the real card, it could carry a stamp, overlay, or signature we missed.
+                </Text>
+              ) : null}
+              <View style={styles.mainActions}>
+                {first ? (
+                  <Pressable role="button" onPress={press(first)} style={[styles.btn, first.kind === 'primary' ? styles.btnPrimary : styles.btnSecondary]}>
+                    <Text style={first.kind === 'primary' ? styles.btnPrimaryText : styles.btnSecondaryText} numberOfLines={1}>
+                      {resolveLabel(first, card)}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {second ? (
+                  <Pressable role="button" onPress={press(second)} style={[styles.btn, styles.btnSecondary]}>
+                    <Text style={[styles.btnSecondaryText, second.kind === 'destructive' && { color: theme.danger }]} numberOfLines={1}>
+                      {resolveLabel(second, card)}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              {rest.length ? (
+                <View style={styles.compact}>
+                  {rest.map((a) => (
+                    <Pressable key={a.key} role="button" onPress={press(a)} style={styles.compactBtn}>
+                      <Text style={[styles.compactText, a.kind === 'destructive' && { color: theme.danger }]} numberOfLines={1}>
+                        {resolveLabel(a, card)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          </ScrollView>
+        </View>
+        {arrow('prev', onPrev)}
+        {arrow('next', onNext)}
+      </View>
+    </Modal>
+  );
+}
+
+function makePopupStyles(s: BrowsePopupSkin, wide: boolean) {
+  return StyleSheet.create({
+    backdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: wide ? 56 : 16 },
+    box: {
+      width: '100%',
+      maxWidth: wide ? POPUP_MAX_WIDTH_WIDE : SHEET_MAX_WIDTH,
+      borderRadius: 18,
+      backgroundColor: s.background,
+      borderTopWidth: 5,
+      borderTopColor: s.edge,
+      overflow: 'hidden',
+    },
+    body: { flexDirection: wide ? 'row' : 'column', gap: wide ? 20 : 12, padding: wide ? 18 : 14 },
+    art: { aspectRatio: 63 / 88, width: wide ? undefined : '100%', alignSelf: wide ? 'flex-start' : 'center', borderRadius: 10, overflow: 'hidden', backgroundColor: s.panel },
+    image: { width: '100%', height: '100%' },
+    imageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    info: { flex: wide ? 1 : undefined, minWidth: 0, gap: 12 },
+    titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    title: {
+      fontSize: wide ? 24 : 19,
+      lineHeight: wide ? 30 : 24,
+      fontWeight: '800',
+      color: s.title,
+      ...(s.glow ? { textShadowColor: s.glow, textShadowRadius: 10, textShadowOffset: { width: 0, height: 0 } } : null),
+    },
+    sub: { fontSize: 13, lineHeight: 18, color: s.subtext },
+    close: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: s.panel },
+    closeGlyph: { fontSize: 22, lineHeight: 24, color: s.text },
+    tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    tag: { borderRadius: 6, paddingVertical: 3, paddingHorizontal: 8, backgroundColor: s.tag },
+    tagText: { fontSize: 12, fontWeight: '700', color: s.tagText },
+    rows: { gap: 6 },
+    row: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
+    rowLabel: { width: 96, fontSize: 11, fontWeight: '700', letterSpacing: 1, color: s.subtext },
+    rowValue: { flex: 1, fontSize: 14, color: s.text },
+    priceBox: { gap: 8, borderWidth: 1, borderColor: s.border, borderRadius: 12, padding: 12 },
+    priceLine: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    priceChip: { borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: s.priceFill },
+    priceText: {
+      fontSize: 18,
+      color: s.priceText,
+      ...(s.priceFont ? { fontFamily: s.priceFont } : { fontWeight: '800' as const }),
+      ...(s.glow ? { textShadowColor: s.glow, textShadowRadius: 8, textShadowOffset: { width: 0, height: 0 } } : null),
+    },
+    caveat: { fontSize: 11, lineHeight: 15, fontStyle: 'italic', color: s.subtext },
+    mainActions: { flexDirection: wide ? 'row' : 'column', gap: 10, marginTop: 4 },
+    btn: { flex: wide ? 1 : undefined, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
+    btnPrimary: { backgroundColor: s.primary, borderBottomWidth: 3, borderBottomColor: s.primaryLip ?? s.primary },
+    btnPrimaryText: { fontSize: 15, fontWeight: '800', color: s.primaryText },
+    btnSecondary: { backgroundColor: s.secondary, borderBottomWidth: 3, borderBottomColor: s.secondaryLip ?? s.secondary },
+    btnSecondaryText: { fontSize: 15, fontWeight: '800', color: s.secondaryText },
+    compact: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    compactBtn: { flexGrow: 1, minHeight: 36, borderRadius: 10, borderWidth: 1, borderColor: s.border, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+    compactText: { fontSize: 13, fontWeight: '700', color: s.link },
+    arrow: {
+      position: 'absolute',
+      top: '50%',
+      width: 44,
+      height: 44,
+      marginTop: -22,
+      borderRadius: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: s.background,
+      borderWidth: 2,
+      borderColor: s.edge,
+    },
+    arrowPrev: { left: wide ? 6 : 2 },
+    arrowNext: { right: wide ? 6 : 2 },
+    arrowGlyph: { fontSize: 26, lineHeight: 28, fontWeight: '800', color: s.edge },
+  });
 }
 
 function makeStyles(t: BrowseTheme) {

@@ -9,8 +9,16 @@ interface CardActionModalProps {
     value: number;
     onClose: () => void;
     theme?: BrowseTheme;
+    /** The host's own facts under the kit's ("You own: 0 copies"); drawn by the pop-up skin only. */
+    facts?: (card: CatalogCard) => {
+        label: string;
+        value: string;
+    }[];
+    /** Step to the previous / next card in the grid without closing (pop-up skin only). */
+    onPrev?: () => void;
+    onNext?: () => void;
 }
-export declare function CardActionModal({ card, actions, value, onClose, theme }: CardActionModalProps): import("react").JSX.Element;
+export declare function CardActionModal(props: CardActionModalProps): import("react").JSX.Element;
 /**
  * Multi-select action sheet — shown when 2+ cards are selected (Ctrl/Shift-click on web).
  * The image area crams every selected thumb into the usual footprint (scrolls if they
