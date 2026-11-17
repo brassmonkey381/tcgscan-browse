@@ -51,7 +51,7 @@ export default {};`,
 const host = (n) => (p) => React.createElement(n, p);
 export const Svg = host('Svg'), Path = host('Path'), Circle = host('Circle'), Rect = host('Rect'), G = host('G'),
   Defs = host('Defs'), LinearGradient = host('LinearGradient'), Stop = host('Stop'), Line = host('Line'),
-  Polyline = host('Polyline'), Text = host('SvgText');
+  Polyline = host('Polyline'), Pattern = host('Pattern'), Text = host('SvgText');
 export default Svg;`,
 };
 const loader = `
